@@ -49,7 +49,7 @@ func (gf *GGUFFile) estimateKVCache(a GGUFArchitectureMetadata, o _GGUFEstimateO
 	var (
 		embedKeyGQA = uint64(a.AttentionKeyLength) * a.AttentionHeadCountKV
 		embedValGQA = uint64(a.AttentionValueLength) * a.AttentionHeadCountKV
-		kvSize      = a.ContextLength
+		kvSize      = a.MaximumContextLength
 	)
 	{
 		// Correct.

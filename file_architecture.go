@@ -2,13 +2,13 @@ package gguf_parser
 
 // GGUFArchitectureMetadata represents the architecture metadata of a GGUF file.
 type GGUFArchitectureMetadata struct {
-	// ContextLength(n_ctx_train) is the context length of the model.
+	// MaximumContextLength(n_ctx_train) is the maximum context length of the model.
 	//
 	// For most architectures, this is the hard limit on the length of the input.
 	// Architectures, like RWKV,
 	// that are not reliant on transformer-style attention may be able to handle larger inputs,
 	// but this is not guaranteed.
-	ContextLength uint64 `json:"contextLength"`
+	MaximumContextLength uint64 `json:"maximumContextLength"`
 	// EmbeddingLength(n_embd) is the length of the embedding layer.
 	EmbeddingLength uint64 `json:"embeddingLength"`
 	// BlockCount(n_layer) is the number of blocks of attention and feed-forward layers,
@@ -147,7 +147,7 @@ func (gf *GGUFFile) Architecture() (ga GGUFArchitectureMetadata) {
 	})
 
 	if v, ok := m[contextLengthKey]; ok {
-		ga.ContextLength = ValueNumeric[uint64](v)
+		ga.MaximumContextLength = ValueNumeric[uint64](v)
 	}
 	if v, ok := m[embeddingLengthKey]; ok {
 		ga.EmbeddingLength = ValueNumeric[uint64](v)

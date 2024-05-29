@@ -939,7 +939,7 @@ func (gf *GGUFFile) guessParameters() GGUFParametersScalar {
 	//            = BlockCount * (12 * EmbeddingLength * EmbeddingLength + 13 * EmbeddingLength) + VocabularyLength * EmbeddingLength
 
 	ret := blockCount*(12*embeddingLength*embeddingLength+13*embeddingLength) + vocabularyLength*embeddingLength
-	// TODO MoE
+	// TODO MoE / SSM / RoPE.
 	return GGUFParametersScalar(ret)
 }
 

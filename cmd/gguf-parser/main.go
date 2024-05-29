@@ -34,9 +34,13 @@ func main() {
 		// estimate options
 		ctxSize = 512
 		kvType  = "f16"
-		// output
-		json       bool
-		jsonPretty = true
+		// output options
+		skipModel        bool
+		skipArchitecture bool
+		skipTokenizer    bool
+		skipEstimate     bool
+		json             bool
+		jsonPretty       = true
 	)
 	fs := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	fs.Usage = func() {
@@ -58,8 +62,12 @@ func main() {
 	fs.BoolVar(&mmap, "mmap", mmap, "Use mmap to read the local file")
 	fs.BoolVar(&skipProxy, "skip-proxy", skipProxy, "Skip using proxy when reading from a remote URL")
 	fs.BoolVar(&skipTLS, "skip-tls", skipTLS, "Skip TLS verification when reading from a remote URL")
-	fs.IntVar(&ctxSize, "ctx-size", ctxSize, "Maximum context size to estimate memory usage")
+	fs.IntVar(&ctxSize, "ctx-size", ctxSize, "Context size to estimate memory usage")
 	fs.StringVar(&kvType, "kv-type", kvType, "Key-Value cache type, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1]")
+	fs.BoolVar(&skipModel, "skip-model", skipModel, "Skip model metadata")
+	fs.BoolVar(&skipArchitecture, "skip-architecture", skipArchitecture, "Skip architecture metadata")
+	fs.BoolVar(&skipTokenizer, "skip-tokenizer", skipTokenizer, "Skip tokenizer metadata")
+	fs.BoolVar(&skipEstimate, "skip-estimate", skipEstimate, "Skip estimate")
 	fs.BoolVar(&json, "json", json, "Output as JSON")
 	fs.BoolVar(&jsonPretty, "json-pretty", jsonPretty, "Output as pretty JSON")
 	if err := fs.Parse(os.Args[1:]); err != nil {
@@ -132,15 +140,40 @@ func main() {
 		}
 	}
 
-	m, a, e := gf.Model(), gf.Architecture(), gf.Estimate(eopts...)
+	var (
+		m GGUFModelMetadata
+		a GGUFArchitectureMetadata
+		t GGUFTokenizerMetadata
+		e GGUFEstimate
+	)
+	if !skipModel {
+		m = gf.Model()
+	}
+	if !skipArchitecture {
+		a = gf.Architecture()
+	}
+	if !skipTokenizer {
+		t = gf.Tokenizer()
+	}
+	if !skipEstimate {
+		e = gf.Estimate(eopts...)
+	}
 
 	// Output
 
 	if json {
-		o := map[string]any{
-			"model":        m,
-			"architecture": a,
-			"estimate":     e,
+		o := map[string]any{}
+		if !skipModel {
+			o["model"] = m
+		}
+		if !skipArchitecture {
+			o["architecture"] = a
+		}
+		if !skipTokenizer {
+			o["tokenizer"] = t
+		}
+		if !skipEstimate {
+			o["estimate"] = e
 		}
 
 		enc := stdjson.NewEncoder(os.Stdout)
@@ -155,39 +188,60 @@ func main() {
 		return
 	}
 
-	tprintf(
-		[]string{"Name", "Architecture", "Quantization Version", "File Type", "Little Endian", "Size", "Parameters", "BPW"},
-		[]string{
-			m.Name,
-			m.Architecture,
-			sprintf(m.QuantizationVersion),
-			sprintf(m.FileType),
-			sprintf(m.LittleEndian),
-			m.Size.String(),
-			m.Parameters.String(),
-			m.BitsPerWeight.String(),
-		})
+	if !skipModel {
+		tprintf(
+			[]string{"Name", "Architecture", "Quantization Version", "File Type", "Little Endian", "Size", "Parameters", "BPW"},
+			[]string{
+				m.Name,
+				m.Architecture,
+				sprintf(m.QuantizationVersion),
+				sprintf(m.FileType),
+				sprintf(m.LittleEndian),
+				m.Size.String(),
+				m.Parameters.String(),
+				m.BitsPerWeight.String(),
+			})
+	}
 
-	tprintf(
-		[]string{"Context Length", "Embedding Length", "Layers", "Feed Forward Length", "Expert Count", "Vocabulary Length"},
-		[]string{
-			sprintf(a.ContextLength),
-			sprintf(a.EmbeddingLength),
-			fmt.Sprintf("%d + 1 = %d",
-				a.BlockCount,
-				a.BlockCount+1),
-			sprintf(a.FeedForwardLength),
-			sprintf(a.ExpertCount),
-			sprintf(a.VocabularyLength),
-		})
+	if !skipArchitecture {
+		tprintf(
+			[]string{"Maximum Context Length", "Embedding Length", "Layers", "Feed Forward Length", "Expert Count", "Vocabulary Length"},
+			[]string{
+				sprintf(a.MaximumContextLength),
+				sprintf(a.EmbeddingLength),
+				fmt.Sprintf("%d + 1 = %d",
+					a.BlockCount,
+					a.BlockCount+1),
+				sprintf(a.FeedForwardLength),
+				sprintf(a.ExpertCount),
+				sprintf(a.VocabularyLength),
+			})
+	}
 
-	tprintf(
-		[]string{"Load Memory", "KVCache Memory", "Total Memory"},
-		[]string{
-			e.MemoryLoad.String(),
-			e.KVCache.MemoryTotal.String(),
-			e.MemoryTotal.String(),
-		})
+	if !skipTokenizer {
+		tprintf(
+			[]string{"Tokenizer Model", "Tokens Length", "Added Tokens Length", "BOS", "EOS", "Unknown", "Separator", "Padding"},
+			[]string{
+				t.Model,
+				sprintf(t.TokensLength),
+				sprintf(t.AddedTokensLength),
+				sprintf(t.BOSTokenID),
+				sprintf(t.EOSTokenID),
+				sprintf(t.UnknownTokenID),
+				sprintf(t.SeparatorTokenID),
+				sprintf(t.PaddingTokenID),
+			})
+	}
+
+	if !skipEstimate {
+		tprintf(
+			[]string{"Load Memory", "KVCache Memory", "Total Memory"},
+			[]string{
+				e.MemoryLoad.String(),
+				e.KVCache.MemoryTotal.String(),
+				e.MemoryTotal.String(),
+			})
+	}
 }
 
 func sprintf(a any) string {
