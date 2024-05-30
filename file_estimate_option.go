@@ -9,6 +9,7 @@ type (
 		ContextSize    *int32
 		CacheKeyType   *GGMLType
 		CacheValueType *GGMLType
+		OffloadLayers  *uint64
 	}
 	GGUFEstimateOption func(*_GGUFEstimateOptions)
 )
@@ -48,5 +49,15 @@ func WithCacheValueType(t GGMLType) GGUFEstimateOption {
 		if slices.Contains(_GGUFEstimateCacheTypeAllowList, t) {
 			o.CacheValueType = &t
 		}
+	}
+}
+
+// WithOffloadLayers sets the number of layers to offload.
+func WithOffloadLayers(layers uint64) GGUFEstimateOption {
+	return func(o *_GGUFEstimateOptions) {
+		if layers <= 0 {
+			return
+		}
+		o.OffloadLayers = &layers
 	}
 }

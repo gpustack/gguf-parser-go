@@ -17,7 +17,7 @@ func TestGGUFFile_Model(t *testing.T) {
 		ctx,
 		"NousResearch/Hermes-2-Pro-Mistral-7B-GGUF",
 		"Hermes-2-Pro-Mistral-7B.Q4_K_M.gguf",
-		UseApproximate())
+		SkipLargeMetadata())
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -33,7 +33,7 @@ func BenchmarkGGUFFile_Model(b *testing.B) {
 		return
 	}
 
-	f, err := ParseGGUFFile(mp, UseMMap(), UseApproximate())
+	f, err := ParseGGUFFile(mp, UseMMap(), SkipLargeMetadata())
 	if err != nil {
 		b.Fatal(err)
 		return

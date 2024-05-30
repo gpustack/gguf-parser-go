@@ -2,69 +2,122 @@ package gguf_parser
 
 // GGUFEstimate represents the estimated result of the GGUF file.
 type GGUFEstimate struct {
-	// MemoryTotal is the total memory usage.
-	MemoryTotal GGUFBytesScalar `json:"memoryTotal"`
-	// MemoryLoad is memory usage to load the model.
-	MemoryLoad GGUFBytesScalar `json:"memoryLoad"`
-	// KVCache is the usage of key-value cache.
-	KVCache GGUFEstimateKVCache `json:"kvCache"`
+	// Offload is the offloaded layers usage.
+	Offload *GGUFMemoryUsage `json:"offload,omitempty"`
+	// Total is the total memory usage.
+	Total GGUFMemoryUsage `json:"total"`
 }
 
-// GGUFEstimateKVCache represents the usage of kv-cache.
-type GGUFEstimateKVCache struct {
-	// MemoryTotal is the total memory usage.
-	MemoryTotal GGUFBytesScalar `json:"memoryTotal"`
-	// MemoryKey is the memory usage of the cached key.
-	MemoryKey GGUFBytesScalar `json:"memoryKey"`
-	// MemoryValue is the memory usage of the cached value.
-	MemoryValue GGUFBytesScalar `json:"memoryValue"`
-}
+type (
+	// GGUFMemoryUsage represents the memory usage of the GGUF file.
+	GGUFMemoryUsage struct {
+		// KVCache is the usage of key-value cache.
+		KVCache GGUFKVCacheUsage `json:"kvCache"`
+		// Compute is the usage of transformer layers.
+		Compute GGUFBytesScalar `json:"compute"`
+		// IO is the usage of input/output layers.
+		IO GGUFBytesScalar `json:"io"`
+	}
 
-// Estimate returns the estimated result of the GGUF file.
+	// GGUFKVCacheUsage represents the usage of kv-cache.
+	GGUFKVCacheUsage struct {
+		// Key is the memory usage of the cached key.
+		Key GGUFBytesScalar `json:"key"`
+		// Value is the memory usage of the cached value.
+		Value GGUFBytesScalar `json:"value"`
+	}
+)
+
+// Estimate returns the inference usage estimated result of the GGUF file.
 func (gf *GGUFFile) Estimate(opts ...GGUFEstimateOption) (ge GGUFEstimate) {
 	var o _GGUFEstimateOptions
 	for _, opt := range opts {
 		opt(&o)
 	}
 
-	ge.MemoryLoad = gf.ModelSize
-	ge.KVCache = gf.estimateKVCache(gf.Architecture(), o)
-	ge.MemoryTotal = ge.MemoryLoad + ge.KVCache.MemoryTotal
-
+	ge.Offload, ge.Total = gf.estimateMemoryUsage(gf.Architecture(), o)
 	return ge
 }
 
-// estimateKVCache estimates the key-value cache,
-// which is inspired by https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L2479-L2501
-func (gf *GGUFFile) estimateKVCache(a GGUFArchitectureMetadata, o _GGUFEstimateOptions) (kv GGUFEstimateKVCache) {
-	kt, vt := GGMLTypeF16, GGMLTypeF16
+func (m GGUFMemoryUsage) Sum() GGUFBytesScalar {
+	return m.Compute + m.KVCache.Sum() + m.IO
+}
 
-	if o.CacheKeyType != nil {
-		kt = *o.CacheKeyType
-	}
-	if o.CacheValueType != nil {
-		vt = *o.CacheValueType
+func (c GGUFKVCacheUsage) Sum() GGUFBytesScalar {
+	return c.Key + c.Value
+}
+
+func (gf *GGUFFile) estimateMemoryUsage(a GGUFArchitectureMetadata, o _GGUFEstimateOptions) (offload *GGUFMemoryUsage, total GGUFMemoryUsage) {
+	if o.OffloadLayers != nil {
+		offload = &GGUFMemoryUsage{}
 	}
 
-	var (
-		embedKeyGQA = uint64(a.AttentionKeyLength) * a.AttentionHeadCountKV
-		embedValGQA = uint64(a.AttentionValueLength) * a.AttentionHeadCountKV
-		kvSize      = a.MaximumContextLength
-	)
+	// KV cache.
+	// https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L2479-L2501
 	{
-		// Correct.
-		if a.SSMConvolutionKernel > 0 {
-			embedKeyGQA += uint64(a.SSMConvolutionKernel - 1*a.SSMInnerSize)
-			embedValGQA += uint64(a.SSMStateSize * a.SSMInnerSize)
+		kt, vt := GGMLTypeF16, GGMLTypeF16
+
+		if o.CacheKeyType != nil {
+			kt = *o.CacheKeyType
 		}
-		if o.ContextSize != nil {
-			kvSize = uint64(*o.ContextSize)
+		if o.CacheValueType != nil {
+			vt = *o.CacheValueType
 		}
+
+		var (
+			embedKeyGQA = uint64(a.AttentionKeyLength) * a.AttentionHeadCountKV
+			embedValGQA = uint64(a.AttentionValueLength) * a.AttentionHeadCountKV
+			kvSize      = a.MaximumContextLength
+		)
+		{
+			// Correct.
+			if a.SSMConvolutionKernel > 0 {
+				embedKeyGQA += uint64(a.SSMConvolutionKernel - 1*a.SSMInnerSize)
+				embedValGQA += uint64(a.SSMStateSize * a.SSMInnerSize)
+			}
+			if o.ContextSize != nil {
+				kvSize = uint64(*o.ContextSize)
+			}
+		}
+
+		krs := kt.RowSizeOf([]uint64{embedKeyGQA * kvSize})
+		vrs := vt.RowSizeOf([]uint64{embedValGQA * kvSize})
+
+		if offload != nil {
+			v := *o.OffloadLayers
+			if v > a.BlockCount {
+				v = a.BlockCount
+			}
+			offload.KVCache.Key = GGUFBytesScalar(krs * v)
+			offload.KVCache.Value = GGUFBytesScalar(vrs * v)
+		}
+
+		total.KVCache.Key = GGUFBytesScalar(krs * a.BlockCount)
+		total.KVCache.Value = GGUFBytesScalar(vrs * a.BlockCount)
 	}
 
-	kv.MemoryKey = GGUFBytesScalar(kt.RowSizeOf([]uint64{embedKeyGQA * kvSize}) * a.BlockCount)
-	kv.MemoryValue = GGUFBytesScalar(vt.RowSizeOf([]uint64{embedValGQA * kvSize}) * a.BlockCount)
-	kv.MemoryTotal = kv.MemoryKey + kv.MemoryValue
+	ls := gf.Layers()
+	bls, als, _ := ls.Cut([]string{
+		"token_embd.weight",
+		"output.weight",
+		"output_norm.weight",
+	})
 
-	return kv
+	// IO.
+	total.IO = GGUFBytesScalar(bls.Bytes())
+
+	// Compute.
+	if offload != nil {
+		v := *o.OffloadLayers
+		if v >= a.BlockCount {
+			offload.Compute = GGUFBytesScalar(als.Bytes())
+		} else {
+			for i := uint64(len(als) - 1); i >= uint64(len(als))-v; i-- {
+				offload.Compute += GGUFBytesScalar(als[i].Bytes())
+			}
+		}
+	}
+	total.Compute = GGUFBytesScalar(als.Bytes())
+
+	return offload, total
 }

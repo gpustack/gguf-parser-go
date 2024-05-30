@@ -31,7 +31,7 @@ func TestParseGGUFFile(t *testing.T) {
 
 	// Fast read.
 	{
-		f, err := ParseGGUFFile(mp, UseApproximate(), UseMMap())
+		f, err := ParseGGUFFile(mp, SkipLargeMetadata(), UseMMap())
 		if err != nil {
 			t.Fatal(err)
 			return
@@ -72,7 +72,7 @@ func BenchmarkParseGGUFFileMMap(b *testing.B) {
 	})
 }
 
-func BenchmarkParseGGUFFileApproximate(b *testing.B) {
+func BenchmarkParseGGUFFileSkipLargeMetadata(b *testing.B) {
 	mp, ok := os.LookupEnv("TEST_MODEL_PATH")
 	if !ok {
 		b.Skip("TEST_MODEL_PATH is not set")
@@ -93,9 +93,9 @@ func BenchmarkParseGGUFFileApproximate(b *testing.B) {
 	})
 
 	b.ResetTimer()
-	b.Run("UseApproximate", func(b *testing.B) {
+	b.Run("SkipLargeMetadata", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := ParseGGUFFile(mp, UseMMap(), UseApproximate())
+			_, err := ParseGGUFFile(mp, SkipLargeMetadata(), UseMMap())
 			if err != nil {
 				b.Fatal(err)
 				return
@@ -126,7 +126,7 @@ func TestParseGGUFFileRemote(t *testing.T) {
 
 	// Fast read.
 	{
-		f, err := ParseGGUFFileRemote(ctx, u, UseDebug(), UseApproximate())
+		f, err := ParseGGUFFileRemote(ctx, u, UseDebug(), SkipLargeMetadata())
 		if err != nil {
 			t.Fatal(err)
 			return
@@ -146,7 +146,7 @@ func BenchmarkParseGGUFFileRemoteWithBufferSize(b *testing.B) {
 	b.ResetTimer()
 	b.Run("256KibBuffer", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := ParseGGUFFileRemote(ctx, u, UseApproximate(), UseBufferSize(256*1024))
+			_, err := ParseGGUFFileRemote(ctx, u, SkipLargeMetadata(), UseBufferSize(256*1024))
 			if err != nil {
 				b.Fatal(err)
 				return
@@ -157,7 +157,7 @@ func BenchmarkParseGGUFFileRemoteWithBufferSize(b *testing.B) {
 	b.ResetTimer()
 	b.Run("1MibBuffer", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := ParseGGUFFileRemote(ctx, u, UseApproximate(), UseBufferSize(1024*1024))
+			_, err := ParseGGUFFileRemote(ctx, u, SkipLargeMetadata(), UseBufferSize(1024*1024))
 			if err != nil {
 				b.Fatal(err)
 				return
@@ -168,7 +168,7 @@ func BenchmarkParseGGUFFileRemoteWithBufferSize(b *testing.B) {
 	b.ResetTimer()
 	b.Run("4MibBuffer", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := ParseGGUFFileRemote(ctx, u, UseApproximate(), UseBufferSize(4*1024*1024))
+			_, err := ParseGGUFFileRemote(ctx, u, SkipLargeMetadata(), UseBufferSize(4*1024*1024))
 			if err != nil {
 				b.Fatal(err)
 				return
@@ -192,7 +192,7 @@ func TestParseGGUFFileFromHuggingFace(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc[0]+"/"+tc[1], func(t *testing.T) {
-			f, err := ParseGGUFFileFromHuggingFace(ctx, tc[0], tc[1], UseApproximate())
+			f, err := ParseGGUFFileFromHuggingFace(ctx, tc[0], tc[1], SkipLargeMetadata())
 			if err != nil {
 				t.Fatal(err)
 				return

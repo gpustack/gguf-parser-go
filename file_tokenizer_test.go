@@ -15,7 +15,7 @@ func TestGGUFFile_Tokenizer(t *testing.T) {
 		ctx,
 		"NousResearch/Hermes-2-Pro-Mistral-7B-GGUF",
 		"Hermes-2-Pro-Mistral-7B.Q4_K_M.gguf",
-		UseApproximate())
+		SkipLargeMetadata())
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -31,7 +31,7 @@ func BenchmarkGGUFFile_Tokenizer(b *testing.B) {
 		return
 	}
 
-	f, err := ParseGGUFFile(mp, UseApproximate(), UseMMap())
+	f, err := ParseGGUFFile(mp, SkipLargeMetadata(), UseMMap())
 	if err != nil {
 		b.Fatal(err)
 		return

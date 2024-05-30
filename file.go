@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -33,9 +34,7 @@ type GGUFFile struct {
 	Header GGUFHeader `json:"header"`
 	// TensorInfos are the tensor infos of the GGUF file,
 	// the size of TensorInfos is equal to `Header.TensorCount`.
-	//
-	// TensorInfos may be empty if read approximately.
-	TensorInfos GGUFTensorInfos `json:"tensorInfos,omitempty"`
+	TensorInfos GGUFTensorInfos `json:"tensorInfos"`
 	// Padding is the padding size of the GGUF file,
 	// which is used to split Header and TensorInfos from tensor data.
 	Padding int64 `json:"padding"`
@@ -151,7 +150,7 @@ type (
 		Len uint64 `json:"len"`
 		// Array holds all array items.
 		//
-		// Array may be empty if read approximately.
+		// Array may be empty if skipping.
 		Array []any `json:"array,omitempty"`
 
 		/* Appendix */
@@ -217,17 +216,6 @@ const (
 	GGMLTypeIQ1_M
 	GGMLTypeBF16
 	_GGMLTypeCount // Unknown
-)
-
-// Sizes for GGML constant.
-const (
-	// GGMLTensorSize is the size of a GGML tensor in bytes,
-	// see https://github.com/ggerganov/ggml/blob/0cbb7c0e053f5419cfbebb46fbf4d4ed60182cf5/include/ggml/ggml.h#L606.
-	GGMLTensorSize = 368
-
-	// GGMLObjectSize is the size of a GGML object in bytes,
-	// see https://github.com/ggerganov/ggml/blob/a10a8b880c059b3b29356eb9a9f8df72f03cdb6a/include/ggml/ggml.h#L563.
-	GGMLObjectSize = 32
 )
 
 // Types for GGUFTensorInfo.
@@ -423,23 +411,14 @@ func parseGGUFFile(s int64, f io.ReadSeeker, o _GGUFReadOptions) (_ *GGUFFile, e
 	// tensor infos
 	{
 		rd := _GGUFTensorInfoReader{_GGUFReader: rd}
-		if !o.Approximate {
-			tis := make(GGUFTensorInfos, gf.Header.TensorCount)
-			for i := uint64(0); i < gf.Header.TensorCount; i++ {
-				tis[i], err = rd.Read()
-				if err != nil {
-					return nil, fmt.Errorf("read tensor info %d: %w", i, err)
-				}
-			}
-			gf.TensorInfos = tis
-		} else {
-			for i := uint64(0); i < gf.Header.TensorCount; i++ {
-				_, err = rd.Read()
-				if err != nil {
-					return nil, fmt.Errorf("read tensor info %d: %w", i, err)
-				}
+		tis := make(GGUFTensorInfos, gf.Header.TensorCount)
+		for i := uint64(0); i < gf.Header.TensorCount; i++ {
+			tis[i], err = rd.Read()
+			if err != nil {
+				return nil, fmt.Errorf("read tensor info %d: %w", i, err)
 			}
 		}
+		gf.TensorInfos = tis
 	}
 
 	pds, err := f.Seek(0, io.SeekCurrent)
@@ -463,19 +442,11 @@ func parseGGUFFile(s int64, f io.ReadSeeker, o _GGUFReadOptions) (_ *GGUFFile, e
 	// tensor data offset
 	gf.TensorDataStartOffset = pds + gf.Padding
 
-	if o.Approximate {
-		// size
-		gf.ModelSize = GGUFBytesScalar(s - gf.TensorDataStartOffset)
-		// parameters
-		gf.ModelParameters = gf.guessParameters()
-	} else {
-		for i := range gf.TensorInfos {
-			// size
-			gf.ModelSize += GGUFBytesScalar(gf.TensorInfos[i].Bytes())
-			// parameters
-			gf.ModelParameters += GGUFParametersScalar(gf.TensorInfos[i].Elements())
-		}
-	}
+	// model size
+	gf.ModelSize = GGUFBytesScalar(s - gf.TensorDataStartOffset)
+
+	// model parameters
+	gf.ModelParameters = GGUFParametersScalar(gf.TensorInfos.Elements())
 
 	// bpw
 	if gf.ModelParameters != 0 {
@@ -485,469 +456,101 @@ func parseGGUFFile(s int64, f io.ReadSeeker, o _GGUFReadOptions) (_ *GGUFFile, e
 	return &gf, nil
 }
 
-// guessParameters guesses the number of parameters,
-// which is inspired by https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L3969-L4388.
-func (gf *GGUFFile) guessParameters() GGUFParametersScalar {
-	const (
-		K = 1e3
-		M = 1e3 * K
-		B = 1e3 * M
-
-		// https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L1718-L1761
-		_14M           = 14 * M
-		_17M           = 17 * M
-		_22M           = 22 * M
-		_33M           = 33 * M
-		_70M           = 70 * M
-		_109M          = 109 * M
-		_137M          = 137 * M
-		_160M          = 160 * M
-		_335M          = 335 * M
-		_410M          = 410 * M
-		_0_5B          = 0.5 * B
-		_1B            = 1 * B
-		_1_4B          = 1.4 * B
-		_2B            = 2 * B
-		_2_8B          = 2.8 * B
-		_3B            = 3 * B
-		_4B            = 4 * B
-		_6_9B          = 6.9 * B
-		_7B            = 7 * B
-		_8B            = 8 * B
-		_12B           = 12 * B
-		_13B           = 13 * B
-		_14B           = 14 * B
-		_15B           = 15 * B
-		_20B           = 20 * B
-		_30B           = 30 * B
-		_34B           = 34 * B
-		_35B           = 35 * B
-		_40B           = 40 * B
-		_65B           = 65 * B
-		_70B           = 70 * B
-		_314B          = 314 * B
-		_SMALL         = 0.1 * B
-		_MEDIUM        = 0.4 * B
-		_LARGE         = 0.8 * B
-		_XL            = 1.5 * B
-		_A2_7B         = 14.3 * B // Guess
-		_8x7B          = 47 * B   // Guess
-		_8x22B         = 141 * B  // Guess
-		_16x12B        = 132 * B  // Guess
-		_10B_128x3_66B = 480 * B  // Guess
-	)
-
-	arch := "llama"
-	if v, ok := gf.Header.MetadataKV.Get("general.architecture"); ok {
-		arch = v.ValueString()
+// Types for GGUF hierarchical tensors.
+type (
+	// IGGUFTensorInfos is an interface for GGUFTensorInfos.
+	IGGUFTensorInfos interface {
+		// Get returns the GGUFTensorInfo with the given name,
+		// and true if found, and false otherwise.
+		Get(name string) (info GGUFTensorInfo, found bool)
+		// Search returns a list of GGUFTensorInfo with the names that match the given regex.
+		Search(nameRegex *regexp.Regexp) (infos []GGUFTensorInfo)
+		// Index returns a map value to the GGUFTensorInfo with the given names,
+		// and the number of names found.
+		Index(names []string) (infos map[string]GGUFTensorInfo, found int)
+		// Elements returns the number of elements of the GGUFTensorInfo.
+		Elements() uint64
+		// Bytes returns the number of bytes of the GGUFTensorInfo.
+		Bytes() uint64
 	}
 
-	var (
-		contextLengthKey        = arch + ".context_length"
-		embeddingLengthKey      = arch + ".embedding_length"
-		blockCountKey           = arch + ".block_count"
-		feedForwardLengthKey    = arch + ".feed_forward_length"
-		expertCountKey          = arch + ".expert_count"
-		attentionHeadCountKey   = arch + ".attention.head_count"
-		attentionHeadCountKVKey = arch + ".attention.head_count_kv"
-		vocabularyLengthKey     = arch + ".vocab_size" // uint32 maybe
-		tokenizerGGMLTokensKey  = "tokenizer.ggml.tokens"
-	)
-	m, _ := gf.Header.MetadataKV.Index([]string{
-		contextLengthKey,
-		embeddingLengthKey,
-		blockCountKey,
-		feedForwardLengthKey,
-		expertCountKey,
-		attentionHeadCountKey,
-		attentionHeadCountKVKey,
-		vocabularyLengthKey,
-		tokenizerGGMLTokensKey,
-	})
+	// GGUFLayerTensorInfos represents hierarchical tensor infos of a GGUF file,
+	// it can save GGUFNamedTensorInfos, GGUFTensorInfos, and GGUFTensorInfo.
+	GGUFLayerTensorInfos []IGGUFTensorInfos
 
-	var (
-		embeddingLength      uint64
-		blockCount           uint64
-		feedForwardLength    uint64
-		expertCount          uint32
-		attentionHeadCount   uint64
-		attentionHeadCountKV uint64
-		vocabularyLength     uint64
-	)
-	if v, ok := m[embeddingLengthKey]; ok {
-		embeddingLength = ValueNumeric[uint64](v)
+	// GGUFNamedTensorInfos is the namespace for relevant tensors,
+	// which must has a name.
+	GGUFNamedTensorInfos struct {
+		// Name is the name of the namespace.
+		Name string `json:"name"`
+		// GGUFLayerTensorInfos can save GGUFNamedTensorInfos, GGUFTensorInfos, or GGUFTensorInfo.
+		//
+		// If the item is type of GGUFTensorInfo, it must be the leaf node.
+		//
+		// Any branch nodes are type of GGUFNamedTensorInfos or GGUFTensorInfos,
+		// which can be nested.
+		//
+		// Branch nodes store in type pointer.
+		GGUFLayerTensorInfos `json:"items,omitempty"`
 	}
-	if v, ok := m[blockCountKey]; ok {
-		blockCount = ValueNumeric[uint64](v)
-	}
-	if v, ok := m[feedForwardLengthKey]; ok {
-		feedForwardLength = ValueNumeric[uint64](v)
-	}
-	if v, ok := m[expertCountKey]; ok {
-		expertCount = ValueNumeric[uint32](v)
-	}
-	if v, ok := m[attentionHeadCountKey]; ok {
-		attentionHeadCount = ValueNumeric[uint64](v)
-	}
-	if v, ok := m[attentionHeadCountKVKey]; ok {
-		attentionHeadCountKV = ValueNumeric[uint64](v)
-	} else {
-		attentionHeadCountKV = attentionHeadCount
-	}
-	if v, ok := m[vocabularyLengthKey]; ok {
-		vocabularyLength = ValueNumeric[uint64](v)
-	} else if v, ok := m[tokenizerGGMLTokensKey]; ok {
-		vocabularyLength = v.ValueArray().Len
-	}
+)
 
-	// Try historical statistics,
-	// https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L228-L263
-	switch arch {
-	case "llama":
-		if expertCount == 8 {
-			switch blockCount {
-			case 32:
-				return _8x7B
-			case 56:
-				return _8x22B
+// Layers converts the GGUFTensorInfos to GGUFLayerTensorInfos.
+func (gf *GGUFFile) Layers() GGUFLayerTensorInfos {
+	var ret GGUFLayerTensorInfos
+
+	pm := make(map[string]any)
+	for i := range gf.TensorInfos {
+		ps := strings.Split(gf.TensorInfos[i].Name, ".")
+		switch {
+		default:
+			ret = append(ret, gf.TensorInfos[i])
+			continue
+		case len(ps) >= 2 && ps[0] == "blk":
+			p := strings.Join([]string{ps[0], ps[1]}, ".")
+			if _, ok := pm[p]; !ok {
+				l := &GGUFNamedTensorInfos{Name: p}
+				pm[p] = l
+				ret = append(ret, l)
 			}
-		} else {
-			switch blockCount {
-			case 22:
-				return _1B
-			case 26:
-				return _3B
-			case 32:
-				if vocabularyLength < 40000 {
-					return _7B
-				}
-				return _8B
-			case 40:
-				return _13B
-			case 48:
-				return _34B
-			case 60:
-				return _30B
-			case 80:
-				if attentionHeadCount == attentionHeadCountKV {
-					return _65B
-				}
-				return _70B
+			l := pm[p].(*GGUFNamedTensorInfos)
+			l.GGUFLayerTensorInfos = append(l.GGUFLayerTensorInfos, gf.TensorInfos[i])
+		case len(ps) >= 3 && (ps[0] == "decoder" || ps[0] == "encoder"):
+			p := ps[0]
+			if _, ok := pm[p]; !ok {
+				xl := &GGUFNamedTensorInfos{Name: p}
+				pm[p] = xl
+				ret = append(ret, xl)
 			}
-		}
-	case "falcon":
-		switch blockCount {
-		case 32:
-			return _7B
-		case 60:
-			return _40B
-		}
-	case "grok":
-		if blockCount == 64 {
-			return _314B
-		}
-	case "gpt2":
-		switch blockCount {
-		case 12:
-			return _SMALL
-		case 24:
-			return _MEDIUM
-		case 36:
-			return _LARGE
-		case 48:
-			return _XL
-		}
-	case "gptj":
-	case "gptneox":
-		switch blockCount {
-		case 6:
-			switch feedForwardLength {
-			case 512:
-				return _14M
-			case 2048:
-				return _70M
+			xl := pm[p].(*GGUFNamedTensorInfos)
+			if ps[1] != "block" {
+				xl.GGUFLayerTensorInfos = append(xl.GGUFLayerTensorInfos, gf.TensorInfos[i])
+				continue
 			}
-		case 12:
-			if feedForwardLength == 3072 {
-				return _160M
+			p = strings.Join([]string{ps[0], ps[1], ps[2]}, ".")
+			if _, ok := pm[p]; !ok {
+				l := &GGUFNamedTensorInfos{Name: p}
+				pm[p] = l
+				xl.GGUFLayerTensorInfos = append(xl.GGUFLayerTensorInfos, l)
 			}
-		case 16:
-			if feedForwardLength == 8192 {
-				return _1B
-			}
-		case 24:
-			switch feedForwardLength {
-			case 4096:
-				return _410M
-			case 8192:
-				return _1_4B
-			}
-		case 32:
-			switch feedForwardLength {
-			case 10240:
-				return _2_8B
-			case 16384:
-				return _6_9B
-			}
-		case 36:
-			if feedForwardLength == 20480 {
-				return _12B
-			}
-		case 44:
-			if feedForwardLength == 24576 {
-				return _20B
-			}
-		}
-	case "mpt":
-		switch blockCount {
-		case 32:
-			return _7B
-		case 48:
-			return _30B
-		}
-	case "baichuan":
-		switch blockCount {
-		case 32:
-			return _7B
-		case 40:
-			return _13B
-		}
-	case "starcoder":
-		switch blockCount {
-		case 24:
-			return _1B
-		case 36:
-			return _3B
-		case 42:
-			return _7B
-		case 40:
-			return _15B
-		}
-	case "refact":
-		if blockCount == 32 {
-			return _1B
-		}
-	case "bert":
-		switch blockCount {
-		case 3:
-			return _17M
-		case 6:
-			return _22M
-		case 12:
-			switch embeddingLength {
-			case 384:
-				return _33M
-			case 768:
-				return _109M
-			}
-		case 24:
-			return _335M
-		}
-	case "nomic-bert":
-		if blockCount == 12 && embeddingLength == 768 {
-			return _137M
-		}
-	case "jina-bert-v2":
-		switch blockCount {
-		case 4:
-			return _33M
-		case 12:
-			return _137M
-		}
-	case "bloom":
-		switch blockCount {
-		case 24:
-			return _1B
-		case 30:
-			switch embeddingLength {
-			case 2560:
-				return _3B
-			case 4096:
-				return _7B
-			}
-		}
-	case "stablelm":
-		switch blockCount {
-		case 24:
-			return _1B
-		case 32:
-			return _3B
-		case 40:
-			return _12B
-		}
-	case "qwen":
-		switch blockCount {
-		case 32:
-			return _7B
-		case 40:
-			return _13B
-		}
-	case "qwen2":
-		switch blockCount {
-		case 24:
-			if embeddingLength == 1024 {
-				return _0_5B
-			}
-			return _1B
-		case 32:
-			return _7B
-		case 40:
-			if attentionHeadCount == 20 {
-				return _4B
-			}
-			return _13B
-		case 80:
-			return _70B
-		}
-	case "qwen2moe":
-		if blockCount == 24 {
-			return _A2_7B
-		}
-	case "phi2":
-		switch blockCount {
-		case 24:
-			return _1B
-		case 32:
-			return _3B
-		}
-	case "phi3":
-		switch blockCount {
-		case 24:
-			return _1B
-		case 32:
-			return _3B
-		case 40:
-			return _14B
-		}
-	case "plamo":
-		if blockCount == 40 {
-			return _13B
-		}
-	case "codeshell":
-		if blockCount == 42 {
-			return _SMALL
-		}
-	case "orion":
-		if blockCount == 40 {
-			return _14B
-		}
-	case "internlm2":
-		switch blockCount {
-		case 32:
-			return _7B
-		case 48:
-			return _20B
-		}
-	case "minicpm":
-		if blockCount == 40 {
-			return _2B
-		}
-	case "gemma":
-		switch blockCount {
-		case 18:
-			return _2B
-		case 28:
-			return _7B
-		}
-	case "starcoder2":
-		switch blockCount {
-		case 30:
-			return _3B
-		case 32:
-			return _7B
-		case 40:
-			return _15B
-		}
-	case "mamba":
-		switch blockCount {
-		case 24:
-			if embeddingLength == 768 {
-				return _SMALL
-			}
-		case 48:
-			switch embeddingLength {
-			case 1024:
-				return _MEDIUM
-			case 1536:
-				return _LARGE
-			case 2048:
-				return _XL
-			}
-		case 64:
-			if embeddingLength == 2560 {
-				return _3B
-			}
-		}
-	case "xverse":
-		switch blockCount {
-		case 32:
-			return _7B
-		case 40:
-			return _13B
-		case 80:
-			return _65B
-		}
-	case "command-r":
-		if blockCount == 40 {
-			return _35B
-		}
-	case "dbrx":
-		if blockCount == 40 {
-			return _16x12B
-		}
-	case "olmo":
-		switch blockCount {
-		case 22:
-			return _1B
-		case 32:
-			return _7B
-		case 80:
-			return _70B
-		}
-	case "arctic":
-		if expertCount == 128 && blockCount == 35 {
-			return _10B_128x3_66B
+			l := pm[p].(*GGUFNamedTensorInfos)
+			l.GGUFLayerTensorInfos = append(l.GGUFLayerTensorInfos, gf.TensorInfos[i])
 		}
 	}
-
-	// Otherwise, calculate by experience.
-	//
-	// Let's say, the model is based on Transformer architecture,
-	// and use decoder-only.
-	//
-	// Vocabulary embedding parameter number(VeP), mainly includes the embedding matrix.
-	// The embedding matrix shape is [VocabularyLength, EmbeddingLength].
-	// So the VeP value is VocabularyLength * EmbeddingLength.
-	//
-	// Self-Attention parameter number(SaP), includes Wq, Wk, Wv, Wo, and their bias.
-	// The all weight matrix shapes are [EmbeddingLength, EmbeddingLength],
-	// and the bias shapes are [EmbeddingLength].
-	// So the SaP value is 4 * (EmbeddingLength * EmbeddingLength) + 4 * EmbeddingLength.
-	//
-	// Feed-Forward parameter number(FfP), includes W1, W2, and their bias.
-	// The W1 shape is [EmbeddingLength, 4*EmbeddingLength], its bias shape is [4*EmbeddingLength].
-	// The W2 shape is [4*EmbeddingLength, EmbeddingLength], its bias shape is [EmbeddingLength].
-	// So the FfP value is (EmbeddingLength * 4 * EmbeddingLength) + 4 * EmbeddingLength + (4 * EmbeddingLength * EmbeddingLength) + EmbeddingLength.
-	//
-	// There are two LayerNorm, one for Self-Attention, and another for Feed-Forward.
-	// Layer Normalization parameter number(LnP), includes scale and bias.
-	// The scale and bias shapes are [EmbeddingLength].
-	// So the LnP value is 2 * (2 * EmbeddingLength).
-	//
-	// So the total parameters of a decoder-only model can estimate as below.
-	// Parameters = BlockCount * (SaP + FfP + LnP) + VeP
-	//            = BlockCount * (12 * EmbeddingLength * EmbeddingLength + 13 * EmbeddingLength) + VocabularyLength * EmbeddingLength
-
-	ret := blockCount*(12*embeddingLength*embeddingLength+13*embeddingLength) + vocabularyLength*embeddingLength
-	// TODO MoE / SSM / RoPE.
-	return GGUFParametersScalar(ret)
+	return ret
 }
 
 func (s GGUFBytesScalar) String() string {
+	if s == 0 {
+		return "0 B"
+	}
 	return humanize.IBytes(uint64(s))
 }
 
 func (s GGUFParametersScalar) String() string {
+	if s == 0 {
+		return "0"
+	}
 	switch {
 	case s >= 1e15:
 		return humanize.CommafWithDigits(float64(s)/1e15, 1) + " Q"
@@ -966,7 +569,7 @@ func (s GGUFParametersScalar) String() string {
 
 func (s GGUFBitsPerWeightScalar) String() string {
 	if s == 0 {
-		return "Unknown"
+		return "0 bpw"
 	}
 	return strconv.FormatFloat(float64(s), 'f', 2, 64) + " bpw"
 }
@@ -1277,26 +880,6 @@ func ValuesNumeric[T constraints.Integer | constraints.Float](av GGUFMetadataKVA
 	return v
 }
 
-// HasAll returns true if the GGUFMetadataKVs has all the given keys,
-// and false otherwise.
-func (kvs GGUFMetadataKVs) HasAll(keys []string) bool {
-	ks := make(map[string]struct{}, len(keys))
-	for i := range keys {
-		ks[keys[i]] = struct{}{}
-	}
-	for i := range kvs {
-		k := kvs[i].Key
-		if _, ok := ks[k]; !ok {
-			continue
-		}
-		delete(ks, k)
-		if len(ks) == 0 {
-			break
-		}
-	}
-	return len(ks) == 0
-}
-
 // Get returns the GGUFMetadataKV with the given key,
 // and true if found, and false otherwise.
 func (kvs GGUFMetadataKVs) Get(key string) (value GGUFMetadataKV, found bool) {
@@ -1405,12 +988,41 @@ func (t GGMLType) RowSizeOf(dimensions []uint64) uint64 {
 	return ds
 }
 
+// Get returns the GGUFTensorInfo with the given name,
+// and true if found, and false otherwise.
+func (ti GGUFTensorInfo) Get(name string) (info GGUFTensorInfo, found bool) {
+	if ti.Name == name {
+		return ti, true
+	}
+	return GGUFTensorInfo{}, false
+}
+
+// Search returns a list of GGUFTensorInfo with the names that match the given regex.
+func (ti GGUFTensorInfo) Search(nameRegex *regexp.Regexp) (infos []GGUFTensorInfo) {
+	if nameRegex.MatchString(ti.Name) {
+		return []GGUFTensorInfo{ti}
+	}
+	return nil
+}
+
+// Index returns a map value to the GGUFTensorInfo with the given names,
+// and the number of names found.
+func (ti GGUFTensorInfo) Index(names []string) (infos map[string]GGUFTensorInfo, found int) {
+	if len(names) == 0 {
+		return nil, 0
+	}
+	if names[0] == ti.Name {
+		return map[string]GGUFTensorInfo{ti.Name: ti}, 1
+	}
+	return nil, 0
+}
+
 // Elements returns the number of elements of the GGUFTensorInfo,
 // which is inspired by
 // https://github.com/ggerganov/ggml/blob/a10a8b880c059b3b29356eb9a9f8df72f03cdb6a/src/ggml.c#L2597-L2601.
 func (ti GGUFTensorInfo) Elements() uint64 {
 	if ti.NDimensions == 0 {
-		panic(errors.New("no dimensions"))
+		return 0
 	}
 
 	ret := uint64(1)
@@ -1425,7 +1037,7 @@ func (ti GGUFTensorInfo) Elements() uint64 {
 // https://github.com/ggerganov/ggml/blob/a10a8b880c059b3b29356eb9a9f8df72f03cdb6a/src/ggml.c#L2609-L2626.
 func (ti GGUFTensorInfo) Bytes() uint64 {
 	if ti.NDimensions == 0 {
-		panic(errors.New("no dimensions"))
+		return 0
 	}
 
 	tt, ok := ti.Type.Trait()
@@ -1457,26 +1069,6 @@ func (ti GGUFTensorInfo) Bytes() uint64 {
 		ret += (ti.Dimensions[i] - 1) * nb[i]
 	}
 	return ret
-}
-
-// HasAll returns true if the GGUFTensorInfos has all the given names,
-// and false otherwise.
-func (tis GGUFTensorInfos) HasAll(names []string) bool {
-	ns := make(map[string]struct{}, len(names))
-	for i := range names {
-		ns[names[i]] = struct{}{}
-	}
-	for i := range tis {
-		n := tis[i].Name
-		if _, ok := ns[n]; !ok {
-			continue
-		}
-		delete(ns, n)
-		if len(ns) == 0 {
-			break
-		}
-	}
-	return len(ns) == 0
 }
 
 // Get returns the GGUFTensorInfo with the given name,
@@ -1518,6 +1110,136 @@ func (tis GGUFTensorInfos) Index(names []string) (infos map[string]GGUFTensorInf
 		}
 	}
 	return infos, found
+}
+
+// Elements returns the number of elements of the GGUFTensorInfos.
+func (tis GGUFTensorInfos) Elements() uint64 {
+	var ret uint64
+	for i := range tis {
+		ret += tis[i].Elements()
+	}
+	return ret
+}
+
+// Bytes returns the number of bytes of the GGUFTensorInfos.
+func (tis GGUFTensorInfos) Bytes() uint64 {
+	var ret uint64
+	for i := range tis {
+		ret += tis[i].Bytes()
+	}
+	return ret
+}
+
+// Get returns the GGUFTensorInfo with the given name,
+// and true if found, and false otherwise.
+func (ltis GGUFLayerTensorInfos) Get(name string) (info GGUFTensorInfo, found bool) {
+	for i := range ltis {
+		switch v := ltis[i].(type) {
+		case GGUFTensorInfo:
+			if v.Name == name {
+				return v, true
+			}
+		case *GGUFNamedTensorInfos:
+			info, found = v.GGUFLayerTensorInfos.Get(name)
+			if found {
+				return info, true
+			}
+		}
+	}
+	return GGUFTensorInfo{}, false
+}
+
+// Search returns a list of GGUFTensorInfo with the names that match the given regex.
+func (ltis GGUFLayerTensorInfos) Search(nameRegex *regexp.Regexp) (infos []GGUFTensorInfo) {
+	for i := range ltis {
+		switch v := ltis[i].(type) {
+		case GGUFTensorInfo:
+			if nameRegex.MatchString(v.Name) {
+				infos = append(infos, v)
+			}
+		case *GGUFNamedTensorInfos:
+			infos = append(infos, v.Search(nameRegex)...)
+		}
+	}
+	return infos
+}
+
+// Index returns a map value to the GGUFTensorInfos with the given names,
+// and the number of names found.
+func (ltis GGUFLayerTensorInfos) Index(names []string) (infos map[string]GGUFTensorInfo, found int) {
+	ns := make(map[string]struct{}, len(names))
+	for i := range names {
+		ns[names[i]] = struct{}{}
+	}
+	infos = make(map[string]GGUFTensorInfo)
+	for i := range ltis {
+		switch v := ltis[i].(type) {
+		case GGUFTensorInfo:
+			if _, ok := ns[v.Name]; ok {
+				infos[v.Name] = v
+				found++
+			}
+		case *GGUFNamedTensorInfos:
+			inf, _ := v.Index(names)
+			for k := range inf {
+				infos[k] = inf[k]
+				found++
+			}
+		}
+		if found == len(ns) {
+			break
+		}
+	}
+	return infos, found
+}
+
+// Elements returns the number of elements of the GGUFLayerTensorInfos.
+func (ltis GGUFLayerTensorInfos) Elements() uint64 {
+	var ret uint64
+	for i := range ltis {
+		ret += ltis[i].Elements()
+	}
+	return ret
+}
+
+// Bytes returns the number of bytes of the GGUFLayerTensorInfos.
+func (ltis GGUFLayerTensorInfos) Bytes() uint64 {
+	var ret uint64
+	for i := range ltis {
+		ret += ltis[i].Bytes()
+	}
+	return ret
+}
+
+// Cut splits the GGUFLayerTensorInfos into two parts,
+// and returns the GGUFLayerTensorInfos with the names that match the given names at first,
+// and the GGUFLayerTensorInfos without the names at second,
+// and true if the GGUFLayerTensorInfos with the names are found, and false otherwise.
+func (ltis GGUFLayerTensorInfos) Cut(names []string) (before, after GGUFLayerTensorInfos, found bool) {
+	ns := make(map[string]struct{}, len(names))
+	for i := range names {
+		ns[names[i]] = struct{}{}
+	}
+	before = make(GGUFLayerTensorInfos, 0, len(names))
+	after = make(GGUFLayerTensorInfos, 0, len(ltis))
+
+	for i := range ltis {
+		switch v := ltis[i].(type) {
+		case GGUFTensorInfo:
+			if _, ok := ns[v.Name]; ok {
+				before = append(before, v)
+				continue
+			}
+			after = append(after, v)
+		case *GGUFNamedTensorInfos:
+			if _, ok := ns[v.Name]; ok {
+				before = append(before, v)
+				continue
+			}
+			after = append(after, v)
+		}
+	}
+	return before, after, len(before) > 0
 }
 
 type _GGUFReader struct {
@@ -1652,7 +1374,7 @@ func (rd _GGUFReader) ReadArray() (v GGUFMetadataKVArrayValue, err error) {
 		return v, fmt.Errorf("read array length: %w", err)
 	}
 
-	if !rd.o.Approximate {
+	if !rd.o.SkipLargeMetadata {
 		v.Array = make([]any, v.Len)
 		for i := uint64(0); i < v.Len; i++ {
 			v.Array[i], err = rd.ReadValue(v.Type)
@@ -1795,65 +1517,42 @@ func (rd _GGUFTensorInfoReader) Read() (ti GGUFTensorInfo, err error) {
 		return ti, fmt.Errorf("seek tensor info start: %w", err)
 	}
 
-	if !rd.o.Approximate {
-		ti.Name, err = rd.ReadString()
-		if err != nil {
-			return ti, fmt.Errorf("read name: %w", err)
-		}
-
-		ti.NDimensions, err = rd.ReadUint32()
-		if err != nil {
-			return ti, fmt.Errorf("read n dimensions: %w", err)
-		}
-
-		ti.Dimensions = make([]uint64, ti.NDimensions)
-		for i := uint32(0); i < ti.NDimensions; i++ {
-			if rd.v <= GGUFVersionV1 {
-				ti.Dimensions[i], err = rd.ReadUint64FromUint32()
-			} else {
-				ti.Dimensions[i], err = rd.ReadUint64()
-			}
-			if err != nil {
-				return ti, fmt.Errorf("read dimension %d: %w", i, err)
-			}
-		}
-
-		{
-			v, err := rd.ReadUint32()
-			if err != nil {
-				return ti, fmt.Errorf("read type: %w", err)
-			}
-			ti.Type = GGMLType(v)
-			if ti.Type >= _GGMLTypeCount {
-				return ti, fmt.Errorf("invalid type: %v", ti.Type)
-			}
-		}
-
-		ti.Offset, err = rd.ReadUint64()
-		if err != nil {
-			return ti, fmt.Errorf("read offset: %w", err)
-		}
-
-		return ti, nil
-	}
-
-	err = rd.SkipReadingString()
+	ti.Name, err = rd.ReadString()
 	if err != nil {
-		return ti, fmt.Errorf("seek name: %w", err)
+		return ti, fmt.Errorf("read name: %w", err)
 	}
 
-	nd, err := rd.ReadUint32()
+	ti.NDimensions, err = rd.ReadUint32()
 	if err != nil {
-		return ti, fmt.Errorf("seek n dimensions: %w", err)
+		return ti, fmt.Errorf("read n dimensions: %w", err)
 	}
 
-	if rd.v <= GGUFVersionV1 {
-		_, err = rd.f.Seek(int64(nd)*4 + /* Dimension */ +4 /* Type */ + 8 /* Offset */, io.SeekCurrent)
-	} else {
-		_, err = rd.f.Seek(int64(nd)*8 /* Dimension */ +4 /* Type */ +8 /* Offset */, io.SeekCurrent)
+	ti.Dimensions = make([]uint64, ti.NDimensions)
+	for i := uint32(0); i < ti.NDimensions; i++ {
+		if rd.v <= GGUFVersionV1 {
+			ti.Dimensions[i], err = rd.ReadUint64FromUint32()
+		} else {
+			ti.Dimensions[i], err = rd.ReadUint64()
+		}
+		if err != nil {
+			return ti, fmt.Errorf("read dimension %d: %w", i, err)
+		}
 	}
+
+	{
+		v, err := rd.ReadUint32()
+		if err != nil {
+			return ti, fmt.Errorf("read type: %w", err)
+		}
+		ti.Type = GGMLType(v)
+		if ti.Type >= _GGMLTypeCount {
+			return ti, fmt.Errorf("invalid type: %v", ti.Type)
+		}
+	}
+
+	ti.Offset, err = rd.ReadUint64()
 	if err != nil {
-		return ti, fmt.Errorf("seek dimensions/type/offset: %w", err)
+		return ti, fmt.Errorf("read offset: %w", err)
 	}
 
 	return ti, nil

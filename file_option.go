@@ -4,8 +4,8 @@ import "net/url"
 
 type (
 	_GGUFReadOptions struct {
-		Debug       bool
-		Approximate bool
+		Debug             bool
+		SkipLargeMetadata bool
 
 		// Local.
 		MMap bool
@@ -26,16 +26,11 @@ func UseDebug() GGUFReadOption {
 	}
 }
 
-// UseApproximate uses approximate mode to read the file.
-//
-// With this, the file is read in a faster way,
-// for example,
-// skips reading tedious GGUFMetadataKV items,
-// skips reading GGUFTensorInfos,
-// guess model size/parameters/bpw, etc.
-func UseApproximate() GGUFReadOption {
+// SkipLargeMetadata skips reading large GGUFMetadataKV items,
+// which are not necessary for most cases.
+func SkipLargeMetadata() GGUFReadOption {
 	return func(o *_GGUFReadOptions) {
-		o.Approximate = true
+		o.SkipLargeMetadata = true
 	}
 }
 

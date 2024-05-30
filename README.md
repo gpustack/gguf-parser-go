@@ -55,13 +55,10 @@ if err != nil {
 
 ```
 
-#### Use approximate parsing
-
-> The approximate parsing is faster than the accurate one,
-> but the result may not be accurate.
+#### Skip large metadata
 
 ```go
-f, err := ParseGGUFFile("path/to/model.gguf", UseApproximate())
+f, err := ParseGGUFFile("path/to/model.gguf", SkipLargeMetadata())
 if err != nil {
     panic(err)
 }
@@ -122,6 +119,12 @@ spew.Dump(f.Estimate())
 ```go
 spew.Dump(f.Estimate(WithContextSize(4096) /* 4K */))
 
+```
+
+#### Estimate with specific offload layers
+
+```go
+spew.Dump(f.Estimate(WithOffloadLayers(10)))
 ```
 
 ## License
