@@ -264,7 +264,7 @@ func main() {
 				e.Total.KVCache.Sum().String(),
 				e.Total.Compute.String(),
 				e.Total.IO.String(),
-				e.Offload.Sum().String(),
+				e.Total.Sum().String(),
 			})
 		if e.Offload != nil {
 			tprintf(
