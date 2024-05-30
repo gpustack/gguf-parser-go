@@ -256,28 +256,30 @@ func main() {
 	}
 
 	if !skipEstimate {
-		tprintf(
-			"ESTIMATE TOTAL",
-			[]string{"Context Length", "KV Cache", "Compute Memory", "IO Memory", "Sum"},
-			[]string{
+		bs := [][]string{
+			{
+				"TOTAL",
 				sprintf(ctxSize),
 				e.Total.KVCache.Sum().String(),
 				e.Total.Compute.String(),
 				e.Total.IO.String(),
 				e.Total.Sum().String(),
-			})
-		if e.Offload != nil {
-			tprintf(
-				"ESTIMATE OFFLOAD",
-				[]string{"Context Length", "KV Cache", "Compute Memory", "IO Memory", "Sum"},
-				[]string{
-					sprintf(ctxSize),
-					e.Offload.KVCache.Sum().String(),
-					e.Offload.Compute.String(),
-					e.Offload.IO.String(),
-					e.Offload.Sum().String(),
-				})
+			},
 		}
+		if e.Offload != nil {
+			bs = append(bs, []string{
+				"OFFLOAD",
+				sprintf(ctxSize),
+				e.Offload.KVCache.Sum().String(),
+				e.Offload.Compute.String(),
+				e.Offload.IO.String(),
+				e.Offload.Sum().String(),
+			})
+		}
+		tprintf(
+			"ESTIMATE",
+			[]string{"/", "Context Length", "KV Cache", "Compute Memory", "IO Memory", "Sum"},
+			bs...)
 	}
 }
 
@@ -310,7 +312,7 @@ func sprintf(a any) string {
 	}
 }
 
-func tprintf(title string, header, body []string) {
+func tprintf(title string, header []string, body ...[]string) {
 	title = strings.ToUpper(title)
 	for i := range header {
 		header[i] = strings.ToUpper(header[i])
@@ -323,7 +325,9 @@ func tprintf(title string, header, body []string) {
 	tb.SetRowLine(true)
 	tb.SetAutoMergeCells(true)
 	tb.Append(append([]string{title}, header...))
-	tb.Append(append([]string{title}, body...))
+	for i := range body {
+		tb.Append(append([]string{title}, body[i]...))
+	}
 	tb.Render()
 	fmt.Println()
 }
