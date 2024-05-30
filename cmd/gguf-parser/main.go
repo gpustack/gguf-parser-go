@@ -35,6 +35,7 @@ func main() {
 		kvType        = "f16"
 		offloadLayers uint64
 		// output options
+		version          bool
 		skipModel        bool
 		skipArchitecture bool
 		skipTokenizer    bool
@@ -64,6 +65,7 @@ func main() {
 	fs.IntVar(&ctxSize, "ctx-size", ctxSize, "Context size to estimate memory usage")
 	fs.StringVar(&kvType, "kv-type", kvType, "Key-Value cache type, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1]")
 	fs.Uint64Var(&offloadLayers, "offload-layers", offloadLayers, "Specify how many layers to offload, default is fully offloading")
+	fs.BoolVar(&version, "version", version, "Show version")
 	fs.BoolVar(&skipModel, "skip-model", skipModel, "Skip model metadata")
 	fs.BoolVar(&skipArchitecture, "skip-architecture", skipArchitecture, "Skip architecture metadata")
 	fs.BoolVar(&skipTokenizer, "skip-tokenizer", skipTokenizer, "Skip tokenizer metadata")
@@ -73,6 +75,11 @@ func main() {
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
+	}
+
+	if version {
+		fmt.Printf("gguf-parser %s\n", Version)
+		return
 	}
 
 	// Prepare options.
