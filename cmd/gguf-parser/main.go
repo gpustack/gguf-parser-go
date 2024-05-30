@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"context"
 	"strconv"
+	"strings"
 	stdjson "encoding/json"
 
 	"github.com/olekukonko/tablewriter"
@@ -100,11 +101,11 @@ func main() {
 		ropts = append(ropts, SkipTLSVerification())
 	}
 
-	eopts := []GGUFEstimateOption{
-		WithContextSize(512),
+	if ctxSize <= 0 {
+		ctxSize = 512
 	}
-	if ctxSize > 0 {
-		eopts = append(eopts, WithContextSize(int32(ctxSize)))
+	eopts := []GGUFEstimateOption{
+		WithContextSize(int32(ctxSize)),
 	}
 	if kvType != "" {
 		kv := GGMLTypeF16
@@ -204,9 +205,9 @@ func main() {
 
 	if !skipModel {
 		tprintf(
-			[]string{"", "Name", "Architecture", "Quantization Version", "File Type", "Little Endian", "Size", "Parameters", "BPW"},
+			"MODEL",
+			[]string{"Name", "Architecture", "Quantization Version", "File Type", "Little Endian", "Size", "Parameters", "BPW"},
 			[]string{
-				"MODEL",
 				m.Name,
 				m.Architecture,
 				sprintf(m.QuantizationVersion),
@@ -220,14 +221,12 @@ func main() {
 
 	if !skipArchitecture {
 		tprintf(
-			[]string{"", "Maximum Context", "Embedding", "Layers", "Feed Forward", "Expert Count", "Vocabulary"},
+			"ARCHITECTURE",
+			[]string{"Max Context Length", "Embedding Length", "Layers", "Feed Forward Length", "Expert Count", "Vocabulary Length"},
 			[]string{
-				"ARCHITECTURE",
 				sprintf(a.MaximumContextLength),
 				sprintf(a.EmbeddingLength),
-				fmt.Sprintf("%d + 1 = %d",
-					a.BlockCount,
-					a.BlockCount+1),
+				sprintf(a.BlockCount),
 				sprintf(a.FeedForwardLength),
 				sprintf(a.ExpertCount),
 				sprintf(a.VocabularyLength),
@@ -235,36 +234,44 @@ func main() {
 	}
 
 	if !skipTokenizer {
+		sprintTokenID := func(a int64) string {
+			if a < 0 {
+				return "N/A"
+			}
+			return sprintf(a)
+		}
 		tprintf(
-			[]string{"", "Model", "Tokens", "Added Tokens", "BOS", "EOS", "Unknown", "Separator", "Padding"},
+			"TOKENIZER",
+			[]string{"Model", "Tokens Length", "Added Tokens Length", "BOS Token", "EOS Token", "Unknown Token", "Separator Token", "Padding Token"},
 			[]string{
-				"TOKENIZER",
 				t.Model,
 				sprintf(t.TokensLength),
 				sprintf(t.AddedTokensLength),
-				sprintf(t.BOSTokenID),
-				sprintf(t.EOSTokenID),
-				sprintf(t.UnknownTokenID),
-				sprintf(t.SeparatorTokenID),
-				sprintf(t.PaddingTokenID),
+				sprintTokenID(t.BOSTokenID),
+				sprintTokenID(t.EOSTokenID),
+				sprintTokenID(t.UnknownTokenID),
+				sprintTokenID(t.SeparatorTokenID),
+				sprintTokenID(t.PaddingTokenID),
 			})
 	}
 
 	if !skipEstimate {
 		tprintf(
-			[]string{"", "KV Cache", "Compute", "IO", "Sum"},
+			"ESTIMATE TOTAL",
+			[]string{"Context Length", "KV Cache", "Compute Memory", "IO Memory", "Sum"},
 			[]string{
-				"ESTIMATE TOTAL",
+				sprintf(ctxSize),
 				e.Total.KVCache.Sum().String(),
 				e.Total.Compute.String(),
 				e.Total.IO.String(),
-				e.Total.Sum().String(),
+				e.Offload.Sum().String(),
 			})
 		if e.Offload != nil {
 			tprintf(
-				[]string{"", "KV Cache", "Compute", "IO", "Sum"},
+				"ESTIMATE OFFLOAD",
+				[]string{"Context Length", "KV Cache", "Compute Memory", "IO Memory", "Sum"},
 				[]string{
-					"ESTIMATE OFFLOAD",
+					sprintf(ctxSize),
 					e.Offload.KVCache.Sum().String(),
 					e.Offload.Compute.String(),
 					e.Offload.IO.String(),
@@ -303,17 +310,20 @@ func sprintf(a any) string {
 	}
 }
 
-func tprintf(headers, rows []string) {
+func tprintf(title string, header, body []string) {
+	title = strings.ToUpper(title)
+	for i := range header {
+		header[i] = strings.ToUpper(header[i])
+	}
+
 	tb := tablewriter.NewWriter(os.Stdout)
-	tb.SetHeaderAlignment(tablewriter.ALIGN_CENTER)
-	tb.SetAlignment(tablewriter.ALIGN_CENTER)
-	tb.SetBorder(true)
 	tb.SetTablePadding("\t")
+	tb.SetAlignment(tablewriter.ALIGN_CENTER)
 	tb.SetHeaderLine(true)
-	tb.SetHeader(headers)
-	tb.SetAutoMergeCells(true)
 	tb.SetRowLine(true)
-	tb.Append(rows)
+	tb.SetAutoMergeCells(true)
+	tb.Append(append([]string{title}, header...))
+	tb.Append(append([]string{title}, body...))
 	tb.Render()
 	fmt.Println()
 }
