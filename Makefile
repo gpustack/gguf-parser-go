@@ -83,6 +83,12 @@ gguf-parser:
 				-tags="netgo" \
 				-o $(SRCDIR)/.dist/gguf-parser-$$os-$$arch$$suffix; \
 		done; \
+		if [[ $$os == "darwin" ]]; then \
+		  [[ -d "$(SRCDIR)/.sbin" ]] || mkdir -p "$(SRCDIR)/.sbin"; \
+		  [[ -f "$(SRCDIR)/.sbin/lipo" ]] || \
+			GOBIN="$(SRCDIR)/.sbin" go install github.com/konoui/lipo@v0.9.1; \
+		  	"$(SRCDIR)/.sbin/lipo" -create -output $(SRCDIR)/.dist/gguf-parser-darwin-universal $(SRCDIR)/.dist/gguf-parser-darwin-amd64 $(SRCDIR)/.dist/gguf-parser-darwin-arm64; \
+		fi;\
 	done
 
 ci: deps generate test lint
