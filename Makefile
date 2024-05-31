@@ -70,13 +70,13 @@ gguf-parser:
 	[[ -d "$(SRCDIR)/.dist" ]] || mkdir -p "$(SRCDIR)/.dist"
 
 	cd "$(SRCDIR)/cmd/gguf-parser" && for os in darwin linux windows; do \
+  		if [[ $$os == "windows" ]]; then \
+		  suffix=".exe"; \
+		else \
+		  suffix=""; \
+		fi; \
 		for arch in amd64 arm64; do \
 		  	echo "Building gguf-parser for $$os-$$arch $(VERSION)"; \
-		  	if [[ $$os == "windows" ]]; then \
-		  	  suffix=".exe"; \
-		  	else \
-		  	  suffix=""; \
-		  	fi; \
 			GOOS="$$os" GOARCH="$$arch" CGO_ENABLED=1 go build \
 				-trimpath \
 				-ldflags="-w -s -X main.Version=$(VERSION)" \
