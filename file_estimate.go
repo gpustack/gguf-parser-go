@@ -1,22 +1,20 @@
 package gguf_parser
 
-// GGUFEstimate represents the estimated result of the GGUF file.
-type GGUFEstimate struct {
-	// Offload is the offloaded layers usage.
-	Offload *GGUFMemoryUsage `json:"offload,omitempty"`
-	// Total is the total memory usage.
-	Total GGUFMemoryUsage `json:"total"`
-}
+import (
+	"github.com/thxcode/gguf-parser-go/util/ptr"
+)
 
 type (
-	// GGUFMemoryUsage represents the memory usage of the GGUF file.
-	GGUFMemoryUsage struct {
+	// GGUFEstimate represents the estimated result of the GGUF file.
+	GGUFEstimate struct {
+		// ModelWeight is the memory usage of model weight.
+		ModelWeight GGUFBytesScalar `json:"modelWeight"`
 		// KVCache is the usage of key-value cache.
 		KVCache GGUFKVCacheUsage `json:"kvCache"`
-		// Compute is the usage of transformer layers.
-		Compute GGUFBytesScalar `json:"compute"`
-		// IO is the usage of input/output layers.
-		IO GGUFBytesScalar `json:"io"`
+		// ComputationGraphOverhead is the overhead of computation graph.
+		ComputationGraphOverhead GGUFBytesScalar `json:"computationGraphOverhead"`
+		// Others is the trivial usage.
+		Others GGUFBytesScalar `json:"others"`
 	}
 
 	// GGUFKVCacheUsage represents the usage of kv-cache.
@@ -35,89 +33,90 @@ func (gf *GGUFFile) Estimate(opts ...GGUFEstimateOption) (ge GGUFEstimate) {
 		opt(&o)
 	}
 
-	ge.Offload, ge.Total = gf.estimateMemoryUsage(gf.Architecture(), o)
-	return ge
-}
+	a := gf.Architecture()
 
-func (m GGUFMemoryUsage) Sum() GGUFBytesScalar {
-	return m.Compute + m.KVCache.Sum() + m.IO
-}
-
-func (c GGUFKVCacheUsage) Sum() GGUFBytesScalar {
-	return c.Key + c.Value
-}
-
-func (gf *GGUFFile) estimateMemoryUsage(a GGUFArchitectureMetadata, o _GGUFEstimateOptions) (offload *GGUFMemoryUsage, total GGUFMemoryUsage) {
-	if o.OffloadLayers != nil {
-		offload = &GGUFMemoryUsage{}
+	contextSize := a.MaximumContextLength
+	if o.ContextSize != nil {
+		contextSize = uint64(*o.ContextSize)
 	}
 
-	// KV cache.
-	// https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L2479-L2501
+	// Model weight.
+	ge.ModelWeight = gf.ModelSize
+
+	// KV cache,
+	// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L2479-L2501.
 	{
 		kt, vt := GGMLTypeF16, GGMLTypeF16
-
+		kvSize := contextSize
 		if o.CacheKeyType != nil {
 			kt = *o.CacheKeyType
 		}
 		if o.CacheValueType != nil {
 			vt = *o.CacheValueType
 		}
+		if a.Architecture == "mamba" {
+			// See https://github.com/ggerganov/llama.cpp/blob/7672adeec7a79ea271058c63106c142ba84f951a/llama.cpp#L16122-L16129.
+			kt, vt = GGMLTypeF32, GGMLTypeF32
+			kvSize = uint64(ptr.Deref(o.ParallelSize, 1))
+		}
 
 		var (
 			embedKeyGQA = uint64(a.AttentionKeyLength) * a.AttentionHeadCountKV
 			embedValGQA = uint64(a.AttentionValueLength) * a.AttentionHeadCountKV
-			kvSize      = a.MaximumContextLength
 		)
-		{
-			// Correct.
-			if a.SSMConvolutionKernel > 0 {
-				embedKeyGQA += uint64(a.SSMConvolutionKernel - 1*a.SSMInnerSize)
-				embedValGQA += uint64(a.SSMStateSize * a.SSMInnerSize)
-			}
-			if o.ContextSize != nil {
-				kvSize = uint64(*o.ContextSize)
-			}
+		if a.SSMConvolutionKernel > 0 {
+			embedKeyGQA += uint64(a.SSMConvolutionKernel - 1*a.SSMInnerSize)
+			embedValGQA += uint64(a.SSMStateSize * a.SSMInnerSize)
 		}
 
 		krs := kt.RowSizeOf([]uint64{embedKeyGQA * kvSize})
 		vrs := vt.RowSizeOf([]uint64{embedValGQA * kvSize})
 
-		if offload != nil {
-			v := *o.OffloadLayers
-			if v > a.BlockCount {
-				v = a.BlockCount
-			}
-			offload.KVCache.Key = GGUFBytesScalar(krs * v)
-			offload.KVCache.Value = GGUFBytesScalar(vrs * v)
-		}
-
-		total.KVCache.Key = GGUFBytesScalar(krs * a.BlockCount)
-		total.KVCache.Value = GGUFBytesScalar(vrs * a.BlockCount)
+		ge.KVCache.Key = GGUFBytesScalar(krs * a.BlockCount)
+		ge.KVCache.Value = GGUFBytesScalar(vrs * a.BlockCount)
 	}
 
-	ls := gf.Layers()
-	bls, als, _ := ls.Cut([]string{
-		"token_embd.weight",
-		"output.weight",
-		"output_norm.weight",
-	})
+	// Others.
+	{
+		// Overhead
+		ge.Others += GGUFBytesScalar(15 * 1024 * 1024) // NB(thxCode): Magic here.
 
-	// IO.
-	total.IO = GGUFBytesScalar(bls.Bytes())
+		// GGML context,
+		// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L5015-L5036.
+		ggmlCtx := 2 /* buffer count */ * GGMLTensorOverhead() * (uint64(len(gf.TensorInfos)) + 1 + a.BlockCount*3)
+		ge.Others += GGUFBytesScalar(ggmlCtx)
 
-	// Compute.
-	if offload != nil {
-		v := *o.OffloadLayers
-		if v >= a.BlockCount {
-			offload.Compute = GGUFBytesScalar(als.Bytes())
-		} else {
-			for i := uint64(len(als) - 1); i >= uint64(len(als))-v; i-- {
-				offload.Compute += GGUFBytesScalar(als[i].Bytes())
-			}
-		}
+		// Output buffer,
+		// see https://github.com/ggerganov/llama.cpp/blob/7672adeec7a79ea271058c63106c142ba84f951a/llama.cpp#L11940-L12003.
+		outBuffer := 4 /* float32 size */ * (a.VocabularyLength + a.EmbeddingLength) * uint64(ptr.Deref(o.ParallelSize, 1))
+		ge.Others += GGUFBytesScalar(outBuffer)
 	}
-	total.Compute = GGUFBytesScalar(als.Bytes())
 
-	return offload, total
+	// Computation graph.
+	{
+		graphOverhead := GGMLTensorOverhead()*GGMLComputationGraphNodesMaximum +
+			GGMLComputationGraphOverhead(GGMLComputationGraphNodesMaximum, false)
+		ge.ComputationGraphOverhead += GGUFBytesScalar(graphOverhead)
+
+		var (
+			nBatch = min(contextSize, uint64(ptr.Deref(o.BatchSize, 512)))
+
+			inpTokens = GGMLTypeI32.RowSizeOf([]uint64{nBatch})                    // I32 [n_batch]
+			inpEmbd   = GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingLength, nBatch}) // F32 [n_embd, n_batch]
+			inpPos    = GGMLTypeI32.RowSizeOf([]uint64{contextSize})               // I32 [n_tokens]
+			inpOutIds = GGMLTypeI32.RowSizeOf([]uint64{contextSize})               // I32 [n_output],
+			inpKQMask = GGMLTypeF32.RowSizeOf([]uint64{contextSize, nBatch})       // F32 [n_kv, n_batch]
+		)
+		ge.ComputationGraphOverhead += GGUFBytesScalar(inpTokens + inpEmbd + inpPos + inpKQMask + inpOutIds)
+	}
+
+	return ge
+}
+
+func (e GGUFEstimate) Sum() GGUFBytesScalar {
+	return e.KVCache.Sum() + e.ComputationGraphOverhead + e.Others
+}
+
+func (c GGUFKVCacheUsage) Sum() GGUFBytesScalar {
+	return c.Key + c.Value
 }

@@ -7,9 +7,10 @@ import (
 type (
 	_GGUFEstimateOptions struct {
 		ContextSize    *int32
+		ParallelSize   *int32
+		BatchSize      *int32
 		CacheKeyType   *GGMLType
 		CacheValueType *GGMLType
-		OffloadLayers  *uint64
 	}
 	GGUFEstimateOption func(*_GGUFEstimateOptions)
 )
@@ -21,6 +22,26 @@ func WithContextSize(size int32) GGUFEstimateOption {
 			return
 		}
 		o.ContextSize = &size
+	}
+}
+
+// WithParallelSize sets the (decoding sequences) parallel size for the estimate.
+func WithParallelSize(size int32) GGUFEstimateOption {
+	return func(o *_GGUFEstimateOptions) {
+		if size <= 0 {
+			return
+		}
+		o.ParallelSize = &size
+	}
+}
+
+// WithBatchSize sets the physical batch size for the estimate.
+func WithBatchSize(size int32) GGUFEstimateOption {
+	return func(o *_GGUFEstimateOptions) {
+		if size <= 0 {
+			return
+		}
+		o.BatchSize = &size
 	}
 }
 
@@ -49,15 +70,5 @@ func WithCacheValueType(t GGMLType) GGUFEstimateOption {
 		if slices.Contains(_GGUFEstimateCacheTypeAllowList, t) {
 			o.CacheValueType = &t
 		}
-	}
-}
-
-// WithOffloadLayers sets the number of layers to offload.
-func WithOffloadLayers(layers uint64) GGUFEstimateOption {
-	return func(o *_GGUFEstimateOptions) {
-		if layers <= 0 {
-			return
-		}
-		o.OffloadLayers = &layers
 	}
 }

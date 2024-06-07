@@ -2,6 +2,10 @@ package gguf_parser
 
 // GGUFArchitectureMetadata represents the architecture metadata of a GGUF file.
 type GGUFArchitectureMetadata struct {
+	// Architecture describes what architecture this model implements.
+	//
+	// All lowercase ASCII, with only [a-z0-9]+ characters allowed.
+	Architecture string `json:"architecture"`
 	// MaximumContextLength(n_ctx_train) is the maximum context length of the model.
 	//
 	// For most architectures, this is the hard limit on the length of the input.
@@ -113,6 +117,8 @@ func (gf *GGUFFile) Architecture() (ga GGUFArchitectureMetadata) {
 		vocabularyLengthKey    = arch + ".vocab_size"
 		tokenizerGGMLTokensKey = "tokenizer.ggml.tokens"
 	)
+
+	ga.Architecture = arch
 
 	m, _ := gf.Header.MetadataKV.Index([]string{
 		contextLengthKey,

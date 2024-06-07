@@ -16,7 +16,7 @@ func TestGGUFFile_Model(t *testing.T) {
 	f, err := ParseGGUFFileFromHuggingFace(
 		ctx,
 		"NousResearch/Hermes-2-Pro-Mistral-7B-GGUF",
-		"Hermes-2-Pro-Mistral-7B.Q4_K_M.gguf",
+		"Hermes-2-Pro-Mistral-7B.Q5_K_M.gguf",
 		SkipLargeMetadata())
 	if err != nil {
 		t.Fatal(err)

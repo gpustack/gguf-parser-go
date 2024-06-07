@@ -121,12 +121,6 @@ spew.Dump(f.Estimate(WithContextSize(4096) /* 4K */))
 
 ```
 
-#### Estimate with specific offload layers
-
-```go
-spew.Dump(f.Estimate(WithOffloadLayers(10)))
-```
-
 ## License
 
 MIT

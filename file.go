@@ -165,59 +165,6 @@ type (
 	GGUFMetadataKVs []GGUFMetadataKV
 )
 
-// Types for GGMLType.
-type (
-	// GGMLType is a type of GGML tensor,
-	// see https://github.com/ggerganov/ggml/blob/master/docs/gguf.md#file-structure.
-	GGMLType uint32
-
-	// GGMLTypeTrait holds the trait of a GGMLType,
-	// see https://github.com/ggerganov/ggml/blob/0cbb7c0e053f5419cfbebb46fbf4d4ed60182cf5/src/ggml.c#L564-L918.
-	GGMLTypeTrait struct {
-		BlockSize uint64 // Original is int, in order to reduce conversion, here we use uint64.
-		TypeSize  uint64 // Original is uint32, in order to reduce conversion, here we use uint64.
-		Quantized bool
-	}
-)
-
-// GGMLType constants.
-//
-// GGMLTypeQ4_2, GGMLTypeQ4_3 are deprecated.
-const (
-	GGMLTypeF32 GGMLType = iota
-	GGMLTypeF16
-	GGMLTypeQ4_0
-	GGMLTypeQ4_1
-	GGMLTypeQ4_2
-	GGMLTypeQ4_3
-	GGMLTypeQ5_0
-	GGMLTypeQ5_1
-	GGMLTypeQ8_0
-	GGMLTypeQ8_1
-	GGMLTypeQ2_K
-	GGMLTypeQ3_K
-	GGMLTypeQ4_K
-	GGMLTypeQ5_K
-	GGMLTypeQ6_K
-	GGMLTypeQ8_K
-	GGMLTypeIQ2_XXS
-	GGMLTypeIQ2_XS
-	GGMLTypeIQ3_XXS
-	GGMLTypeIQ1_S
-	GGMLTypeIQ4_NL
-	GGMLTypeIQ3_S
-	GGMLTypeIQ2_S
-	GGMLTypeIQ4_XS
-	GGMLTypeI8
-	GGMLTypeI16
-	GGMLTypeI32
-	GGMLTypeI64
-	GGMLTypeF64
-	GGMLTypeIQ1_M
-	GGMLTypeBF16
-	_GGMLTypeCount // Unknown
-)
-
 // Types for GGUFTensorInfo.
 type (
 	// GGUFTensorInfo represents a tensor info in a GGUF file.
@@ -458,7 +405,8 @@ func parseGGUFFile(s int64, f io.ReadSeeker, o _GGUFReadOptions) (_ *GGUFFile, e
 
 // Types for GGUF hierarchical tensors.
 type (
-	// IGGUFTensorInfos is an interface for GGUFTensorInfos.
+	// IGGUFTensorInfos is an interface for GGUF tensor infos,
+	// which includes basic operations.
 	IGGUFTensorInfos interface {
 		// Get returns the GGUFTensorInfo with the given name,
 		// and true if found, and false otherwise.
@@ -468,10 +416,12 @@ type (
 		// Index returns a map value to the GGUFTensorInfo with the given names,
 		// and the number of names found.
 		Index(names []string) (infos map[string]GGUFTensorInfo, found int)
-		// Elements returns the number of elements of the GGUFTensorInfo.
+		// Elements returns the number of elements(parameters).
 		Elements() uint64
-		// Bytes returns the number of bytes of the GGUFTensorInfo.
+		// Bytes returns the number of bytes.
 		Bytes() uint64
+		// Count returns the number of tensors.
+		Count() uint64
 	}
 
 	// GGUFLayerTensorInfos represents hierarchical tensor infos of a GGUF file,
@@ -496,7 +446,16 @@ type (
 )
 
 // Layers converts the GGUFTensorInfos to GGUFLayerTensorInfos.
-func (gf *GGUFFile) Layers() GGUFLayerTensorInfos {
+func (gf *GGUFFile) Layers(ignores ...string) GGUFLayerTensorInfos {
+	ls := gf.layers()
+	if len(ignores) != 0 {
+		_, ls, _ = ls.Cut(ignores)
+		return ls
+	}
+	return ls
+}
+
+func (gf *GGUFFile) layers() GGUFLayerTensorInfos {
 	var ret GGUFLayerTensorInfos
 
 	pm := make(map[string]any)
@@ -921,73 +880,6 @@ func (kvs GGUFMetadataKVs) Index(keys []string) (values map[string]GGUFMetadataK
 	return values, found
 }
 
-// _GGMLTypeTraits is a table of GGMLTypeTrait for GGMLType.
-var _GGMLTypeTraits = map[GGMLType]GGMLTypeTrait{
-	GGMLTypeF32:     {BlockSize: 1, TypeSize: 4},
-	GGMLTypeF16:     {BlockSize: 1, TypeSize: 2},
-	GGMLTypeQ4_0:    {BlockSize: 32, TypeSize: 18, Quantized: true},
-	GGMLTypeQ4_1:    {BlockSize: 32, TypeSize: 20, Quantized: true},
-	GGMLTypeQ4_2:    {BlockSize: 0, TypeSize: 0}, // Deprecated
-	GGMLTypeQ4_3:    {BlockSize: 0, TypeSize: 0}, // Deprecated
-	GGMLTypeQ5_0:    {BlockSize: 32, TypeSize: 22, Quantized: true},
-	GGMLTypeQ5_1:    {BlockSize: 32, TypeSize: 24, Quantized: true},
-	GGMLTypeQ8_0:    {BlockSize: 32, TypeSize: 34, Quantized: true},
-	GGMLTypeQ8_1:    {BlockSize: 32, TypeSize: 36, Quantized: true},
-	GGMLTypeQ2_K:    {BlockSize: 256, TypeSize: 84, Quantized: true},
-	GGMLTypeQ3_K:    {BlockSize: 256, TypeSize: 110, Quantized: true},
-	GGMLTypeQ4_K:    {BlockSize: 256, TypeSize: 144, Quantized: true},
-	GGMLTypeQ5_K:    {BlockSize: 256, TypeSize: 176, Quantized: true},
-	GGMLTypeQ6_K:    {BlockSize: 256, TypeSize: 210, Quantized: true},
-	GGMLTypeQ8_K:    {BlockSize: 256, TypeSize: 292, Quantized: true},
-	GGMLTypeIQ2_XXS: {BlockSize: 256, TypeSize: 66, Quantized: true},
-	GGMLTypeIQ2_XS:  {BlockSize: 256, TypeSize: 74, Quantized: true},
-	GGMLTypeIQ3_XXS: {BlockSize: 256, TypeSize: 98, Quantized: true},
-	GGMLTypeIQ1_S:   {BlockSize: 256, TypeSize: 50, Quantized: true},
-	GGMLTypeIQ4_NL:  {BlockSize: 32, TypeSize: 18, Quantized: true},
-	GGMLTypeIQ3_S:   {BlockSize: 256, TypeSize: 110, Quantized: true},
-	GGMLTypeIQ2_S:   {BlockSize: 256, TypeSize: 82, Quantized: true},
-	GGMLTypeIQ4_XS:  {BlockSize: 256, TypeSize: 136, Quantized: true},
-	GGMLTypeI8:      {BlockSize: 1, TypeSize: 1},
-	GGMLTypeI16:     {BlockSize: 1, TypeSize: 2},
-	GGMLTypeI32:     {BlockSize: 1, TypeSize: 4},
-	GGMLTypeI64:     {BlockSize: 1, TypeSize: 8},
-	GGMLTypeF64:     {BlockSize: 1, TypeSize: 8},
-	GGMLTypeIQ1_M:   {BlockSize: 256, TypeSize: 56, Quantized: true},
-	GGMLTypeBF16:    {BlockSize: 1, TypeSize: 2},
-}
-
-// Trait returns the GGMLTypeTrait of the GGMLType.
-func (t GGMLType) Trait() (GGMLTypeTrait, bool) {
-	tt, ok := _GGMLTypeTraits[t]
-	return tt, ok
-}
-
-// RowSizeOf returns the size of the given dimensions according to the GGMLType's GGMLTypeTrait,
-// which is inspired by
-// https://github.com/ggerganov/ggml/blob/0cbb7c0e053f5419cfbebb46fbf4d4ed60182cf5/src/ggml.c#L3142-L3145.
-//
-// The index of the given dimensions means the number of dimension,
-// i.e. 0 is the first dimension, 1 is the second dimension, and so on.
-//
-// The value of the item is the number of elements in the corresponding dimension.
-func (t GGMLType) RowSizeOf(dimensions []uint64) uint64 {
-	if len(dimensions) == 0 {
-		panic(errors.New("no dimensions"))
-	}
-
-	tt, ok := t.Trait()
-	if !ok {
-		panic(fmt.Errorf("invalid type: %v", t))
-	}
-
-	// https://github.com/ggerganov/ggml/blob/a10a8b880c059b3b29356eb9a9f8df72f03cdb6a/src/ggml.c#L2640-L2643
-	ds := tt.TypeSize * dimensions[0] / tt.BlockSize // Row size
-	for i := 1; i < len(dimensions); i++ {
-		ds *= dimensions[i]
-	}
-	return ds
-}
-
 // Get returns the GGUFTensorInfo with the given name,
 // and true if found, and false otherwise.
 func (ti GGUFTensorInfo) Get(name string) (info GGUFTensorInfo, found bool) {
@@ -1071,6 +963,12 @@ func (ti GGUFTensorInfo) Bytes() uint64 {
 	return ret
 }
 
+// Count returns the number of GGUF tensors of the GGUFTensorInfo,
+// which is always 1.
+func (ti GGUFTensorInfo) Count() uint64 {
+	return 1
+}
+
 // Get returns the GGUFTensorInfo with the given name,
 // and true if found, and false otherwise.
 func (tis GGUFTensorInfos) Get(name string) (info GGUFTensorInfo, found bool) {
@@ -1130,7 +1028,12 @@ func (tis GGUFTensorInfos) Bytes() uint64 {
 	return ret
 }
 
-// Get returns the GGUFTensorInfo with the given name,
+// Count returns the number of GGUF tensors of the GGUFTensorInfos.
+func (tis GGUFTensorInfos) Count() uint64 {
+	return uint64(len(tis))
+}
+
+// Get returns the IGGUFTensorInfos with the given name,
 // and true if found, and false otherwise.
 func (ltis GGUFLayerTensorInfos) Get(name string) (info GGUFTensorInfo, found bool) {
 	for i := range ltis {
@@ -1207,6 +1110,15 @@ func (ltis GGUFLayerTensorInfos) Bytes() uint64 {
 	var ret uint64
 	for i := range ltis {
 		ret += ltis[i].Bytes()
+	}
+	return ret
+}
+
+// Count returns the number of GGUF tensors of the GGUFLayerTensorInfos.
+func (ltis GGUFLayerTensorInfos) Count() uint64 {
+	var ret uint64
+	for i := range ltis {
+		ret += ltis[i].Count()
 	}
 	return ret
 }

@@ -32,9 +32,8 @@ func main() {
 		skipProxy bool
 		skipTLS   bool
 		// estimate options
-		ctxSize       = 512
-		kvType        = "f16"
-		offloadLayers uint64
+		ctxSize = 512
+		kvType  = "f16"
 		// output options
 		version          bool
 		skipModel        bool
@@ -65,7 +64,6 @@ func main() {
 	fs.BoolVar(&skipTLS, "skip-tls", skipTLS, "Skip TLS verification when reading from a remote URL")
 	fs.IntVar(&ctxSize, "ctx-size", ctxSize, "Context size to estimate memory usage")
 	fs.StringVar(&kvType, "kv-type", kvType, "Key-Value cache type, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1]")
-	fs.Uint64Var(&offloadLayers, "offload-layers", offloadLayers, "Specify how many layers to offload, default is fully offloading")
 	fs.BoolVar(&version, "version", version, "Show version")
 	fs.BoolVar(&skipModel, "skip-model", skipModel, "Skip model metadata")
 	fs.BoolVar(&skipArchitecture, "skip-architecture", skipArchitecture, "Skip architecture metadata")
@@ -128,9 +126,6 @@ func main() {
 			kv = GGMLTypeQ5_1
 		}
 		eopts = append(eopts, WithCacheKeyType(kv), WithCacheValueType(kv))
-	}
-	if offloadLayers > 0 {
-		eopts = append(eopts, WithOffloadLayers(offloadLayers))
 	}
 
 	// Parse GGUF file.
@@ -206,23 +201,23 @@ func main() {
 	if !skipModel {
 		tprintf(
 			"MODEL",
-			[]string{"Name", "Architecture", "Quantization Version", "File Type", "Little Endian", "Size", "Parameters", "BPW"},
+			[]string{"Name", "Arch", "Quantization Version", "File Type", "Little Endian", "Size", "Parameters", "BPW"},
 			[]string{
 				m.Name,
 				m.Architecture,
 				sprintf(m.QuantizationVersion),
 				sprintf(m.FileType),
 				sprintf(m.LittleEndian),
-				m.Size.String(),
-				m.Parameters.String(),
-				m.BitsPerWeight.String(),
+				sprintf(m.Size),
+				sprintf(m.Parameters),
+				sprintf(m.BitsPerWeight),
 			})
 	}
 
 	if !skipArchitecture {
 		tprintf(
 			"ARCHITECTURE",
-			[]string{"Max Context Length", "Embedding Length", "Layers", "Feed Forward Length", "Expert Count", "Vocabulary Length"},
+			[]string{"Max Context Len", "Embedding Len", "Layers", "Feed Forward Len", "Expert Cnt", "Vocabulary Len"},
 			[]string{
 				sprintf(a.MaximumContextLength),
 				sprintf(a.EmbeddingLength),
@@ -242,7 +237,7 @@ func main() {
 		}
 		tprintf(
 			"TOKENIZER",
-			[]string{"Model", "Tokens Length", "Added Tokens Length", "BOS Token", "EOS Token", "Unknown Token", "Separator Token", "Padding Token"},
+			[]string{"Model", "Tokens Len", "Added Tokens Len", "BOS Token", "EOS Token", "Unknown Token", "Separator Token", "Padding Token"},
 			[]string{
 				t.Model,
 				sprintf(t.TokensLength),
@@ -256,30 +251,17 @@ func main() {
 	}
 
 	if !skipEstimate {
-		bs := [][]string{
-			{
-				"TOTAL",
-				sprintf(ctxSize),
-				e.Total.KVCache.Sum().String(),
-				e.Total.Compute.String(),
-				e.Total.IO.String(),
-				e.Total.Sum().String(),
-			},
-		}
-		if e.Offload != nil {
-			bs = append(bs, []string{
-				"OFFLOAD",
-				sprintf(ctxSize),
-				e.Offload.KVCache.Sum().String(),
-				e.Offload.Compute.String(),
-				e.Offload.IO.String(),
-				e.Offload.Sum().String(),
-			})
-		}
 		tprintf(
 			"ESTIMATE",
-			[]string{"/", "Context Length", "KV Cache", "Compute Memory", "IO Memory", "Sum"},
-			bs...)
+			[]string{"Context Size", "Model Weight", "KV Cache", "Computation Graph Overhead", "Others", "Usage (w/o MMap)"},
+			[]string{
+				sprintf(ctxSize),
+				sprintf(e.ModelWeight),
+				sprintf(e.KVCache.Sum()),
+				sprintf(e.ComputationGraphOverhead),
+				sprintf(e.Others),
+				sprintf(e.Sum()) + " (" + sprintf(e.Sum()+e.ModelWeight) + ")",
+			})
 	}
 }
 
@@ -323,7 +305,7 @@ func tprintf(title string, header []string, body ...[]string) {
 	tb.SetAlignment(tablewriter.ALIGN_CENTER)
 	tb.SetHeaderLine(true)
 	tb.SetRowLine(true)
-	tb.SetAutoMergeCells(true)
+	tb.SetAutoMergeCellsByColumnIndex([]int{0, 1, 2, 3})
 	tb.Append(append([]string{title}, header...))
 	for i := range body {
 		tb.Append(append([]string{title}, body[i]...))
