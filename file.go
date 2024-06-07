@@ -159,6 +159,9 @@ type (
 		//
 		// The offset is the start of the file.
 		StartOffset int64 `json:"startOffset"`
+
+		// Size is the size of the array in bytes.
+		Size int64 `json:"endOffset"`
 	}
 
 	// GGUFMetadataKVs is a list of GGUFMetadataKV.
@@ -1286,6 +1289,11 @@ func (rd _GGUFReader) ReadArray() (v GGUFMetadataKVArrayValue, err error) {
 		return v, fmt.Errorf("read array length: %w", err)
 	}
 
+	itemStart, err := rd.f.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return v, fmt.Errorf("seek array item start: %w", err)
+	}
+
 	if !rd.o.SkipLargeMetadata {
 		v.Array = make([]any, v.Len)
 		for i := uint64(0); i < v.Len; i++ {
@@ -1294,6 +1302,12 @@ func (rd _GGUFReader) ReadArray() (v GGUFMetadataKVArrayValue, err error) {
 				return v, fmt.Errorf("read array item %d: %w", i, err)
 			}
 		}
+
+		itemEnd, err := rd.f.Seek(0, io.SeekCurrent)
+		if err != nil {
+			return v, fmt.Errorf("seek array item end: %w", err)
+		}
+		v.Size = itemEnd - itemStart
 
 		return v, nil
 	}
@@ -1320,6 +1334,12 @@ func (rd _GGUFReader) ReadArray() (v GGUFMetadataKVArrayValue, err error) {
 	if err != nil {
 		return v, fmt.Errorf("seek array end: %w", err)
 	}
+
+	itemEnd, err := rd.f.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return v, fmt.Errorf("seek array item end: %w", err)
+	}
+	v.Size = itemEnd - itemStart
 
 	return v, nil
 }

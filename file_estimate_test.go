@@ -93,3 +93,33 @@ func TestGGUFFile_Estimate_ContextSize(t *testing.T) {
 		})
 	}
 }
+
+func TestGGUFFile_Estimate_OffloadLayers(t *testing.T) {
+	ctx := context.Background()
+
+	f, err := ParseGGUFFileFromHuggingFace(
+		ctx,
+		"NousResearch/Hermes-2-Pro-Mistral-7B-GGUF",
+		"Hermes-2-Pro-Mistral-7B.Q5_K_M.gguf",
+		SkipLargeMetadata())
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	cases := []struct {
+		name string
+		opts []GGUFEstimateOption
+	}{
+		{"offload 0 layer", []GGUFEstimateOption{WithContextSize(512), WithOffloadLayers(0)}},
+		{"offload 1 layer", []GGUFEstimateOption{WithContextSize(512), WithOffloadLayers(1)}},
+		{"offload 10 layers", []GGUFEstimateOption{WithContextSize(512), WithOffloadLayers(10)}},
+		{"offload all layers", []GGUFEstimateOption{WithContextSize(512)}},
+		{"offload 33 layers", []GGUFEstimateOption{WithContextSize(512), WithOffloadLayers(33)}}, // exceeds the number of layers
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Log("\n", spew.Sdump(f.Estimate(tc.opts...)), "\n")
+		})
+	}
+}

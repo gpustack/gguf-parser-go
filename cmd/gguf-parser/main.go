@@ -28,12 +28,15 @@ func main() {
 		repo, model string
 		// read options
 		debug     bool
-		mmap      = true
 		skipProxy bool
 		skipTLS   bool
 		// estimate options
-		ctxSize = 512
-		kvType  = "f16"
+		ctxSize       = -1
+		kvType        = "f16"
+		offloadLayers = -1
+		batchSize     = 512
+		parallel      = 1
+		noMMap        bool
 		// output options
 		version          bool
 		skipModel        bool
@@ -59,11 +62,14 @@ func main() {
 	fs.StringVar(&model, "model", model, "Model below the --repo, e.g. "+
 		"Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf")
 	fs.BoolVar(&debug, "debug", debug, "Debug mode")
-	fs.BoolVar(&mmap, "mmap", mmap, "Use mmap to read the local file")
 	fs.BoolVar(&skipProxy, "skip-proxy", skipProxy, "Skip using proxy when reading from a remote URL")
 	fs.BoolVar(&skipTLS, "skip-tls", skipTLS, "Skip TLS verification when reading from a remote URL")
-	fs.IntVar(&ctxSize, "ctx-size", ctxSize, "Context size to estimate memory usage")
+	fs.IntVar(&ctxSize, "ctx-size", ctxSize, "Context size to estimate memory usage, default is equal to the model's maximum context size")
 	fs.StringVar(&kvType, "kv-type", kvType, "Key-Value cache type, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1]")
+	fs.IntVar(&offloadLayers, "offload-layers", offloadLayers, "Specify how many layers to offload, default is fully offloading")
+	fs.IntVar(&batchSize, "batch-size", batchSize, "Physical maximum batch size")
+	fs.IntVar(&parallel, "parallel", parallel, "Number of parallel sequences to decode")
+	fs.BoolVar(&noMMap, "no-mmap", noMMap, "Do not use memory-mapping, which influences the estimate result")
 	fs.BoolVar(&version, "version", version, "Show version")
 	fs.BoolVar(&skipModel, "skip-model", skipModel, "Skip model metadata")
 	fs.BoolVar(&skipArchitecture, "skip-architecture", skipArchitecture, "Skip architecture metadata")
@@ -85,12 +91,10 @@ func main() {
 
 	ropts := []GGUFReadOption{
 		SkipLargeMetadata(),
+		UseMMap(),
 	}
 	if debug {
 		ropts = append(ropts, UseDebug())
-	}
-	if mmap {
-		ropts = append(ropts, UseMMap())
 	}
 	if skipProxy {
 		ropts = append(ropts, SkipProxy())
@@ -99,11 +103,12 @@ func main() {
 		ropts = append(ropts, SkipTLSVerification())
 	}
 
-	if ctxSize <= 0 {
-		ctxSize = 512
-	}
 	eopts := []GGUFEstimateOption{
-		WithContextSize(int32(ctxSize)),
+		WithCacheValueType(GGMLTypeF16),
+		WithCacheKeyType(GGMLTypeF16),
+	}
+	if ctxSize > 0 {
+		eopts = append(eopts, WithContextSize(int32(ctxSize)))
 	}
 	if kvType != "" {
 		kv := GGMLTypeF16
@@ -126,6 +131,15 @@ func main() {
 			kv = GGMLTypeQ5_1
 		}
 		eopts = append(eopts, WithCacheKeyType(kv), WithCacheValueType(kv))
+	}
+	if offloadLayers >= 0 {
+		eopts = append(eopts, WithOffloadLayers(uint64(offloadLayers)))
+	}
+	if batchSize > 0 {
+		eopts = append(eopts, WithBatchSize(int32(batchSize)))
+	}
+	if parallel > 0 {
+		eopts = append(eopts, WithParallelSize(int32(parallel)))
 	}
 
 	// Parse GGUF file.
@@ -183,7 +197,8 @@ func main() {
 			o["tokenizer"] = t
 		}
 		if !skipEstimate {
-			o["estimate"] = e
+			es := e.Sum(!noMMap)
+			o["estimate"] = es
 		}
 
 		enc := stdjson.NewEncoder(os.Stdout)
@@ -237,9 +252,10 @@ func main() {
 		}
 		tprintf(
 			"TOKENIZER",
-			[]string{"Model", "Tokens Len", "Added Tokens Len", "BOS Token", "EOS Token", "Unknown Token", "Separator Token", "Padding Token"},
+			[]string{"Model", "Tokens Size", "Tokens Len", "Added Tokens Len", "BOS Token", "EOS Token", "Unknown Token", "Separator Token", "Padding Token"},
 			[]string{
 				t.Model,
+				sprintf(GGUFBytesScalar(t.TokensSize)),
 				sprintf(t.TokensLength),
 				sprintf(t.AddedTokensLength),
 				sprintTokenID(t.BOSTokenID),
@@ -251,16 +267,29 @@ func main() {
 	}
 
 	if !skipEstimate {
+		es := e.Sum(!noMMap)
+		if ctxSize <= 0 {
+			if a.MaximumContextLength == 0 {
+				a = gf.Architecture()
+			}
+			ctxSize = int(a.MaximumContextLength)
+		}
 		tprintf(
 			"ESTIMATE",
-			[]string{"Context Size", "Model Weight", "KV Cache", "Computation Graph Overhead", "Others", "Usage (w/o MMap)"},
+			[]string{"Mem. Arch", "MMap", "Context Size", "(CPU) RAM", "(GPU) VRAM"},
 			[]string{
+				"UMA",
+				sprintf(!noMMap),
 				sprintf(ctxSize),
-				sprintf(e.ModelWeight),
-				sprintf(e.KVCache.Sum()),
-				sprintf(e.ComputationGraphOverhead),
-				sprintf(e.Others),
-				sprintf(e.Sum()) + " (" + sprintf(e.Sum()+e.ModelWeight) + ")",
+				sprintf(es.UMA.RAM),
+				sprintf(es.UMA.VRAM),
+			},
+			[]string{
+				"NonUMA",
+				sprintf(!noMMap),
+				sprintf(ctxSize),
+				sprintf(es.NonUMA.RAM),
+				sprintf(es.NonUMA.VRAM),
 			})
 	}
 }
