@@ -103,7 +103,7 @@ func main() {
 		ropts = append(ropts, SkipTLSVerification())
 	}
 
-	eopts := []GGUFEstimateOption{
+	eopts := []LLaMACppUsageEstimateOption{
 		WithCacheValueType(GGMLTypeF16),
 		WithCacheKeyType(GGMLTypeF16),
 	}
@@ -168,7 +168,7 @@ func main() {
 		m GGUFModelMetadata
 		a GGUFArchitectureMetadata
 		t GGUFTokenizerMetadata
-		e GGUFEstimate
+		e LLaMACppUsageEstimate
 	)
 	if !skipModel {
 		m = gf.Model()
@@ -180,7 +180,7 @@ func main() {
 		t = gf.Tokenizer()
 	}
 	if !skipEstimate {
-		e = gf.Estimate(eopts...)
+		e = gf.EstimateLLaMACppUsage(eopts...)
 	}
 
 	// Output
@@ -197,7 +197,7 @@ func main() {
 			o["tokenizer"] = t
 		}
 		if !skipEstimate {
-			es := e.Sum(!noMMap)
+			es := e.Summarize(!noMMap)
 			o["estimate"] = es
 		}
 
@@ -267,7 +267,7 @@ func main() {
 	}
 
 	if !skipEstimate {
-		es := e.Sum(!noMMap)
+		es := e.Summarize(!noMMap)
 		if ctxSize <= 0 {
 			if a.MaximumContextLength == 0 {
 				a = gf.Architecture()
@@ -276,20 +276,18 @@ func main() {
 		}
 		tprintf(
 			"ESTIMATE",
-			[]string{"Mem. Arch", "MMap", "Context Size", "(CPU) RAM", "(GPU) VRAM"},
+			[]string{"Mem. Arch", "MMap", "Context Size", "Usage"},
 			[]string{
 				"UMA",
 				sprintf(!noMMap),
 				sprintf(ctxSize),
-				sprintf(es.UMA.RAM),
-				sprintf(es.UMA.VRAM),
+				sprintf(es.UMA),
 			},
 			[]string{
 				"NonUMA",
 				sprintf(!noMMap),
 				sprintf(ctxSize),
-				sprintf(es.NonUMA.RAM),
-				sprintf(es.NonUMA.VRAM),
+				fmt.Sprintf("%s(RAM) + %s (VRAM)", es.NonUMA.RAM, es.NonUMA.VRAM),
 			})
 	}
 }

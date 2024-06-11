@@ -107,18 +107,24 @@ spew.Dump(f.Tokenizer())
 
 ```
 
-### Estimate usage
+### Estimate usage in [llama.cpp](https://github.com/ggerganov/llama.cpp)
 
 ```go
-spew.Dump(f.Estimate())
+spew.Dump(f.EstimateLLaMACppUsage())
 
 ```
 
 #### Estimate with larger prompt
 
 ```go
-spew.Dump(f.Estimate(WithContextSize(4096) /* 4K */))
+spew.Dump(f.EstimateLLaMACppUsage(WithContextSize(4096) /* 4K */))
 
+```
+
+#### Estimate with specific offload layers
+
+```go
+spew.Dump(f.EstimateLLaMACppUsage(WithOffloadLayers(10)))
 ```
 
 ## License

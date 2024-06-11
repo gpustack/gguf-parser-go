@@ -5,7 +5,7 @@ import (
 )
 
 type (
-	_GGUFEstimateOptions struct {
+	_LLaMACppUsageEstimateOptions struct {
 		ContextSize    *int32
 		ParallelSize   *int32
 		BatchSize      *int32
@@ -13,12 +13,12 @@ type (
 		CacheValueType *GGMLType
 		OffloadLayers  *uint64
 	}
-	GGUFEstimateOption func(*_GGUFEstimateOptions)
+	LLaMACppUsageEstimateOption func(*_LLaMACppUsageEstimateOptions)
 )
 
 // WithContextSize sets the context size for the estimate.
-func WithContextSize(size int32) GGUFEstimateOption {
-	return func(o *_GGUFEstimateOptions) {
+func WithContextSize(size int32) LLaMACppUsageEstimateOption {
+	return func(o *_LLaMACppUsageEstimateOptions) {
 		if size <= 0 {
 			return
 		}
@@ -27,8 +27,8 @@ func WithContextSize(size int32) GGUFEstimateOption {
 }
 
 // WithParallelSize sets the (decoding sequences) parallel size for the estimate.
-func WithParallelSize(size int32) GGUFEstimateOption {
-	return func(o *_GGUFEstimateOptions) {
+func WithParallelSize(size int32) LLaMACppUsageEstimateOption {
+	return func(o *_LLaMACppUsageEstimateOptions) {
 		if size <= 0 {
 			return
 		}
@@ -37,8 +37,8 @@ func WithParallelSize(size int32) GGUFEstimateOption {
 }
 
 // WithBatchSize sets the physical batch size for the estimate.
-func WithBatchSize(size int32) GGUFEstimateOption {
-	return func(o *_GGUFEstimateOptions) {
+func WithBatchSize(size int32) LLaMACppUsageEstimateOption {
+	return func(o *_LLaMACppUsageEstimateOptions) {
 		if size <= 0 {
 			return
 		}
@@ -57,8 +57,8 @@ var _GGUFEstimateCacheTypeAllowList = []GGMLType{
 }
 
 // WithCacheKeyType sets the cache key type for the estimate.
-func WithCacheKeyType(t GGMLType) GGUFEstimateOption {
-	return func(o *_GGUFEstimateOptions) {
+func WithCacheKeyType(t GGMLType) LLaMACppUsageEstimateOption {
+	return func(o *_LLaMACppUsageEstimateOptions) {
 		if slices.Contains(_GGUFEstimateCacheTypeAllowList, t) {
 			o.CacheKeyType = &t
 		}
@@ -66,8 +66,8 @@ func WithCacheKeyType(t GGMLType) GGUFEstimateOption {
 }
 
 // WithCacheValueType sets the cache value type for the estimate.
-func WithCacheValueType(t GGMLType) GGUFEstimateOption {
-	return func(o *_GGUFEstimateOptions) {
+func WithCacheValueType(t GGMLType) LLaMACppUsageEstimateOption {
+	return func(o *_LLaMACppUsageEstimateOptions) {
 		if slices.Contains(_GGUFEstimateCacheTypeAllowList, t) {
 			o.CacheValueType = &t
 		}
@@ -75,8 +75,8 @@ func WithCacheValueType(t GGMLType) GGUFEstimateOption {
 }
 
 // WithOffloadLayers sets the number of layers to offload.
-func WithOffloadLayers(layers uint64) GGUFEstimateOption {
-	return func(o *_GGUFEstimateOptions) {
+func WithOffloadLayers(layers uint64) LLaMACppUsageEstimateOption {
+	return func(o *_LLaMACppUsageEstimateOptions) {
 		o.OffloadLayers = &layers
 	}
 }
