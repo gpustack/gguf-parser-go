@@ -11,10 +11,12 @@ import (
 type (
 	// LLaMACppUsageEstimate represents the estimated result of loading the GGUF file in llama.cpp.
 	LLaMACppUsageEstimate struct {
-		// Layers is the number of layers for loading the GGUF file.
-		Layers uint64 `json:"layers"`
-		// OffloadLayers is the number of layers to offload.
-		OffloadLayers uint64 `json:"offloadLayers"`
+		// FullOffload is the flag to indicate whether the layers are fully offloaded,
+		// false for partial offloaded or zero offloaded.
+		FullOffload bool `json:"fullOffload"`
+		// NoMMap is the flag to indicate whether the file must be loaded without mmap,
+		// true for total loaded.
+		NoMMap bool `json:"noMMap"`
 		// RAM is the memory usage for loading the GGUF file in RAM.
 		RAM LLaMACppMemoryUsage `json:"ram"`
 		// VRAM is the memory usage for loading the GGUF file in VRAM.
@@ -96,8 +98,7 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 		}
 		nLoadLayers -= nOffloadLayers
 	}
-	e.Layers = a.BlockCount
-	e.OffloadLayers = nOffloadLayers
+	e.FullOffload = a.BlockCount == nOffloadLayers
 
 	// Footprint.
 	{
@@ -133,8 +134,10 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 	{
 		// Compute.
 		for i, offloadStart := uint64(0), uint64(len(tfLs))-nOffloadLayers; i < uint64(len(tfLs)); i++ {
-			e.RAM.Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
-			if i >= offloadStart {
+			switch {
+			case i < nLoadLayers:
+				e.RAM.Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
+			case i >= offloadStart:
 				e.VRAM.Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
 			}
 		}
@@ -237,6 +240,10 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 				}
 				e.RAM.Computation.Compute = GGUFBytesScalar(max(kvcInc, ffnInc))
 			}
+			// Special case: we cannot use mmap for splitting expert weights in MoE.
+			if a.ExpertCount > 0 {
+				e.NoMMap = len(tfLs[0].Search(regexp.MustCompile(`.*\.\d+\.ffn_gate_exps\.weight`))) == 0
+			}
 		}
 		// Finally, get the usage of output layer.
 		{
@@ -268,18 +275,20 @@ type LLaMACppUsageEstimateSummery struct {
 func (e LLaMACppUsageEstimate) Summarize(mmap bool) (es LLaMACppUsageEstimateSummery) {
 	// UMA.
 	{
-		es.UMA = e.RAM.Footprint
-		es.UMA += max(e.RAM.KVCache.Sum()+e.VRAM.KVCache.Sum(), e.RAM.Computation.Sum())
-		if !mmap {
-			es.UMA += e.RAM.Weight.Sum()
+		kv := e.RAM.KVCache.Sum() + e.VRAM.KVCache.Sum()
+		wg := e.RAM.Weight.Sum() + e.VRAM.Weight.Sum()
+		es.UMA = e.RAM.Footprint + max(kv, e.RAM.Computation.Sum()) + wg
+		if !e.NoMMap && mmap {
+			es.UMA -= wg
 		}
 	}
 
 	// NonUMA.
 	{
-		es.NonUMA.RAM = e.RAM.Footprint + e.RAM.KVCache.Sum() + e.RAM.Computation.Sum()
-		if !mmap && e.Layers != e.OffloadLayers {
-			es.NonUMA.RAM += e.RAM.Weight.Sum()
+		wg := e.RAM.Weight.Sum()
+		es.NonUMA.RAM = e.RAM.Footprint + e.RAM.KVCache.Sum() + e.RAM.Computation.Sum() + wg
+		if !e.NoMMap && (mmap || e.FullOffload) {
+			es.NonUMA.RAM -= wg
 		}
 		es.NonUMA.VRAM = e.VRAM.Footprint + e.VRAM.Weight.Sum() + e.VRAM.KVCache.Sum() + e.VRAM.Computation.Sum()
 	}

@@ -216,10 +216,9 @@ func main() {
 	if !skipModel {
 		tprintf(
 			"MODEL",
-			[]string{"Name", "File Size", "Arch", "Quantization Version", "File Type", "Little Endian", "Size", "Parameters", "BPW"},
+			[]string{"Name", "Arch", "Quantization Version", "File Type", "Little Endian", "Size", "Parameters", "BPW"},
 			[]string{
 				m.Name,
-				sprintf(m.FileSize),
 				m.Architecture,
 				sprintf(m.QuantizationVersion),
 				sprintf(m.FileType),
@@ -277,17 +276,15 @@ func main() {
 		}
 		tprintf(
 			"ESTIMATE",
-			[]string{"Mem. Arch", "MMap", "Context Size", "Usage"},
+			[]string{"Context Size", "Mem. Arch", "Usage"},
 			[]string{
-				"UMA",
-				sprintf(!noMMap),
 				sprintf(ctxSize),
+				"UMA",
 				sprintf(es.UMA),
 			},
 			[]string{
-				"NonUMA",
-				sprintf(!noMMap),
 				sprintf(ctxSize),
+				"NonUMA",
 				fmt.Sprintf("%s (RAM) + %s (VRAM)", es.NonUMA.RAM, es.NonUMA.VRAM),
 			})
 	}
