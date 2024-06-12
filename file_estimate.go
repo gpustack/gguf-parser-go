@@ -103,14 +103,14 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 	{
 		// Bootstrap.
 		e.RAM.Footprint = GGUFBytesScalar(5 * 1024 * 1024)
+		e.RAM.Footprint += gf.Size - gf.ModelSize
 
 		// Tokens.
-		fp := uint64(t.TokensSize)
-		fp += t.TokensLength * (4 /* token type */ + 4 /* token score*/)
+		fp := t.TokensLength * (4 /* token type */ + 4 /* token score*/)
 		if t.Model == "gpt2" {
-			fp += uint64(t.MergesSize)
 			fp += t.MergesLength * (48 /* key type */ + 56 /* value type */)
 		}
+		fp += t.TokensLength * (32 /* id to token vector */ + (24 + 32) /* token to id map*/)
 
 		// Output buffer,
 		// see https://github.com/ggerganov/llama.cpp/blob/7672adeec7a79ea271058c63106c142ba84f951a/llama.cpp#L11940-L12003.
@@ -229,7 +229,7 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 				ffnInc += rs
 			}
 			e.VRAM.Computation.Compute = GGUFBytesScalar(max(kvcInc, ffnInc))
-			if nLoadLayers > 0 {
+			if nLoadLayers > 0 && nOffloadLayers > 0 {
 				ffnInc = 0
 				for _, l := range tfLs[nLoadLayers-1].Search(regexp.MustCompile(`.*\.\d+\.ffn_(norm|gate|up)\.weight`)) {
 					rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nBatch})
@@ -269,16 +269,7 @@ func (e LLaMACppUsageEstimate) Summarize(mmap bool) (es LLaMACppUsageEstimateSum
 	// UMA.
 	{
 		es.UMA = e.RAM.Footprint
-		switch kv := e.RAM.KVCache.Sum() + e.VRAM.KVCache.Sum(); {
-		case e.OffloadLayers == 0:
-			cp := e.RAM.Computation.Sum()
-			es.UMA += max(kv, cp)
-		case e.Layers == e.OffloadLayers:
-			cp := e.VRAM.Computation.Sum()
-			es.UMA += max(kv, cp)
-		default:
-			es.UMA += max(kv, max(e.RAM.Computation.Sum(), e.VRAM.Computation.Sum()))
-		}
+		es.UMA += max(e.RAM.KVCache.Sum()+e.VRAM.KVCache.Sum(), e.RAM.Computation.Sum())
 		if !mmap {
 			es.UMA += e.RAM.Weight.Sum()
 		}

@@ -45,6 +45,8 @@ type GGUFFile struct {
 
 	/* Appendix */
 
+	// Size is the size of the GGUF file.
+	Size GGUFBytesScalar `json:"size"`
 	// ModelSize is the size of the model when loading.
 	ModelSize GGUFBytesScalar `json:"modelSize"`
 	// ModelParameters is the number of the model parameters.
@@ -391,6 +393,9 @@ func parseGGUFFile(s int64, f io.ReadSeeker, o _GGUFReadOptions) (_ *GGUFFile, e
 
 	// tensor data offset
 	gf.TensorDataStartOffset = pds + gf.Padding
+
+	// size
+	gf.Size = GGUFBytesScalar(s)
 
 	// model size
 	gf.ModelSize = GGUFBytesScalar(s - gf.TensorDataStartOffset)

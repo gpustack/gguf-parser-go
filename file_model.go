@@ -53,7 +53,9 @@ type GGUFModelMetadata struct {
 	// LittleEndian is true if the GGUF file is little-endian,
 	// and false for big-endian.
 	LittleEndian bool `json:"littleEndian"`
-	// Size is the size of the GGUF file in bytes.
+	// FileSize is the size of the GGUF file in bytes.
+	FileSize GGUFBytesScalar `json:"fileSize"`
+	// Size is the model size.
 	Size GGUFBytesScalar `json:"size"`
 	// Parameters is the parameters of the model.
 	Parameters GGUFParametersScalar `json:"parameters"`
@@ -163,6 +165,7 @@ func (gf *GGUFFile) Model() (gm GGUFModelMetadata) {
 	}
 
 	gm.LittleEndian = gf.Header.Version < GGUFVersionV3 || gf.Header.Magic == GGUFMagicGGUFLe
+	gm.FileSize = gf.Size
 	gm.Size = gf.ModelSize
 	gm.Parameters = gf.ModelParameters
 	gm.BitsPerWeight = gf.ModelBitsPerWeight
