@@ -17,10 +17,10 @@ type (
 		// NoMMap is the flag to indicate whether the file must be loaded without mmap,
 		// true for total loaded.
 		NoMMap bool `json:"noMMap"`
-		// RAM is the memory usage for loading the GGUF file in RAM.
-		RAM LLaMACppMemoryUsage `json:"ram"`
-		// VRAM is the memory usage for loading the GGUF file in VRAM.
-		VRAM LLaMACppMemoryUsage `json:"vram"`
+		// Load is the memory usage for running the GGUF file in RAM.
+		Load LLaMACppMemoryUsage `json:"load"`
+		// Offload is the memory usage for loading the GGUF file in VRAM.
+		Offload LLaMACppMemoryUsage `json:"offload"`
 	}
 
 	// LLaMACppMemoryUsage represents the memory usage for expanding the GGUF file in llama.cpp.
@@ -103,8 +103,8 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 	// Footprint.
 	{
 		// Bootstrap.
-		e.RAM.Footprint = GGUFBytesScalar(5 * 1024 * 1024)
-		e.RAM.Footprint += gf.Size - gf.ModelSize
+		e.Load.Footprint = GGUFBytesScalar(10 * 1024 * 1024)
+		e.Load.Footprint += gf.Size - gf.ModelSize
 
 		// Tokens.
 		fp := t.TokensLength * (4 /* token type */ + 4 /* token score*/)
@@ -117,7 +117,7 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 		// see https://github.com/ggerganov/llama.cpp/blob/7672adeec7a79ea271058c63106c142ba84f951a/llama.cpp#L11940-L12003.
 		ob := 4 /* float32 size */ * (a.VocabularyLength + a.EmbeddingLength) * nParallel
 
-		e.RAM.Footprint += GGUFBytesScalar(fp + ob)
+		e.Load.Footprint += GGUFBytesScalar(fp + ob)
 	}
 
 	ls := gf.Layers()
@@ -125,6 +125,7 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 		"token_embd.weight",
 		"output.weight",
 		"output_norm.weight",
+		"output_norm.bias",
 	})
 	ipLs, opLs, _ := ioLs.Cut([]string{
 		"token_embd.weight",
@@ -136,20 +137,20 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 		for i, offloadStart := uint64(0), uint64(len(tfLs))-nOffloadLayers; i < uint64(len(tfLs)); i++ {
 			switch {
 			case i < nLoadLayers:
-				e.RAM.Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
+				e.Load.Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
 			case i >= offloadStart:
-				e.VRAM.Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
+				e.Offload.Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
 			}
 		}
 
 		// IO,
 		// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L4930-L5002.
-		e.RAM.Weight.Input = GGUFBytesScalar(ipLs.Bytes())
-		e.RAM.Weight.Output = GGUFBytesScalar(opLs.Bytes())
+		e.Load.Weight.Input = GGUFBytesScalar(ipLs.Bytes())
+		e.Load.Weight.Output = GGUFBytesScalar(opLs.Bytes())
 		if nOffloadLayers == a.BlockCount {
 			// Transfer the output weight to VRAM when all layers are offloaded.
-			e.VRAM.Weight.Output = e.RAM.Weight.Output
-			e.RAM.Weight.Output = 0
+			e.Offload.Weight.Output = e.Load.Weight.Output
+			e.Load.Weight.Output = 0
 		}
 	}
 
@@ -170,10 +171,7 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 			nKV = nParallel
 		}
 
-		var (
-			embedKeyGQA = uint64(a.AttentionKeyLength) * a.AttentionHeadCountKV
-			embedValGQA = uint64(a.AttentionValueLength) * a.AttentionHeadCountKV
-		)
+		embedKeyGQA, embedValGQA := a.EmbeddingKeyGQA, a.EmbeddingValueGQA
 		if a.SSMConvolutionKernel > 0 {
 			embedKeyGQA += uint64(a.SSMConvolutionKernel - 1*a.SSMInnerSize)
 			embedValGQA += uint64(a.SSMStateSize * a.SSMInnerSize)
@@ -182,10 +180,10 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 		krs := kt.RowSizeOf([]uint64{embedKeyGQA * nKV})
 		vrs := vt.RowSizeOf([]uint64{embedValGQA * nKV})
 
-		e.RAM.KVCache.Key = GGUFBytesScalar(krs * nLoadLayers)
-		e.RAM.KVCache.Value = GGUFBytesScalar(vrs * nLoadLayers)
-		e.VRAM.KVCache.Key = GGUFBytesScalar(krs * nOffloadLayers)
-		e.VRAM.KVCache.Value = GGUFBytesScalar(vrs * nOffloadLayers)
+		e.Load.KVCache.Key = GGUFBytesScalar(krs * nLoadLayers)
+		e.Load.KVCache.Value = GGUFBytesScalar(vrs * nLoadLayers)
+		e.Offload.KVCache.Key = GGUFBytesScalar(krs * nOffloadLayers)
+		e.Offload.KVCache.Value = GGUFBytesScalar(vrs * nOffloadLayers)
 	}
 
 	// Computation.
@@ -198,7 +196,7 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 		oh := GGMLTensorOverhead()*GGMLComputationGraphNodesMaximum +
 			GGMLComputationGraphOverhead(GGMLComputationGraphNodesMaximum, false)
 
-		e.RAM.Computation.Footprint = GGUFBytesScalar(gc + oh)
+		e.Load.Computation.Footprint = GGUFBytesScalar(gc + oh)
 
 		// Tensor usage,
 		// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L16149.
@@ -211,34 +209,42 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 			inpOutIds = GGMLTypeI32.RowSizeOf([]uint64{nContext})                  // I32 [n_output],
 			inpKQMask = GGMLTypeF32.RowSizeOf([]uint64{nContext, nBatch})          // F32 [n_kv, n_batch]
 		)
-		e.RAM.Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + inpPos + inpKQMask + inpOutIds)
-		e.VRAM.Computation.Input = GGUFBytesScalar(inpEmbd + inpPos + inpKQMask + inpOutIds)
+		e.Load.Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + inpPos + inpKQMask + inpOutIds)
+		e.Offload.Computation.Input = GGUFBytesScalar(inpEmbd + inpPos + inpKQMask + inpOutIds)
 		// Since the steps between transformer layers are serial,
 		// the allocated memory can be reused for the next layer.
 		// So, we only consider the usage of the largest layer,
 		// which is the last layer by default.
 		{
-			kvcInc := uint64(e.RAM.KVCache.Key + e.VRAM.KVCache.Key)
-			for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.attn_(norm|q)\.weight`)) {
+			kvcInc := uint64(e.Load.KVCache.Key + e.Offload.KVCache.Key)
+			for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.attn_(norm|q|qkv)\.weight`)) {
 				rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nBatch})
 				kvcInc += rs
-				if strings.HasSuffix(l.Name, ".attn_q.weight") {
-					kvcInc += rs // for RoPE
+				switch {
+				default:
+					continue
+				case strings.HasSuffix(l.Name, ".attn_q.weight"):
+				case strings.HasSuffix(l.Name, ".attn_qkv.weight"):
+					rs = GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[0], nBatch})
 				}
+				kvcInc += rs * 2 // for RoPE
 			}
 			ffnInc := uint64(0)
 			for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.(attn_norm|ffn_norm|ffn_gate|ffn_up)\.weight`)) {
 				rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nBatch})
 				ffnInc += rs
 			}
-			e.VRAM.Computation.Compute = GGUFBytesScalar(max(kvcInc, ffnInc))
-			if nLoadLayers > 0 && nOffloadLayers > 0 {
+			e.Offload.Computation.Compute = GGUFBytesScalar(max(kvcInc, ffnInc))
+			switch {
+			case nLoadLayers == 0: // Zero offloaded.
+				e.Load.Computation.Compute = GGUFBytesScalar(max(kvcInc, ffnInc))
+			case nLoadLayers > 0 && nOffloadLayers > 0: // Partial offloaded.
 				ffnInc = 0
 				for _, l := range tfLs[nLoadLayers-1].Search(regexp.MustCompile(`.*\.\d+\.ffn_(norm|gate|up)\.weight`)) {
 					rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nBatch})
 					ffnInc += rs
 				}
-				e.RAM.Computation.Compute = GGUFBytesScalar(max(kvcInc, ffnInc))
+				e.Load.Computation.Compute = GGUFBytesScalar(max(kvcInc, ffnInc))
 			}
 			// Special case: we cannot use mmap for splitting expert weights in MoE.
 			if a.ExpertCount > 0 {
@@ -252,7 +258,7 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 				rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nBatch})
 				outInc += rs
 			}
-			e.VRAM.Computation.Output = GGUFBytesScalar(outInc)
+			e.Offload.Computation.Output = GGUFBytesScalar(outInc)
 		}
 	}
 
@@ -265,7 +271,7 @@ type LLaMACppUsageEstimateSummery struct {
 	UMA GGUFBytesScalar `json:"uma"`
 	// NonUMA represents the usage of Non-Unified Memory Architecture.
 	NonUMA struct {
-		// RAM is the memory usage for loading the GGUF file in RAM.
+		// Load is the memory usage for loading the GGUF file in Load.
 		RAM GGUFBytesScalar `json:"ram"`
 		// VRAM is the memory usage for loading the GGUF file in VRAM.
 		VRAM GGUFBytesScalar `json:"vram"`
@@ -275,22 +281,34 @@ type LLaMACppUsageEstimateSummery struct {
 func (e LLaMACppUsageEstimate) Summarize(mmap bool) (es LLaMACppUsageEstimateSummery) {
 	// UMA.
 	{
-		kv := e.RAM.KVCache.Sum() + e.VRAM.KVCache.Sum()
-		wg := e.RAM.Weight.Sum() + e.VRAM.Weight.Sum()
-		es.UMA = e.RAM.Footprint + max(kv, e.RAM.Computation.Sum()) + wg
+		kv := e.Load.KVCache.Sum() + e.Offload.KVCache.Sum()
+		wg := e.Load.Weight.Sum() + e.Offload.Weight.Sum()
+		es.UMA = e.Load.Footprint + max(kv, e.Load.Computation.Sum()) + wg
 		if !e.NoMMap && mmap {
 			es.UMA -= wg
 		}
 	}
 
+	// TODO(thxCode): complete more cases,
+	//  and support optional parameters for the following constants.
+
+	// Footprint,
+	// see https://github.com/ggerganov/llama.cpp/blob/f578b86b2123d0f92afbaa98a031df4d4464e582/llama.cpp#L2454-L2486.
+	const (
+		// The function `cudaMemGetInfo` occupies some memory,
+		// see https://github.com/ggerganov/llama.cpp/blob/f578b86b2123d0f92afbaa98a031df4d4464e582/ggml-cuda.cu#L3009-L3013,
+		// and https://stackoverflow.com/questions/64854862/free-memory-occupied-by-cudamemgetinfo.
+		cudaFootprint = GGUFBytesScalar(150 * 1024 * 1024)
+	)
+
 	// NonUMA.
 	{
-		wg := e.RAM.Weight.Sum()
-		es.NonUMA.RAM = e.RAM.Footprint + e.RAM.KVCache.Sum() + e.RAM.Computation.Sum() + wg
+		wg := e.Load.Weight.Sum()
+		es.NonUMA.RAM = cudaFootprint + e.Load.Footprint + e.Load.KVCache.Sum() + e.Load.Computation.Sum() + wg - e.Load.Computation.Compute
 		if !e.NoMMap && (mmap || e.FullOffload) {
 			es.NonUMA.RAM -= wg
 		}
-		es.NonUMA.VRAM = e.VRAM.Footprint + e.VRAM.Weight.Sum() + e.VRAM.KVCache.Sum() + e.VRAM.Computation.Sum()
+		es.NonUMA.VRAM = e.Offload.Footprint + e.Offload.Weight.Sum() + e.Offload.KVCache.Sum() + e.Offload.Computation.Sum()
 	}
 
 	return es

@@ -109,22 +109,43 @@ spew.Dump(f.Tokenizer())
 
 ### Estimate usage in [llama.cpp](https://github.com/ggerganov/llama.cpp)
 
+> The evaluation result is close to those run with `llama-cli`([examples/main/main.cpp](https://github.com/ggerganov/llama.cpp/blob/master/examples/main/main.cpp)).
+
 ```go
-spew.Dump(f.EstimateLLaMACppUsage())
+es := f.EstimateLLaMACppUsage()
+spew.Dump(es)
+
+// Since the estimated result is detail and lack of context,
+// you can summarize the result as below.
+s := es.Summarize(true /* load via mmap */)
+spew.Dump(s)
 
 ```
 
 #### Estimate with larger prompt
 
 ```go
-spew.Dump(f.EstimateLLaMACppUsage(WithContextSize(4096) /* 4K */))
+es := f.EstimateLLaMACppUsage(WithContextSize(4096) /* Use 4k context */))
+spew.Dump(es)
+
+// Since the estimated result is detail and lack of context,
+// you can summarize the result as below.
+s := es.Summarize(true /* load via mmap */)
+spew.Dump(s)
 
 ```
 
 #### Estimate with specific offload layers
 
 ```go
-spew.Dump(f.EstimateLLaMACppUsage(WithOffloadLayers(10)))
+es := f.EstimateLLaMACppUsage(WithOffloadLayers(10) /* Offload last 10 layers to GPU */))
+spew.Dump(es)
+
+// Since the estimated result is detail and lack of context,
+// you can summarize the result as below.
+s := es.Summarize(true /* load via mmap */)
+spew.Dump(s)
+
 ```
 
 ## License

@@ -2,6 +2,8 @@ package gguf_parser
 
 // GGUFArchitectureMetadata represents the architecture metadata of a GGUF file.
 type GGUFArchitectureMetadata struct {
+	/* Basic */
+
 	// Architecture describes what architecture this model implements.
 	//
 	// All lowercase ASCII, with only [a-z0-9]+ characters allowed.
@@ -74,6 +76,17 @@ type GGUFArchitectureMetadata struct {
 	//
 	// VocabularyLength is the same as the tokenizer's token size.
 	VocabularyLength uint64 `json:"vocabularyLength"`
+
+	/* Appendix */
+
+	// EmbeddingHeadCount is the number of heads in the embedding layer.
+	EmbeddingHeadCount uint64 `json:"embeddingHeadCount,omitempty"`
+	// EmbeddingKeyGQA is the number of key GQA in the embedding layer.
+	EmbeddingKeyGQA uint64 `json:"embeddingKeyGQA,omitempty"`
+	// EmbeddingValueGQA is the number of value GQA in the embedding layer.
+	EmbeddingValueGQA uint64 `json:"embeddingValueGQA,omitempty"`
+	// EmbeddingGGQA is the GQA of the embedding layer.
+	EmbeddingGQA uint64 `json:"embeddingGQA,omitempty"`
 }
 
 // Architecture returns the architecture metadata of the GGUF file.
@@ -246,6 +259,13 @@ func (gf *GGUFFile) Architecture() (ga GGUFArchitectureMetadata) {
 		ga.VocabularyLength = ValueNumeric[uint64](v)
 	} else if v, ok := m[tokenizerGGMLTokensKey]; ok {
 		ga.VocabularyLength = v.ValueArray().Len
+	}
+
+	if ga.AttentionHeadCount > 0 {
+		ga.EmbeddingHeadCount = ga.EmbeddingLength / ga.AttentionHeadCount
+		ga.EmbeddingKeyGQA = uint64(ga.AttentionKeyLength) * ga.AttentionHeadCountKV
+		ga.EmbeddingValueGQA = uint64(ga.AttentionValueLength) * ga.AttentionHeadCountKV
+		ga.EmbeddingGQA = ga.EmbeddingValueGQA
 	}
 
 	return ga
