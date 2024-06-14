@@ -79,8 +79,6 @@ type GGUFArchitectureMetadata struct {
 
 	/* Appendix */
 
-	// EmbeddingHeadCount is the number of heads in the embedding layer.
-	EmbeddingHeadCount uint64 `json:"embeddingHeadCount,omitempty"`
 	// EmbeddingKeyGQA is the number of key GQA in the embedding layer.
 	EmbeddingKeyGQA uint64 `json:"embeddingKeyGQA,omitempty"`
 	// EmbeddingValueGQA is the number of value GQA in the embedding layer.
@@ -261,10 +259,15 @@ func (gf *GGUFFile) Architecture() (ga GGUFArchitectureMetadata) {
 		ga.VocabularyLength = v.ValueArray().Len
 	}
 
-	if ga.AttentionHeadCount > 0 {
-		ga.EmbeddingHeadCount = ga.EmbeddingLength / ga.AttentionHeadCount
-		ga.EmbeddingKeyGQA = uint64(ga.AttentionKeyLength) * ga.AttentionHeadCountKV
-		ga.EmbeddingValueGQA = uint64(ga.AttentionValueLength) * ga.AttentionHeadCountKV
+	{
+		if ga.AttentionHeadCount > 0 {
+			ga.EmbeddingKeyGQA = uint64(ga.AttentionKeyLength) * ga.AttentionHeadCountKV
+			ga.EmbeddingValueGQA = uint64(ga.AttentionValueLength) * ga.AttentionHeadCountKV
+		}
+		if ga.Architecture == "mamba" {
+			ga.EmbeddingKeyGQA = uint64((ga.SSMConvolutionKernel - 1) * ga.SSMInnerSize)
+			ga.EmbeddingValueGQA = uint64(ga.SSMStateSize * ga.SSMInnerSize)
+		}
 		ga.EmbeddingGQA = ga.EmbeddingValueGQA
 	}
 

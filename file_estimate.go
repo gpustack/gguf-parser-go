@@ -11,12 +11,16 @@ import (
 type (
 	// LLaMACppUsageEstimate represents the estimated result of loading the GGUF file in llama.cpp.
 	LLaMACppUsageEstimate struct {
+		// Architecture describes what architecture this model implements.
+		Architecture string `json:"architecture"`
 		// FullOffload is the flag to indicate whether the layers are fully offloaded,
 		// false for partial offloaded or zero offloaded.
 		FullOffload bool `json:"fullOffload"`
 		// NoMMap is the flag to indicate whether the file must be loaded without mmap,
 		// true for total loaded.
 		NoMMap bool `json:"noMMap"`
+		// ContextSize is the size of the context.
+		ContextSize uint64 `json:"contextSize"`
 		// Load is the memory usage for running the GGUF file in RAM.
 		Load LLaMACppMemoryUsage `json:"load"`
 		// Offload is the memory usage for loading the GGUF file in VRAM.
@@ -72,52 +76,94 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 	for _, opt := range opts {
 		opt(&o)
 	}
-
-	a, t := gf.Architecture(), gf.Tokenizer()
-
-	nContext := a.MaximumContextLength
-	if o.ContextSize != nil {
-		nContext = uint64(*o.ContextSize)
+	if o.CacheKeyType == nil {
+		o.CacheKeyType = ptr.To(GGMLTypeF16)
+	}
+	if o.CacheValueType == nil {
+		o.CacheValueType = ptr.To(GGMLTypeF16)
 	}
 
+	a, t := gf.Architecture(), gf.Tokenizer()
+	e.Architecture = a.Architecture
+
+	// Init hyperparameters,
+	// https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L6957-L7000.
 	var (
-		nLoadLayers    = a.BlockCount
-		nOffloadLayers uint64
-		nBatch         = min(nContext, uint64(ptr.Deref(o.BatchSize, 512)))
-		nParallel      = uint64(ptr.Deref(o.ParallelSize, 1))
+		nContext  uint64
+		nTokens   uint64
+		nBatch    uint64
+		nOutputs  uint64
+		nParallel uint64
+		nKV       uint64
+	)
+	{
+		nContext = a.MaximumContextLength
+		if o.ContextSize != nil {
+			nContext = uint64(*o.ContextSize)
+		}
+		// Correct token size,
+		// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L12221-L12224.
+		nTokens = min(nContext, uint64(ptr.Deref(o.BatchSize, 512)))
+		nBatch = nTokens
+		nOutputs = nTokens
+		nParallel = uint64(ptr.Deref(o.ParallelSize, 1))
+		nKV = nContext
+
+		// For mamba,
+		// see https://github.com/ggerganov/llama.cpp/blob/7672adeec7a79ea271058c63106c142ba84f951a/llama.cpp#L16122-L16129.
+		if a.Architecture == "mamba" {
+			nKV = nParallel
+			o.CacheKeyType = ptr.To(GGMLTypeF32)
+			o.CacheValueType = ptr.To(GGMLTypeF32)
+		}
+
+		e.ContextSize = nContext
+	}
+
+	// Full offload: isOffloadOutputLayer && nLoadLayers == 0.
+	// Partial offload: nLoadLayers > 0 && nOffloadLayers > 0.
+	// Zero offload: nOffloadLayers == 0.
+	var (
+		nLoadLayers          = a.BlockCount
+		nOffloadLayers       uint64
+		isOffloadOutputLayer bool
 	)
 	{
 		if v := o.OffloadLayers; v == nil {
 			o.OffloadLayers = ptr.To(a.BlockCount)
-			nOffloadLayers = nLoadLayers
+			nOffloadLayers = a.BlockCount
 		} else if *v > 0 {
 			nOffloadLayers = *v
-			if nOffloadLayers > nLoadLayers {
-				nOffloadLayers = nLoadLayers
+			if nOffloadLayers >= a.BlockCount+1 {
+				isOffloadOutputLayer = true
+			}
+			if nOffloadLayers > a.BlockCount {
+				nOffloadLayers = a.BlockCount
 			}
 		}
 		nLoadLayers -= nOffloadLayers
+
+		e.FullOffload = isOffloadOutputLayer && nLoadLayers == 0
 	}
-	e.FullOffload = a.BlockCount == nOffloadLayers
 
 	// Footprint.
 	{
 		// Bootstrap.
-		e.Load.Footprint = GGUFBytesScalar(10 * 1024 * 1024)
-		e.Load.Footprint += gf.Size - gf.ModelSize
+		e.Load.Footprint = GGUFBytesScalar(5*1024*1024) /* model load */ + (gf.Size - gf.ModelSize) /* metadata */
 
-		// Tokens.
+		// Tokens,
+		// https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L6380-L6384.
 		fp := t.TokensLength * (4 /* token type */ + 4 /* token score*/)
 		if t.Model == "gpt2" {
 			fp += t.MergesLength * (48 /* key type */ + 56 /* value type */)
 		}
 		fp += t.TokensLength * (32 /* id to token vector */ + (24 + 32) /* token to id map*/)
+		e.Load.Footprint += GGUFBytesScalar(fp)
 
 		// Output buffer,
 		// see https://github.com/ggerganov/llama.cpp/blob/7672adeec7a79ea271058c63106c142ba84f951a/llama.cpp#L11940-L12003.
 		ob := 4 /* float32 size */ * (a.VocabularyLength + a.EmbeddingLength) * nParallel
-
-		e.Load.Footprint += GGUFBytesScalar(fp + ob)
+		e.Load.Footprint += GGUFBytesScalar(ob)
 	}
 
 	ls := gf.Layers()
@@ -146,8 +192,12 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 		// IO,
 		// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L4930-L5002.
 		e.Load.Weight.Input = GGUFBytesScalar(ipLs.Bytes())
-		e.Load.Weight.Output = GGUFBytesScalar(opLs.Bytes())
-		if nOffloadLayers == a.BlockCount {
+		if _, ok := opLs.Get("output.weight"); ok {
+			e.Load.Weight.Output = GGUFBytesScalar(opLs.Bytes())
+		} else {
+			e.Load.Weight.Output = GGUFBytesScalar(opLs.Bytes() + ioLs.Bytes() /* duplicate the input layer */)
+		}
+		if isOffloadOutputLayer && nLoadLayers == 0 { // Full offloaded.
 			// Transfer the output weight to VRAM when all layers are offloaded.
 			e.Offload.Weight.Output = e.Load.Weight.Output
 			e.Load.Weight.Output = 0
@@ -157,28 +207,8 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 	// KV cache,
 	// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L2479-L2501.
 	{
-		kt, vt := GGMLTypeF16, GGMLTypeF16
-		nKV := nContext
-		if o.CacheKeyType != nil {
-			kt = *o.CacheKeyType
-		}
-		if o.CacheValueType != nil {
-			vt = *o.CacheValueType
-		}
-		if a.Architecture == "mamba" {
-			// See https://github.com/ggerganov/llama.cpp/blob/7672adeec7a79ea271058c63106c142ba84f951a/llama.cpp#L16122-L16129.
-			kt, vt = GGMLTypeF32, GGMLTypeF32
-			nKV = nParallel
-		}
-
-		embedKeyGQA, embedValGQA := a.EmbeddingKeyGQA, a.EmbeddingValueGQA
-		if a.SSMConvolutionKernel > 0 {
-			embedKeyGQA += uint64(a.SSMConvolutionKernel - 1*a.SSMInnerSize)
-			embedValGQA += uint64(a.SSMStateSize * a.SSMInnerSize)
-		}
-
-		krs := kt.RowSizeOf([]uint64{embedKeyGQA * nKV})
-		vrs := vt.RowSizeOf([]uint64{embedValGQA * nKV})
+		krs := o.CacheKeyType.RowSizeOf([]uint64{a.EmbeddingKeyGQA * nKV})
+		vrs := o.CacheValueType.RowSizeOf([]uint64{a.EmbeddingValueGQA * nKV})
 
 		e.Load.KVCache.Key = GGUFBytesScalar(krs * nLoadLayers)
 		e.Load.KVCache.Value = GGUFBytesScalar(vrs * nLoadLayers)
@@ -188,64 +218,90 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 
 	// Computation.
 	{
+		// Bootstrap, compute metadata,
+		// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L16135-L16136.
+		cm := GGMLTensorOverhead()*GGMLComputationGraphNodesMaximum +
+			GGMLComputationGraphOverhead(GGMLComputationGraphNodesMaximum, false)
+		e.Load.Computation.Footprint = GGUFBytesScalar(cm)
+
+		// Scheduler overhead,
+		// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L16149.
+		e.Load.Computation.Footprint += GGUFBytesScalar(4 * 1024 * 1024)
+
 		// GGML context,
 		// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L5015-L5036.
 		gc := 2 /* buffer count */ * GGMLTensorOverhead() * (uint64(len(gf.TensorInfos)) + 1 + a.BlockCount*3)
-
-		// Graph overhead.
-		oh := GGMLTensorOverhead()*GGMLComputationGraphNodesMaximum +
-			GGMLComputationGraphOverhead(GGMLComputationGraphNodesMaximum, false)
-
-		e.Load.Computation.Footprint = GGUFBytesScalar(gc + oh)
+		e.Load.Computation.Footprint += GGUFBytesScalar(gc)
 
 		// Tensor usage,
 		// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L16149.
 		//
-		// Firstly, get the usage of input layer.
+		// First, get the usage of input layer,
+		// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L2279-L2290.
 		var (
 			inpTokens = GGMLTypeI32.RowSizeOf([]uint64{nBatch})                    // I32 [n_batch]
 			inpEmbd   = GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingLength, nBatch}) // F32 [n_embd, n_batch]
-			inpPos    = GGMLTypeI32.RowSizeOf([]uint64{nContext})                  // I32 [n_tokens]
-			inpOutIds = GGMLTypeI32.RowSizeOf([]uint64{nContext})                  // I32 [n_output],
-			inpKQMask = GGMLTypeF32.RowSizeOf([]uint64{nContext, nBatch})          // F32 [n_kv, n_batch]
+			inpPos    = GGMLTypeI32.RowSizeOf([]uint64{nBatch})                    // I32 [n_batch]
+			inpOutIds = GGMLTypeI32.RowSizeOf([]uint64{nOutputs})                  // I32 [n_outputs],
+			inpKQMask = GGMLTypeF32.RowSizeOf([]uint64{nKV, nBatch})               // F32 [n_kv, n_batch]
+			inpSMask  = GGMLTypeF32.RowSizeOf([]uint64{1, nKV})                    // F32 [1, n_kv]
+			inpSSeq   = GGMLTypeI32.RowSizeOf([]uint64{nKV, nBatch})               // I32 [n_kv, n_batch]
 		)
-		e.Load.Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + inpPos + inpKQMask + inpOutIds)
-		e.Offload.Computation.Input = GGUFBytesScalar(inpEmbd + inpPos + inpKQMask + inpOutIds)
+		if a.Architecture == "mamba" {
+			e.Load.Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + inpSMask + inpSSeq + inpOutIds)
+			e.Offload.Computation.Input = GGUFBytesScalar(inpEmbd + inpSMask + inpSSeq + inpOutIds)
+		} else {
+			e.Load.Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + inpPos + inpKQMask + inpOutIds)
+			e.Offload.Computation.Input = GGUFBytesScalar(inpEmbd + inpPos + inpKQMask + inpOutIds)
+		}
 		// Since the steps between transformer layers are serial,
 		// the allocated memory can be reused for the next layer.
 		// So, we only consider the usage of the largest layer,
 		// which is the last layer by default.
-		{
+		if a.Architecture == "mamba" {
+			convInc := GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingKeyGQA, nKV}) // F32 [n_embd_key_gqa, n_kv] reshape
+			for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.(attn_norm|ssm_in|ssm_conv1d)\.weight`)) {
+				if !strings.HasSuffix(l.Name, ".ssm_conv1d.weight") {
+					rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
+					convInc += rs
+					continue
+				}
+				// https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L10379.
+				rs := GGMLTypeF32.RowSizeOf([]uint64{uint64(a.SSMInnerSize)*nTokens + uint64(a.SSMConvolutionKernel)*uint64(a.SSMInnerSize)*nKV})
+				convInc += rs
+			}
+			ssmInc := uint64(0)
+			for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.ssm_(dt\.weight|a)`)) {
+				if !strings.HasSuffix(l.Name, ".ssm_a") {
+					rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
+					ssmInc += rs
+					continue
+				}
+				// https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L10413.
+				rs := GGMLTypeF32.RowSizeOf([]uint64{uint64(a.SSMInnerSize)*nTokens + uint64(a.SSMStateSize)*uint64(a.SSMInnerSize)*nKV})
+				ssmInc += rs
+			}
+			e.Offload.Computation.Compute = GGUFBytesScalar(convInc + ssmInc)
+		} else {
 			kvcInc := uint64(e.Load.KVCache.Key + e.Offload.KVCache.Key)
 			for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.attn_(norm|q|qkv)\.weight`)) {
-				rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nBatch})
+				rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
 				kvcInc += rs
 				switch {
 				default:
 					continue
 				case strings.HasSuffix(l.Name, ".attn_q.weight"):
 				case strings.HasSuffix(l.Name, ".attn_qkv.weight"):
-					rs = GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[0], nBatch})
+					rs = GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[0], nTokens})
 				}
 				kvcInc += rs * 2 // for RoPE
 			}
 			ffnInc := uint64(0)
 			for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.(attn_norm|ffn_norm|ffn_gate|ffn_up)\.weight`)) {
-				rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nBatch})
+				rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
 				ffnInc += rs
 			}
 			e.Offload.Computation.Compute = GGUFBytesScalar(max(kvcInc, ffnInc))
-			switch {
-			case nLoadLayers == 0: // Zero offloaded.
-				e.Load.Computation.Compute = GGUFBytesScalar(max(kvcInc, ffnInc))
-			case nLoadLayers > 0 && nOffloadLayers > 0: // Partial offloaded.
-				ffnInc = 0
-				for _, l := range tfLs[nLoadLayers-1].Search(regexp.MustCompile(`.*\.\d+\.ffn_(norm|gate|up)\.weight`)) {
-					rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nBatch})
-					ffnInc += rs
-				}
-				e.Load.Computation.Compute = GGUFBytesScalar(max(kvcInc, ffnInc))
-			}
 			// Special case: we cannot use mmap for splitting expert weights in MoE.
 			if a.ExpertCount > 0 {
 				e.NoMMap = len(tfLs[0].Search(regexp.MustCompile(`.*\.\d+\.ffn_gate_exps\.weight`))) == 0
@@ -254,10 +310,17 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 		// Finally, get the usage of output layer.
 		{
 			outInc := inpEmbd
+			if a.Architecture == "mamba" {
+				outInc += inpSMask + inpSSeq
+			}
 			if l, ok := opLs.Get("output.weight"); ok {
-				rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nBatch})
+				rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
+				outInc += rs
+			} else if l, ok := ipLs.Get("token_embd.weight"); ok {
+				rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
 				outInc += rs
 			}
+			outInc += uint64(e.Load.Weight.Output)
 			e.Offload.Computation.Output = GGUFBytesScalar(outInc)
 		}
 	}
@@ -281,9 +344,11 @@ type LLaMACppUsageEstimateSummery struct {
 func (e LLaMACppUsageEstimate) Summarize(mmap bool) (es LLaMACppUsageEstimateSummery) {
 	// UMA.
 	{
-		kv := e.Load.KVCache.Sum() + e.Offload.KVCache.Sum()
+		fp := e.Load.Footprint + e.Offload.Footprint
 		wg := e.Load.Weight.Sum() + e.Offload.Weight.Sum()
-		es.UMA = e.Load.Footprint + max(kv, e.Load.Computation.Sum()) + wg
+		kv := e.Load.KVCache.Sum() + e.Offload.KVCache.Sum()
+		cp := e.Load.Computation.Sum()
+		es.UMA = fp + wg + kv + cp
 		if !e.NoMMap && mmap {
 			es.UMA -= wg
 		}
@@ -291,7 +356,7 @@ func (e LLaMACppUsageEstimate) Summarize(mmap bool) (es LLaMACppUsageEstimateSum
 
 	// TODO(thxCode): complete more cases,
 	//  and support optional parameters for the following constants.
-
+	//
 	// Footprint,
 	// see https://github.com/ggerganov/llama.cpp/blob/f578b86b2123d0f92afbaa98a031df4d4464e582/llama.cpp#L2454-L2486.
 	const (
@@ -303,12 +368,21 @@ func (e LLaMACppUsageEstimate) Summarize(mmap bool) (es LLaMACppUsageEstimateSum
 
 	// NonUMA.
 	{
+		// RAM.
+		fp := cudaFootprint + e.Load.Footprint
 		wg := e.Load.Weight.Sum()
-		es.NonUMA.RAM = cudaFootprint + e.Load.Footprint + e.Load.KVCache.Sum() + e.Load.Computation.Sum() + wg - e.Load.Computation.Compute
+		kv := e.Load.KVCache.Sum()
+		cp := e.Load.Computation.Sum()
+		es.NonUMA.RAM = fp + wg + kv + cp
 		if !e.NoMMap && (mmap || e.FullOffload) {
 			es.NonUMA.RAM -= wg
 		}
-		es.NonUMA.VRAM = e.Offload.Footprint + e.Offload.Weight.Sum() + e.Offload.KVCache.Sum() + e.Offload.Computation.Sum()
+		// VRAM.
+		fp = e.Offload.Footprint
+		wg = e.Offload.Weight.Sum()
+		kv = e.Offload.KVCache.Sum()
+		cp = e.Offload.Computation.Sum()
+		es.NonUMA.VRAM = fp + wg + kv + cp
 	}
 
 	return es

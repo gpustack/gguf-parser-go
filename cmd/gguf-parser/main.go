@@ -268,22 +268,22 @@ func main() {
 
 	if !skipEstimate {
 		es := e.Summarize(!noMMap)
-		if ctxSize <= 0 {
-			if a.MaximumContextLength == 0 {
-				a = gf.Architecture()
-			}
-			ctxSize = int(a.MaximumContextLength)
-		}
 		tprintf(
 			"ESTIMATE",
-			[]string{"Context Size", "Mem. Arch", "Usage"},
+			[]string{"Arch", "Context Size", "Full Offload", "MMap Support", "Mem. Arch", "Usage"},
 			[]string{
-				sprintf(ctxSize),
+				sprintf(e.Architecture),
+				sprintf(e.ContextSize),
+				sprintf(e.FullOffload),
+				sprintf(!e.NoMMap),
 				"UMA",
 				sprintf(es.UMA),
 			},
 			[]string{
-				sprintf(ctxSize),
+				sprintf(e.Architecture),
+				sprintf(e.ContextSize),
+				sprintf(e.FullOffload),
+				sprintf(!e.NoMMap),
 				"NonUMA",
 				fmt.Sprintf("%s (RAM) + %s (VRAM)", es.NonUMA.RAM, es.NonUMA.VRAM),
 			})
@@ -330,7 +330,7 @@ func tprintf(title string, header []string, body ...[]string) {
 	tb.SetAlignment(tablewriter.ALIGN_CENTER)
 	tb.SetHeaderLine(true)
 	tb.SetRowLine(true)
-	tb.SetAutoMergeCellsByColumnIndex([]int{0, 1, 2, 3})
+	tb.SetAutoMergeCellsByColumnIndex([]int{0, 1, 2, 3, 4})
 	tb.Append(append([]string{title}, header...))
 	for i := range body {
 		tb.Append(append([]string{title}, body[i]...))
