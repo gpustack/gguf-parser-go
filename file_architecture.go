@@ -44,11 +44,11 @@ type GGUFArchitectureMetadata struct {
 	// AttentionLayerNormRMSEpsilon is the epsilon value used in the RMSNorm(Root Mean Square Layer Normalization),
 	// which is a simplification of the original LayerNorm.
 	AttentionLayerNormRMSEpsilon float32 `json:"attentionLayerNormRMSEpsilon,omitempty"`
-	// AttentionKeyLength is the size of a key head.
+	// AttentionKeyLength(n_embd_head_k) is the size of a key head.
 	//
 	// Defaults to `EmbeddingLength / AttentionHeadCount`.
 	AttentionKeyLength uint32 `json:"attentionKeyLength"`
-	// AttentionValueLength is the size of a value head.
+	// AttentionValueLength(n_embd_head_v) is the size of a value head.
 	//
 	// Defaults to `EmbeddingLength / AttentionHeadCount`.
 	AttentionValueLength uint32 `json:"attentionValueLength"`

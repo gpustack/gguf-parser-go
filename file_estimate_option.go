@@ -7,11 +7,12 @@ import (
 type (
 	_LLaMACppUsageEstimateOptions struct {
 		ContextSize    *int32
-		ParallelSize   *int32
 		BatchSize      *int32
+		ParallelSize   *int32
 		CacheKeyType   *GGMLType
 		CacheValueType *GGMLType
 		OffloadLayers  *uint64
+		FlashAttention bool
 	}
 	LLaMACppUsageEstimateOption func(*_LLaMACppUsageEstimateOptions)
 )
@@ -26,16 +27,6 @@ func WithContextSize(size int32) LLaMACppUsageEstimateOption {
 	}
 }
 
-// WithParallelSize sets the (decoding sequences) parallel size for the estimate.
-func WithParallelSize(size int32) LLaMACppUsageEstimateOption {
-	return func(o *_LLaMACppUsageEstimateOptions) {
-		if size <= 0 {
-			return
-		}
-		o.ParallelSize = &size
-	}
-}
-
 // WithBatchSize sets the physical batch size for the estimate.
 func WithBatchSize(size int32) LLaMACppUsageEstimateOption {
 	return func(o *_LLaMACppUsageEstimateOptions) {
@@ -43,6 +34,16 @@ func WithBatchSize(size int32) LLaMACppUsageEstimateOption {
 			return
 		}
 		o.BatchSize = &size
+	}
+}
+
+// WithParallelSize sets the (decoding sequences) parallel size for the estimate.
+func WithParallelSize(size int32) LLaMACppUsageEstimateOption {
+	return func(o *_LLaMACppUsageEstimateOptions) {
+		if size <= 0 {
+			return
+		}
+		o.ParallelSize = &size
 	}
 }
 
@@ -78,5 +79,12 @@ func WithCacheValueType(t GGMLType) LLaMACppUsageEstimateOption {
 func WithOffloadLayers(layers uint64) LLaMACppUsageEstimateOption {
 	return func(o *_LLaMACppUsageEstimateOptions) {
 		o.OffloadLayers = &layers
+	}
+}
+
+// WithFlashAttention sets the flash attention flag.
+func WithFlashAttention() LLaMACppUsageEstimateOption {
+	return func(o *_LLaMACppUsageEstimateOptions) {
+		o.FlashAttention = true
 	}
 }

@@ -31,12 +31,13 @@ func main() {
 		skipProxy bool
 		skipTLS   bool
 		// estimate options
-		ctxSize       = -1
-		kvType        = "f16"
-		offloadLayers = -1
-		batchSize     = 512
-		parallel      = 1
-		noMMap        bool
+		ctxSize        = -1
+		batchSize      = 512
+		parallelSize   = 1
+		kvType         = "f16"
+		offloadLayers  = -1
+		flashAttention bool
+		noMMap         bool
 		// output options
 		version          bool
 		skipModel        bool
@@ -65,11 +66,13 @@ func main() {
 	fs.BoolVar(&skipProxy, "skip-proxy", skipProxy, "Skip using proxy when reading from a remote URL")
 	fs.BoolVar(&skipTLS, "skip-tls", skipTLS, "Skip TLS verification when reading from a remote URL")
 	fs.IntVar(&ctxSize, "ctx-size", ctxSize, "Context size to estimate memory usage, default is equal to the model's maximum context size")
-	fs.StringVar(&kvType, "kv-type", kvType, "Key-Value cache type, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1]")
-	fs.IntVar(&offloadLayers, "offload-layers", offloadLayers, "Specify how many layers to offload, default is fully offloading")
 	fs.IntVar(&batchSize, "batch-size", batchSize, "Physical maximum batch size")
-	fs.IntVar(&parallel, "parallel", parallel, "Number of parallel sequences to decode")
-	fs.BoolVar(&noMMap, "no-mmap", noMMap, "Do not use memory-mapping, which influences the estimate result")
+	fs.IntVar(&parallelSize, "parallel", parallelSize, "Number of parallel sequences to decode")
+	fs.StringVar(&kvType, "kv-type", kvType, "Key-Value cache type, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1], "+
+		"using quantization type means enabling Flash Attention as well")
+	fs.IntVar(&offloadLayers, "offload-layers", offloadLayers, "Specify how many layers to offload, default is fully offloading")
+	fs.BoolVar(&flashAttention, "flash-attention", flashAttention, "Enable Flash Attention to reduce the memory usage, which influences the estimate result")
+	fs.BoolVar(&noMMap, "no-mmap", noMMap, "Disable using memory-mapped model(file) loading, which influences the estimate result")
 	fs.BoolVar(&version, "version", version, "Show version")
 	fs.BoolVar(&skipModel, "skip-model", skipModel, "Skip model metadata")
 	fs.BoolVar(&skipArchitecture, "skip-architecture", skipArchitecture, "Skip architecture metadata")
@@ -110,6 +113,12 @@ func main() {
 	if ctxSize > 0 {
 		eopts = append(eopts, WithContextSize(int32(ctxSize)))
 	}
+	if batchSize > 0 {
+		eopts = append(eopts, WithBatchSize(int32(batchSize)))
+	}
+	if parallelSize > 0 {
+		eopts = append(eopts, WithParallelSize(int32(parallelSize)))
+	}
 	if kvType != "" {
 		kv := GGMLTypeF16
 		switch kvType {
@@ -135,11 +144,8 @@ func main() {
 	if offloadLayers >= 0 {
 		eopts = append(eopts, WithOffloadLayers(uint64(offloadLayers)))
 	}
-	if batchSize > 0 {
-		eopts = append(eopts, WithBatchSize(int32(batchSize)))
-	}
-	if parallel > 0 {
-		eopts = append(eopts, WithParallelSize(int32(parallel)))
+	if flashAttention {
+		eopts = append(eopts, WithFlashAttention())
 	}
 
 	// Parse GGUF file.
@@ -214,7 +220,7 @@ func main() {
 	}
 
 	if !skipModel {
-		tprintf(
+		tprint(
 			"MODEL",
 			[]string{"Name", "Arch", "Quantization Version", "File Type", "Little Endian", "Size", "Parameters", "BPW"},
 			[]string{
@@ -230,12 +236,14 @@ func main() {
 	}
 
 	if !skipArchitecture {
-		tprintf(
+		tprint(
 			"ARCHITECTURE",
-			[]string{"Max Context Len", "Embedding Len", "Layers", "Feed Forward Len", "Expert Cnt", "Vocabulary Len"},
+			[]string{"Max Context Len", "Embedding Len", "Embedding GQA", "Attention Head Cnt", "Layers", "Feed Forward Len", "Expert Cnt", "Vocabulary Len"},
 			[]string{
 				sprintf(a.MaximumContextLength),
 				sprintf(a.EmbeddingLength),
+				sprintf(a.EmbeddingGQA),
+				sprintf(tenary(a.AttentionHeadCountKV == 0 || a.AttentionHeadCountKV == a.AttentionHeadCount, "N/A", a.AttentionHeadCount)),
 				sprintf(a.BlockCount),
 				sprintf(a.FeedForwardLength),
 				sprintf(a.ExpertCount),
@@ -244,13 +252,7 @@ func main() {
 	}
 
 	if !skipTokenizer {
-		sprintTokenID := func(a int64) string {
-			if a < 0 {
-				return "N/A"
-			}
-			return sprintf(a)
-		}
-		tprintf(
+		tprint(
 			"TOKENIZER",
 			[]string{"Model", "Tokens Size", "Tokens Len", "Added Tokens Len", "BOS Token", "EOS Token", "Unknown Token", "Separator Token", "Padding Token"},
 			[]string{
@@ -258,41 +260,46 @@ func main() {
 				sprintf(GGUFBytesScalar(t.TokensSize)),
 				sprintf(t.TokensLength),
 				sprintf(t.AddedTokensLength),
-				sprintTokenID(t.BOSTokenID),
-				sprintTokenID(t.EOSTokenID),
-				sprintTokenID(t.UnknownTokenID),
-				sprintTokenID(t.SeparatorTokenID),
-				sprintTokenID(t.PaddingTokenID),
+				sprintf(tenary(t.BOSTokenID < 0, "N/A", t.BOSTokenID)),
+				sprintf(tenary(t.EOSTokenID < 0, "N/A", t.EOSTokenID)),
+				sprintf(tenary(t.UnknownTokenID < 0, "N/A", t.UnknownTokenID)),
+				sprintf(tenary(t.SeparatorTokenID < 0, "N/A", t.SeparatorTokenID)),
+				sprintf(tenary(t.PaddingTokenID < 0, "N/A", t.PaddingTokenID)),
 			})
 	}
 
 	if !skipEstimate {
 		es := e.Summarize(!noMMap)
-		tprintf(
+		tprint(
 			"ESTIMATE",
-			[]string{"Arch", "Context Size", "Full Offload", "MMap Support", "Mem. Arch", "Usage"},
+			[]string{"Arch", "Context Size", "Full Offload", "Flash Attention", "MMap Support", "Mem. Arch", "Usage"},
 			[]string{
-				sprintf(e.Architecture),
-				sprintf(e.ContextSize),
-				sprintf(e.FullOffload),
-				sprintf(!e.NoMMap),
+				sprintf(es.Architecture),
+				sprintf(es.ContextSize),
+				sprintf(es.FullOffload),
+				sprintf(es.FlashAttention),
+				sprintf(!es.NoMMap),
 				"UMA",
 				sprintf(es.UMA),
 			},
 			[]string{
-				sprintf(e.Architecture),
-				sprintf(e.ContextSize),
-				sprintf(e.FullOffload),
-				sprintf(!e.NoMMap),
+				sprintf(es.Architecture),
+				sprintf(es.ContextSize),
+				sprintf(es.FullOffload),
+				sprintf(es.FlashAttention),
+				sprintf(!es.NoMMap),
 				"NonUMA",
-				fmt.Sprintf("%s (RAM) + %s (VRAM)", es.NonUMA.RAM, es.NonUMA.VRAM),
+				sprintf("%s (RAM) + %s (VRAM)", es.NonUMA.RAM, es.NonUMA.VRAM),
 			})
 	}
 }
 
-func sprintf(a any) string {
-	switch v := a.(type) {
+func sprintf(f any, a ...any) string {
+	switch v := f.(type) {
 	case string:
+		if len(a) != 0 {
+			return fmt.Sprintf(v, a...)
+		}
 		return v
 	case []byte:
 		return string(v)
@@ -319,7 +326,7 @@ func sprintf(a any) string {
 	}
 }
 
-func tprintf(title string, header []string, body ...[]string) {
+func tprint(title string, header []string, body ...[]string) {
 	title = strings.ToUpper(title)
 	for i := range header {
 		header[i] = strings.ToUpper(header[i])
@@ -337,4 +344,11 @@ func tprintf(title string, header []string, body ...[]string) {
 	}
 	tb.Render()
 	fmt.Println()
+}
+
+func tenary(c bool, t, f any) any {
+	if c {
+		return t
+	}
+	return f
 }

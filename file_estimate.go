@@ -13,6 +13,9 @@ type (
 	LLaMACppUsageEstimate struct {
 		// Architecture describes what architecture this model implements.
 		Architecture string `json:"architecture"`
+		// FlashAttention is the flag to indicate whether enable the flash attention,
+		// true for enable.
+		FlashAttention bool `json:"flashAttention"`
 		// FullOffload is the flag to indicate whether the layers are fully offloaded,
 		// false for partial offloaded or zero offloaded.
 		FullOffload bool `json:"fullOffload"`
@@ -85,6 +88,22 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 
 	a, t := gf.Architecture(), gf.Tokenizer()
 	e.Architecture = a.Architecture
+
+	// Flash attention.
+	{
+		// Quantization requires flash attention,
+		// see https://github.com/ggerganov/llama.cpp/blob/172c8256840ffd882ab9992ecedbb587d9b21f15/llama.cpp#L16055-L16058.
+		if *o.CacheValueType > GGMLTypeF16 && !o.FlashAttention {
+			o.FlashAttention = true
+		}
+		// Grok is not compatible with flash attention,
+		// see https://github.com/ggerganov/llama.cpp/blob/172c8256840ffd882ab9992ecedbb587d9b21f15/llama.cpp#L16050-L16053.
+		if a.Architecture == "grok" {
+			o.FlashAttention = false
+		}
+
+		e.FlashAttention = o.FlashAttention
+	}
 
 	// Init hyperparameters,
 	// https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L6957-L7000.
@@ -283,25 +302,44 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 			}
 			e.Offload.Computation.Compute = GGUFBytesScalar(convInc + ssmInc)
 		} else {
-			kvcInc := uint64(e.Load.KVCache.Key + e.Offload.KVCache.Key)
-			for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.attn_(norm|q|qkv)\.weight`)) {
-				rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
-				kvcInc += rs
-				switch {
-				default:
-					continue
-				case strings.HasSuffix(l.Name, ".attn_q.weight"):
-				case strings.HasSuffix(l.Name, ".attn_qkv.weight"):
-					rs = GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[0], nTokens})
+			attnInc := uint64(0)
+			if o.FlashAttention {
+				// https://github.com/ggerganov/llama.cpp/blob/172c8256840ffd882ab9992ecedbb587d9b21f15/llama.cpp#L7387.
+				attnInc = GGMLTypeF16.RowSizeOf([]uint64{nKV, nTokens})
+				for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.attn_(norm|q|qkv)\.weight`)) {
+					if strings.HasSuffix(l.Name, ".attn_norm.weight") {
+						rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
+						attnInc += rs
+						continue
+					}
+					rs := l.Bytes()
+					attnInc += rs
 				}
-				kvcInc += rs * 2 // for RoPE
+				rs := o.CacheKeyType.RowSizeOf([]uint64{uint64(a.AttentionKeyLength), nKV, a.AttentionHeadCountKV})
+				attnInc += rs
+				rs = o.CacheValueType.RowSizeOf([]uint64{uint64(a.AttentionValueLength), nKV, a.AttentionHeadCountKV})
+				attnInc += rs
+			} else {
+				attnInc = uint64(e.Load.KVCache.Key + e.Offload.KVCache.Key)
+				for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.attn_(norm|q|qkv)\.weight`)) {
+					rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
+					attnInc += rs
+					switch {
+					default:
+						continue
+					case strings.HasSuffix(l.Name, ".attn_q.weight"):
+					case strings.HasSuffix(l.Name, ".attn_qkv.weight"):
+						rs = GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[0], nTokens})
+					}
+					attnInc += rs * 2 // for RoPE
+				}
 			}
 			ffnInc := uint64(0)
 			for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.(attn_norm|ffn_norm|ffn_gate|ffn_up)\.weight`)) {
 				rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
 				ffnInc += rs
 			}
-			e.Offload.Computation.Compute = GGUFBytesScalar(max(kvcInc, ffnInc))
+			e.Offload.Computation.Compute = GGUFBytesScalar(max(attnInc, ffnInc))
 			// Special case: we cannot use mmap for splitting expert weights in MoE.
 			if a.ExpertCount > 0 {
 				e.NoMMap = len(tfLs[0].Search(regexp.MustCompile(`.*\.\d+\.ffn_gate_exps\.weight`))) == 0
@@ -330,6 +368,8 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 
 // LLaMACppUsageEstimateSummery represents the summary of the usage for loading the GGUF file in llama.cpp.
 type LLaMACppUsageEstimateSummery struct {
+	/* Basic */
+
 	// UMA represents the usage of Unified Memory Architecture.
 	UMA GGUFBytesScalar `json:"uma"`
 	// NonUMA represents the usage of Non-Unified Memory Architecture.
@@ -339,6 +379,22 @@ type LLaMACppUsageEstimateSummery struct {
 		// VRAM is the memory usage for loading the GGUF file in VRAM.
 		VRAM GGUFBytesScalar `json:"vram"`
 	} `json:"nonUMA"`
+
+	/* Appendix */
+
+	// Architecture describes what architecture this model implements.
+	Architecture string `json:"architecture"`
+	// FlashAttention is the flag to indicate whether enable the flash attention,
+	// true for enable.
+	FlashAttention bool `json:"flashAttention"`
+	// FullOffload is the flag to indicate whether the layers are fully offloaded,
+	// false for partial offloaded or zero offloaded.
+	FullOffload bool `json:"fullOffload"`
+	// NoMMap is the flag to indicate whether the file must be loaded without mmap,
+	// true for total loaded.
+	NoMMap bool `json:"noMMap"`
+	// ContextSize is the size of the context.
+	ContextSize uint64 `json:"contextSize"`
 }
 
 func (e LLaMACppUsageEstimate) Summarize(mmap bool) (es LLaMACppUsageEstimateSummery) {
@@ -384,6 +440,13 @@ func (e LLaMACppUsageEstimate) Summarize(mmap bool) (es LLaMACppUsageEstimateSum
 		cp = e.Offload.Computation.Sum()
 		es.NonUMA.VRAM = fp + wg + kv + cp
 	}
+
+	// Just copy from the original estimate.
+	es.Architecture = e.Architecture
+	es.FlashAttention = e.FlashAttention
+	es.FullOffload = e.FullOffload
+	es.NoMMap = e.NoMMap
+	es.ContextSize = e.ContextSize
 
 	return es
 }
