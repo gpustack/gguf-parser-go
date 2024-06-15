@@ -4,7 +4,6 @@ go 1.22
 
 require (
 	github.com/davecgh/go-spew v1.1.1
-	github.com/dustin/go-humanize v1.0.1
 	github.com/henvic/httpretty v0.1.3
 	github.com/smallnest/ringbuffer v0.0.0-20240423223918-bab516b2000b
 	github.com/stretchr/testify v1.9.0

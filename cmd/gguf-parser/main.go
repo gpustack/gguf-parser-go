@@ -7,6 +7,7 @@ import (
 	"context"
 	"strconv"
 	"strings"
+	"sync"
 	stdjson "encoding/json"
 
 	"github.com/olekukonko/tablewriter"
@@ -22,22 +23,22 @@ func main() {
 	// Parse arguments.
 
 	var (
-		// model
-		path        string
-		url         string
-		repo, model string
+		// model options
+		path       string
+		url        string
+		repo, file string
 		// read options
-		debug     bool
-		skipProxy bool
-		skipTLS   bool
+		debug         bool
+		skipTLSVerify bool
 		// estimate options
-		ctxSize        = -1
-		batchSize      = 512
-		parallelSize   = 1
-		kvType         = "f16"
-		offloadLayers  = -1
-		flashAttention bool
-		noMMap         bool
+		ctxSize           = -1
+		batchSize         = 512
+		parallelSize      = 1
+		kvType            = "f16"
+		flashAttention    bool
+		noMMap            bool
+		offloadLayers     = -1
+		offloadLayersStep uint64
 		// output options
 		version          bool
 		skipModel        bool
@@ -52,34 +53,50 @@ func main() {
 		_, _ = fmt.Fprintf(fs.Output(), "Usage of gguf-parser %v:\n", Version)
 		fs.PrintDefaults()
 	}
-	fs.StringVar(&path, "path", path, "Path to load model, e.g. ~/.cache"+
+	fs.StringVar(&path, "path", path, "Path where the GGUF file to load, e.g. ~/.cache"+
 		"/lm-studio/models/NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF/"+
-		"Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf")
-	fs.StringVar(&url, "url", url, "Url to load model, e.g. "+
+		"Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf.")
+	fs.StringVar(&url, "url", url, "Url where the GGUF file to load, e.g. "+
 		"https://huggingface.co/NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF"+
-		"/resolve/main/Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf")
-	fs.StringVar(&repo, "repo", repo, "Repo of HuggingFace, e.g. "+
-		"NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF")
-	fs.StringVar(&model, "model", model, "Model below the --repo, e.g. "+
-		"Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf")
-	fs.BoolVar(&debug, "debug", debug, "Debug mode")
-	fs.BoolVar(&skipProxy, "skip-proxy", skipProxy, "Skip using proxy when reading from a remote URL")
-	fs.BoolVar(&skipTLS, "skip-tls", skipTLS, "Skip TLS verification when reading from a remote URL")
-	fs.IntVar(&ctxSize, "ctx-size", ctxSize, "Context size to estimate memory usage, default is equal to the model's maximum context size")
-	fs.IntVar(&batchSize, "batch-size", batchSize, "Physical maximum batch size")
-	fs.IntVar(&parallelSize, "parallel", parallelSize, "Number of parallel sequences to decode")
-	fs.StringVar(&kvType, "kv-type", kvType, "Key-Value cache type, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1], "+
-		"using quantization type means enabling Flash Attention as well")
-	fs.IntVar(&offloadLayers, "offload-layers", offloadLayers, "Specify how many layers to offload, default is fully offloading")
-	fs.BoolVar(&flashAttention, "flash-attention", flashAttention, "Enable Flash Attention to reduce the memory usage, which influences the estimate result")
-	fs.BoolVar(&noMMap, "no-mmap", noMMap, "Disable using memory-mapped model(file) loading, which influences the estimate result")
-	fs.BoolVar(&version, "version", version, "Show version")
-	fs.BoolVar(&skipModel, "skip-model", skipModel, "Skip model metadata")
-	fs.BoolVar(&skipArchitecture, "skip-architecture", skipArchitecture, "Skip architecture metadata")
-	fs.BoolVar(&skipTokenizer, "skip-tokenizer", skipTokenizer, "Skip tokenizer metadata")
-	fs.BoolVar(&skipEstimate, "skip-estimate", skipEstimate, "Skip estimate")
-	fs.BoolVar(&json, "json", json, "Output as JSON")
-	fs.BoolVar(&jsonPretty, "json-pretty", jsonPretty, "Output as pretty JSON")
+		"/resolve/main/Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf. "+
+		"Note that gguf-parser does not need to download the entire GGUF file.")
+	fs.StringVar(&repo, "repo", repo, "Repository of HuggingFace which the GGUF file store, e.g. "+
+		"NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF, works with --file.")
+	fs.StringVar(&file, "file", file, "Model file below the --repo, e.g. "+
+		"Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf.")
+	fs.BoolVar(&debug, "debug", debug, "Enable debugging, verbosity.")
+	fs.BoolVar(&skipTLSVerify, "skip-tls-verify", skipTLSVerify, "Skip TLS verification, works with --url.")
+	fs.IntVar(&ctxSize, "ctx-size", ctxSize, "Specify the size of prompt context, "+
+		"which is used to estimate the usage, "+
+		"default is equal to the model's maximum context size.")
+	fs.IntVar(&batchSize, "batch-size", batchSize, "Specify the physical maximum batch size, "+
+		"which is used to estimate the usage, "+
+		"default is 512.")
+	fs.IntVar(&parallelSize, "parallel-size", parallelSize, "Specify the number of parallel sequences to decode, "+
+		"which is used to estimate the usage, "+
+		"default is 1.")
+	fs.StringVar(&kvType, "kv-type", kvType, "Specify the type of Key-Value cache, "+
+		"which is used to estimate the usage, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1], "+
+		"default is f16. "+
+		"Use quantization type means enabling --flash-attention as well.")
+	fs.BoolVar(&flashAttention, "flash-attention", flashAttention, "Specify enabling Flash Attention, "+
+		"which is used to estimate the usage. "+
+		"Flash Attention can reduce the usage of RAM/VRAM.")
+	fs.BoolVar(&noMMap, "no-mmap", noMMap, "Specify disabling Memory-Mapped using, "+
+		"which is used to estimate the usage. "+
+		"Memory-Mapped can avoid loading the entire model weights into RAM.")
+	fs.IntVar(&offloadLayers, "offload-layers", offloadLayers, "Specify how many layers to offload, "+
+		"which is used to estimate the usage, "+
+		"default is full offloaded.")
+	fs.Uint64Var(&offloadLayersStep, "offload-layers-step", offloadLayersStep, "Specify the step of layers to offload, "+
+		"works with --offload-layers.")
+	fs.BoolVar(&version, "version", version, "Show gguf-parser version.")
+	fs.BoolVar(&skipModel, "skip-model", skipModel, "Skip to display model metadata.")
+	fs.BoolVar(&skipArchitecture, "skip-architecture", skipArchitecture, "Skip to display architecture metadata.")
+	fs.BoolVar(&skipTokenizer, "skip-tokenizer", skipTokenizer, "Skip to display tokenizer metadata")
+	fs.BoolVar(&skipEstimate, "skip-estimate", skipEstimate, "Skip to estimate.")
+	fs.BoolVar(&json, "json", json, "Output as JSON,")
+	fs.BoolVar(&jsonPretty, "json-pretty", jsonPretty, "Output as pretty JSON.")
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
@@ -99,10 +116,7 @@ func main() {
 	if debug {
 		ropts = append(ropts, UseDebug())
 	}
-	if skipProxy {
-		ropts = append(ropts, SkipProxy())
-	}
-	if skipTLS {
+	if skipTLSVerify {
 		ropts = append(ropts, SkipTLSVerification())
 	}
 
@@ -141,9 +155,6 @@ func main() {
 		}
 		eopts = append(eopts, WithCacheKeyType(kv), WithCacheValueType(kv))
 	}
-	if offloadLayers >= 0 {
-		eopts = append(eopts, WithOffloadLayers(uint64(offloadLayers)))
-	}
 	if flashAttention {
 		eopts = append(eopts, WithFlashAttention())
 	}
@@ -152,6 +163,8 @@ func main() {
 
 	var gf *GGUFFile
 	{
+		ropts := ropts[:len(ropts):len(ropts)]
+
 		var err error
 		switch {
 		default:
@@ -161,8 +174,8 @@ func main() {
 			gf, err = ParseGGUFFile(path, ropts...)
 		case url != "":
 			gf, err = ParseGGUFFileRemote(ctx, url, ropts...)
-		case repo != "" && model != "":
-			gf, err = ParseGGUFFileFromHuggingFace(ctx, repo, model, ropts...)
+		case repo != "" && file != "":
+			gf, err = ParseGGUFFileFromHuggingFace(ctx, repo, file, ropts...)
 		}
 		if err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "failed to parse GGUF file: %s\n", err.Error())
@@ -179,13 +192,18 @@ func main() {
 	if !skipModel {
 		m = gf.Model()
 	}
-	if !skipArchitecture {
+	if !skipArchitecture && !skipEstimate {
 		a = gf.Architecture()
 	}
-	if !skipTokenizer {
+	if !skipTokenizer && !skipEstimate {
 		t = gf.Tokenizer()
 	}
 	if !skipEstimate {
+		eopts := eopts[:len(eopts):len(eopts)]
+
+		if offloadLayers >= 0 {
+			eopts = append(eopts, WithOffloadLayers(uint64(offloadLayers)))
+		}
 		e = gf.EstimateLLaMACppUsage(eopts...)
 	}
 
@@ -204,6 +222,28 @@ func main() {
 		}
 		if !skipEstimate {
 			es := e.Summarize(!noMMap)
+			switch {
+			case offloadLayersStep > e.OffloadLayers:
+				offloadLayersStep = e.OffloadLayers
+			case offloadLayersStep <= 0:
+				offloadLayersStep = e.OffloadLayers
+			}
+			if offloadLayersStep < e.OffloadLayers {
+				ess := make([]LLaMACppUsageEstimateMemorySummary, e.OffloadLayers/offloadLayersStep+1)
+				var wg sync.WaitGroup
+				for i := 0; i < cap(ess); i++ {
+					wg.Add(1)
+					go func(i int) {
+						defer wg.Done()
+						eopts := eopts[:len(eopts):len(eopts)]
+						eopts = append(eopts, WithOffloadLayers(uint64(i)*offloadLayersStep))
+						ess[i] = gf.EstimateLLaMACppUsage(eopts...).SummarizeMemory(!noMMap)
+					}(i)
+				}
+				wg.Wait()
+				ess[cap(ess)-1] = es.Memory[0]
+				es.Memory = ess
+			}
 			o["estimate"] = es
 		}
 
@@ -270,27 +310,45 @@ func main() {
 
 	if !skipEstimate {
 		es := e.Summarize(!noMMap)
+		switch {
+		case offloadLayersStep > e.OffloadLayers:
+			offloadLayersStep = e.OffloadLayers
+		case offloadLayersStep <= 0:
+			offloadLayersStep = e.OffloadLayers
+		}
+		if offloadLayersStep < e.OffloadLayers {
+			ess := make([]LLaMACppUsageEstimateMemorySummary, e.OffloadLayers/offloadLayersStep+1)
+			var wg sync.WaitGroup
+			for i := 0; i < cap(ess); i++ {
+				wg.Add(1)
+				go func(i int) {
+					defer wg.Done()
+					eopts := eopts[:len(eopts):len(eopts)]
+					eopts = append(eopts, WithOffloadLayers(uint64(i)*offloadLayersStep))
+					ess[i] = gf.EstimateLLaMACppUsage(eopts...).SummarizeMemory(!noMMap)
+				}(i)
+			}
+			wg.Wait()
+			ess[cap(ess)-1] = es.Memory[0]
+			es.Memory = ess
+		}
+		bd := make([][]string, len(es.Memory))
+		for i := range es.Memory {
+			bd[i] = []string{
+				sprintf(es.Architecture),
+				sprintf(es.ContextSize),
+				sprintf(es.FlashAttention),
+				sprintf(!es.NoMMap),
+				sprintf(es.Memory[i].OffloadLayers),
+				sprintf(es.Memory[i].UMA),
+				sprintf(es.Memory[i].NonUMA.RAM),
+				sprintf(es.Memory[i].NonUMA.VRAM),
+			}
+		}
 		tprint(
 			"ESTIMATE",
-			[]string{"Arch", "Context Size", "Full Offload", "Flash Attention", "MMap Support", "Mem. Arch", "Usage"},
-			[]string{
-				sprintf(es.Architecture),
-				sprintf(es.ContextSize),
-				sprintf(es.FullOffload),
-				sprintf(es.FlashAttention),
-				sprintf(!es.NoMMap),
-				"UMA",
-				sprintf(es.UMA),
-			},
-			[]string{
-				sprintf(es.Architecture),
-				sprintf(es.ContextSize),
-				sprintf(es.FullOffload),
-				sprintf(es.FlashAttention),
-				sprintf(!es.NoMMap),
-				"NonUMA",
-				sprintf("%s (RAM) + %s (VRAM)", es.NonUMA.RAM, es.NonUMA.VRAM),
-			})
+			[]string{"Arch", "Context Size", "Flash Attention", "MMap Support", "Offload Layers", "UMA RAM", "NonUMA RAM", "NonUMA VRAM"},
+			bd...)
 	}
 }
 
@@ -337,7 +395,7 @@ func tprint(title string, header []string, body ...[]string) {
 	tb.SetAlignment(tablewriter.ALIGN_CENTER)
 	tb.SetHeaderLine(true)
 	tb.SetRowLine(true)
-	tb.SetAutoMergeCellsByColumnIndex([]int{0, 1, 2, 3, 4})
+	tb.SetAutoMergeCells(true)
 	tb.Append(append([]string{title}, header...))
 	for i := range body {
 		tb.Append(append([]string{title}, body[i]...))

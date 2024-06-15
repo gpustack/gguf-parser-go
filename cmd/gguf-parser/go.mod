@@ -10,7 +10,6 @@ require (
 )
 
 require (
-	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/henvic/httpretty v0.1.3 // indirect
 	github.com/mattn/go-runewidth v0.0.9 // indirect
 	github.com/smallnest/ringbuffer v0.0.0-20240423223918-bab516b2000b // indirect

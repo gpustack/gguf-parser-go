@@ -6,6 +6,8 @@ import (
 
 type (
 	_LLaMACppUsageEstimateOptions struct {
+		Architecture   *GGUFArchitectureMetadata
+		Tokenizer      *GGUFTokenizerMetadata
 		ContextSize    *int32
 		BatchSize      *int32
 		ParallelSize   *int32
@@ -16,6 +18,24 @@ type (
 	}
 	LLaMACppUsageEstimateOption func(*_LLaMACppUsageEstimateOptions)
 )
+
+// WithArchitecture sets the architecture for the estimate.
+//
+// Allows reusing the same GGUFArchitectureMetadata for multiple estimates.
+func WithArchitecture(arch GGUFArchitectureMetadata) LLaMACppUsageEstimateOption {
+	return func(o *_LLaMACppUsageEstimateOptions) {
+		o.Architecture = &arch
+	}
+}
+
+// WithTokenizer sets the tokenizer for the estimate.
+//
+// Allows reusing the same GGUFTokenizerMetadata for multiple estimates.
+func WithTokenizer(tokenizer GGUFTokenizerMetadata) LLaMACppUsageEstimateOption {
+	return func(o *_LLaMACppUsageEstimateOptions) {
+		o.Tokenizer = &tokenizer
+	}
+}
 
 // WithContextSize sets the context size for the estimate.
 func WithContextSize(size int32) LLaMACppUsageEstimateOption {

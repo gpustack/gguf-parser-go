@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dustin/go-humanize"
 	"golang.org/x/exp/constraints"
 
 	"github.com/thxcode/gguf-parser-go/util/bytex"
@@ -298,8 +297,8 @@ func ParseGGUFFileRemote(ctx context.Context, url string, opts ...GGUFReadOption
 
 // ParseGGUFFileFromHuggingFace parses a GGUF file from Hugging Face,
 // and returns a GGUFFile, or an error if any.
-func ParseGGUFFileFromHuggingFace(ctx context.Context, repo, model string, opts ...GGUFReadOption) (*GGUFFile, error) {
-	return ParseGGUFFileRemote(ctx, fmt.Sprintf("https://huggingface.co/%s/resolve/main/%s", repo, model), opts...)
+func ParseGGUFFileFromHuggingFace(ctx context.Context, repo, file string, opts ...GGUFReadOption) (*GGUFFile, error) {
+	return ParseGGUFFileRemote(ctx, fmt.Sprintf("https://huggingface.co/%s/resolve/main/%s", repo, file), opts...)
 }
 
 func parseGGUFFile(s int64, f io.ReadSeeker, o _GGUFReadOptions) (_ *GGUFFile, err error) {
@@ -507,31 +506,72 @@ func (gf *GGUFFile) layers() GGUFLayerTensorInfos {
 	return ret
 }
 
+const (
+	_KiBytes = 1 << ((iota + 1) * 10)
+	_MiBytes
+	_GiBytes
+	_TiBytes
+	_PiBytes
+)
+
 func (s GGUFBytesScalar) String() string {
 	if s == 0 {
 		return "0 B"
 	}
-	return humanize.IBytes(uint64(s))
+	b, u := float64(1), "B"
+	switch {
+	case s >= _PiBytes:
+		b = _PiBytes
+		u = "PiB"
+	case s >= _TiBytes:
+		b = _TiBytes
+		u = "TiB"
+	case s >= _GiBytes:
+		b = _GiBytes
+		u = "GiB"
+	case s >= _MiBytes:
+		b = _MiBytes
+		u = "MiB"
+	case s >= _KiBytes:
+		b = _KiBytes
+		u = "KiB"
+	}
+	f := strconv.FormatFloat(float64(s)/b, 'f', 2, 64)
+	return strings.TrimSuffix(f, ".00") + " " + u
 }
+
+const (
+	_Thousand    = 1e3
+	_Million     = 1e6
+	_Billion     = 1e9
+	_Trillion    = 1e12
+	_Quadrillion = 1e15
+)
 
 func (s GGUFParametersScalar) String() string {
 	if s == 0 {
 		return "0"
 	}
+	b, u := float64(1), ""
 	switch {
-	case s >= 1e15:
-		return humanize.CommafWithDigits(float64(s)/1e15, 1) + " Q"
-	case s >= 1e12:
-		return humanize.CommafWithDigits(float64(s)/1e12, 1) + " T"
-	case s >= 1e9:
-		return humanize.CommafWithDigits(float64(s)/1e9, 1) + " B"
-	case s >= 1e6:
-		return humanize.CommafWithDigits(float64(s)/1e6, 1) + " M"
-	case s >= 1e3:
-		return humanize.CommafWithDigits(float64(s)/1e3, 1) + " K"
-	default:
-		return strconv.Itoa(int(s))
+	case s >= _Quadrillion:
+		b = _Quadrillion
+		u = "Q"
+	case s >= _Trillion:
+		b = _Trillion
+		u = "T"
+	case s >= _Billion:
+		b = _Billion
+		u = "B"
+	case s >= _Million:
+		b = _Million
+		u = "M"
+	case s >= _Thousand:
+		b = _Thousand
+		u = "K"
 	}
+	f := strconv.FormatFloat(float64(s)/b, 'f', 2, 64)
+	return strings.TrimSuffix(f, ".00") + " " + u
 }
 
 func (s GGUFBitsPerWeightScalar) String() string {

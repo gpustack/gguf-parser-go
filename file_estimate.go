@@ -16,14 +16,16 @@ type (
 		// FlashAttention is the flag to indicate whether enable the flash attention,
 		// true for enable.
 		FlashAttention bool `json:"flashAttention"`
+		// ContextSize is the size of the context.
+		ContextSize uint64 `json:"contextSize"`
 		// FullOffload is the flag to indicate whether the layers are fully offloaded,
 		// false for partial offloaded or zero offloaded.
 		FullOffload bool `json:"fullOffload"`
+		// OffloadLayers is the number of offloaded layers.
+		OffloadLayers uint64 `json:"offloadLayers"`
 		// NoMMap is the flag to indicate whether the file must be loaded without mmap,
 		// true for total loaded.
 		NoMMap bool `json:"noMMap"`
-		// ContextSize is the size of the context.
-		ContextSize uint64 `json:"contextSize"`
 		// Load is the memory usage for running the GGUF file in RAM.
 		Load LLaMACppMemoryUsage `json:"load"`
 		// Offload is the memory usage for loading the GGUF file in VRAM.
@@ -86,7 +88,21 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 		o.CacheValueType = ptr.To(GGMLTypeF16)
 	}
 
-	a, t := gf.Architecture(), gf.Tokenizer()
+	// Architecture and tokenizer metadata.
+	var (
+		a GGUFArchitectureMetadata
+		t GGUFTokenizerMetadata
+	)
+	if o.Architecture != nil {
+		a = *o.Architecture
+	} else {
+		a = gf.Architecture()
+	}
+	if o.Tokenizer != nil {
+		t = *o.Tokenizer
+	} else {
+		t = gf.Tokenizer()
+	}
 	e.Architecture = a.Architecture
 
 	// Flash attention.
@@ -163,6 +179,7 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 		nLoadLayers -= nOffloadLayers
 
 		e.FullOffload = isOffloadOutputLayer && nLoadLayers == 0
+		e.OffloadLayers = nOffloadLayers
 	}
 
 	// Footprint.
@@ -368,47 +385,56 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 	return e
 }
 
-// LLaMACppUsageEstimateSummery represents the summary of the usage for loading the GGUF file in llama.cpp.
-type LLaMACppUsageEstimateSummery struct {
-	/* Basic */
+// Types for LLaMACpp estimated summary.
+type (
+	// LLaMACppUsageEstimateSummary represents the summary of the usage for loading the GGUF file in llama.cpp.
+	LLaMACppUsageEstimateSummary struct {
+		/* Basic */
 
-	// UMA represents the usage of Unified Memory Architecture.
-	UMA GGUFBytesScalar `json:"uma"`
-	// NonUMA represents the usage of Non-Unified Memory Architecture.
-	NonUMA struct {
-		// Load is the memory usage for loading the GGUF file in Load.
-		RAM GGUFBytesScalar `json:"ram"`
-		// VRAM is the memory usage for loading the GGUF file in VRAM.
-		VRAM GGUFBytesScalar `json:"vram"`
-	} `json:"nonUMA"`
+		Memory []LLaMACppUsageEstimateMemorySummary `json:"memory"`
 
-	/* Appendix */
+		/* Appendix */
 
-	// Architecture describes what architecture this model implements.
-	Architecture string `json:"architecture"`
-	// FlashAttention is the flag to indicate whether enable the flash attention,
-	// true for enable.
-	FlashAttention bool `json:"flashAttention"`
-	// FullOffload is the flag to indicate whether the layers are fully offloaded,
-	// false for partial offloaded or zero offloaded.
-	FullOffload bool `json:"fullOffload"`
-	// NoMMap is the flag to indicate whether the file must be loaded without mmap,
-	// true for total loaded.
-	NoMMap bool `json:"noMMap"`
-	// ContextSize is the size of the context.
-	ContextSize uint64 `json:"contextSize"`
-}
+		// Architecture describes what architecture this model implements.
+		Architecture string `json:"architecture"`
+		// ContextSize is the size of the context.
+		ContextSize uint64 `json:"contextSize"`
+		// FlashAttention is the flag to indicate whether enable the flash attention,
+		// true for enable.
+		FlashAttention bool `json:"flashAttention"`
+		// NoMMap is the flag to indicate whether the file must be loaded without mmap,
+		// true for total loaded.
+		NoMMap bool `json:"noMMap"`
+	}
 
-func (e LLaMACppUsageEstimate) Summarize(mmap bool) (es LLaMACppUsageEstimateSummery) {
+	// LLaMACppUsageEstimateMemorySummary represents the memory summary of the usage for loading the GGUF file in llama.cpp.
+	LLaMACppUsageEstimateMemorySummary struct {
+		// OffloadLayers is the number of offloaded layers.
+		OffloadLayers uint64 `json:"offloadLayers"`
+		// UMA represents the usage of Unified Memory Architecture.
+		UMA GGUFBytesScalar `json:"uma"`
+		// NonUMA represents the usage of Non-Unified Memory Architecture.
+		NonUMA struct {
+			// Load is the memory usage for loading the GGUF file in Load.
+			RAM GGUFBytesScalar `json:"ram"`
+			// VRAM is the memory usage for loading the GGUF file in VRAM.
+			VRAM GGUFBytesScalar `json:"vram"`
+		} `json:"nonUMA"`
+	}
+)
+
+func (e LLaMACppUsageEstimate) SummarizeMemory(mmap bool) (ems LLaMACppUsageEstimateMemorySummary) {
+	ems.OffloadLayers = e.OffloadLayers
+
 	// UMA.
 	{
 		fp := e.Load.Footprint + e.Offload.Footprint
 		wg := e.Load.Weight.Sum() + e.Offload.Weight.Sum()
 		kv := e.Load.KVCache.Sum() + e.Offload.KVCache.Sum()
 		cp := e.Load.Computation.Sum()
-		es.UMA = fp + wg + kv + cp
+		ems.UMA = fp + wg + kv + cp
 		if !e.NoMMap && mmap {
-			es.UMA -= wg
+			ems.UMA -= wg
 		}
 	}
 
@@ -431,24 +457,32 @@ func (e LLaMACppUsageEstimate) Summarize(mmap bool) (es LLaMACppUsageEstimateSum
 		wg := e.Load.Weight.Sum()
 		kv := e.Load.KVCache.Sum()
 		cp := e.Load.Computation.Sum()
-		es.NonUMA.RAM = fp + wg + kv + cp
+		ems.NonUMA.RAM = fp + wg + kv + cp
 		if !e.NoMMap && (mmap || e.FullOffload) {
-			es.NonUMA.RAM -= wg
+			ems.NonUMA.RAM -= wg
 		}
 		// VRAM.
 		fp = e.Offload.Footprint
 		wg = e.Offload.Weight.Sum()
 		kv = e.Offload.KVCache.Sum()
 		cp = e.Offload.Computation.Sum()
-		es.NonUMA.VRAM = fp + wg + kv + cp
+		ems.NonUMA.VRAM = fp + wg + kv + cp
+	}
+
+	return ems
+}
+
+func (e LLaMACppUsageEstimate) Summarize(mmap bool) (es LLaMACppUsageEstimateSummary) {
+	// Summarize memory.
+	es.Memory = []LLaMACppUsageEstimateMemorySummary{
+		e.SummarizeMemory(mmap),
 	}
 
 	// Just copy from the original estimate.
 	es.Architecture = e.Architecture
-	es.FlashAttention = e.FlashAttention
-	es.FullOffload = e.FullOffload
-	es.NoMMap = e.NoMMap
 	es.ContextSize = e.ContextSize
+	es.FlashAttention = e.FlashAttention
+	es.NoMMap = e.NoMMap
 
 	return es
 }
