@@ -229,7 +229,11 @@ func main() {
 				offloadLayersStep = e.OffloadLayers
 			}
 			if offloadLayersStep < e.OffloadLayers {
-				ess := make([]LLaMACppUsageEstimateMemorySummary, e.OffloadLayers/offloadLayersStep+1)
+				cnt := e.OffloadLayers/offloadLayersStep + 1
+				if e.OffloadLayers%offloadLayersStep != 0 {
+					cnt++
+				}
+				ess := make([]LLaMACppUsageEstimateMemorySummary, cnt)
 				var wg sync.WaitGroup
 				for i := 0; i < cap(ess); i++ {
 					wg.Add(1)
@@ -317,7 +321,11 @@ func main() {
 			offloadLayersStep = e.OffloadLayers
 		}
 		if offloadLayersStep < e.OffloadLayers {
-			ess := make([]LLaMACppUsageEstimateMemorySummary, e.OffloadLayers/offloadLayersStep+1)
+			cnt := e.OffloadLayers/offloadLayersStep + 1
+			if e.OffloadLayers%offloadLayersStep != 0 {
+				cnt++
+			}
+			ess := make([]LLaMACppUsageEstimateMemorySummary, cnt)
 			var wg sync.WaitGroup
 			for i := 0; i < cap(ess); i++ {
 				wg.Add(1)
