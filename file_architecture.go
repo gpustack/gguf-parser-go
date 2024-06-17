@@ -23,6 +23,10 @@ type GGUFArchitectureMetadata struct {
 	BlockCount uint64 `json:"blockCount"`
 	// FeedForwardLength(n_ff) is the length of the feed-forward layer.
 	FeedForwardLength uint64 `json:"feedForwardLength,omitempty"`
+	// ExpertFeedForwardLength(expert_feed_forward_length) is the length of the feed-forward layer in the expert model.
+	ExpertFeedForwardLength uint64 `json:"expertFeedForwardLength,omitempty"`
+	// ExpertSharedFeedForwardLength(expert_shared_feed_forward_length) is the length of the shared feed-forward layer in the expert model.
+	ExpertSharedFeedForwardLength uint64 `json:"expertSharedFeedForwardLength,omitempty"`
 	// ExpertCount(n_expert) is the number of experts in MoE models.
 	ExpertCount uint32 `json:"expertCount,omitempty"`
 	// ExpertUsedCount(n_expert_used) is the number of experts used during each token evaluation in MoE models.
@@ -98,8 +102,11 @@ func (gf *GGUFFile) Architecture() (ga GGUFArchitectureMetadata) {
 		embeddingLengthKey   = arch + ".embedding_length"
 		blockCountKey        = arch + ".block_count"
 		feedForwardLengthKey = arch + ".feed_forward_length"
-		expertCountKey       = arch + ".expert_count"
-		expertUsedCountKey   = arch + ".expert_used_count"
+
+		expertFeedForwardLengthKey       = arch + ".expert_feed_forward_length"
+		expertSharedFeedForwardLengthKey = arch + ".expert_shared_feed_forward_length"
+		expertCountKey                   = arch + ".expert_count"
+		expertUsedCountKey               = arch + ".expert_used_count"
 
 		attentionHeadCountKey           = arch + ".attention.head_count"
 		attentionHeadCountKVKey         = arch + ".attention.head_count_kv"
@@ -175,11 +182,18 @@ func (gf *GGUFFile) Architecture() (ga GGUFArchitectureMetadata) {
 	if v, ok := m[feedForwardLengthKey]; ok {
 		ga.FeedForwardLength = ValueNumeric[uint64](v)
 	}
+
 	if v, ok := m[expertCountKey]; ok {
 		ga.ExpertCount = ValueNumeric[uint32](v)
 	}
 	if v, ok := m[expertUsedCountKey]; ok {
 		ga.ExpertUsedCount = ValueNumeric[uint32](v)
+	}
+	if v, ok := m[expertFeedForwardLengthKey]; ok {
+		ga.ExpertFeedForwardLength = ValueNumeric[uint64](v)
+	}
+	if v, ok := m[expertSharedFeedForwardLengthKey]; ok {
+		ga.ExpertSharedFeedForwardLength = ValueNumeric[uint64](v)
 	}
 
 	if v, ok := m[attentionHeadCountKey]; ok {
