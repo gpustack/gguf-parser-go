@@ -18,11 +18,11 @@ type (
 		FlashAttention bool `json:"flashAttention"`
 		// ContextSize is the size of the context.
 		ContextSize uint64 `json:"contextSize"`
-		// FullOffload is the flag to indicate whether the layers are fully offloaded,
-		// false for partial offloaded or zero offloaded.
-		FullOffload bool `json:"fullOffload"`
 		// OffloadLayers is the number of offloaded layers.
 		OffloadLayers uint64 `json:"offloadLayers"`
+		// FullOffloaded is the flag to indicate whether the layers are fully offloaded,
+		// false for partial offloaded or zero offloaded.
+		FullOffloaded bool `json:"fullOffloaded"`
 		// NoMMap is the flag to indicate whether the file must be loaded without mmap,
 		// true for total loaded.
 		NoMMap bool `json:"noMMap"`
@@ -167,18 +167,17 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 		if v := o.OffloadLayers; v == nil {
 			o.OffloadLayers = ptr.To(a.BlockCount)
 			nOffloadLayers = a.BlockCount
-		} else if *v > 0 {
+			isOffloadOutputLayer = true
+		} else if *v != 0 {
 			nOffloadLayers = *v
-			if nOffloadLayers >= a.BlockCount+1 {
-				isOffloadOutputLayer = true
-			}
 			if nOffloadLayers > a.BlockCount {
+				isOffloadOutputLayer = true
 				nOffloadLayers = a.BlockCount
 			}
 		}
 		nLoadLayers -= nOffloadLayers
 
-		e.FullOffload = isOffloadOutputLayer && nLoadLayers == 0
+		e.FullOffloaded = isOffloadOutputLayer && nLoadLayers == 0
 		e.OffloadLayers = nOffloadLayers
 	}
 
@@ -411,6 +410,9 @@ type (
 	LLaMACppUsageEstimateMemorySummary struct {
 		// OffloadLayers is the number of offloaded layers.
 		OffloadLayers uint64 `json:"offloadLayers"`
+		// FullOffloaded is the flag to indicate whether the layers are fully offloaded,
+		// false for partial offloaded or zero offloaded.
+		FullOffloaded bool `json:"fullOffloaded"`
 		// UMA represents the usage of Unified Memory Architecture.
 		UMA GGUFBytesScalar `json:"uma"`
 		// NonUMA represents the usage of Non-Unified Memory Architecture.
@@ -424,7 +426,10 @@ type (
 )
 
 func (e LLaMACppUsageEstimate) SummarizeMemory(mmap bool) (ems LLaMACppUsageEstimateMemorySummary) {
-	ems.OffloadLayers = e.OffloadLayers
+	ems.OffloadLayers, ems.FullOffloaded = e.OffloadLayers, e.FullOffloaded
+	if ems.FullOffloaded {
+		ems.OffloadLayers++ // The output layer is offloaded.
+	}
 
 	// UMA.
 	{
@@ -458,7 +463,7 @@ func (e LLaMACppUsageEstimate) SummarizeMemory(mmap bool) (ems LLaMACppUsageEsti
 		kv := e.Load.KVCache.Sum()
 		cp := e.Load.Computation.Sum()
 		ems.NonUMA.RAM = fp + wg + kv + cp
-		if !e.NoMMap && (mmap || e.FullOffload) {
+		if !e.NoMMap && (mmap || e.FullOffloaded) {
 			ems.NonUMA.RAM -= wg
 		}
 		// VRAM.

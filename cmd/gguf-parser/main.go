@@ -322,7 +322,7 @@ func main() {
 		}
 		if offloadLayersStep < e.OffloadLayers {
 			cnt := e.OffloadLayers/offloadLayersStep + 1
-			if e.OffloadLayers%offloadLayersStep != 0 {
+			if e.OffloadLayers%offloadLayersStep != 0 || e.FullOffloaded {
 				cnt++
 			}
 			ess := make([]LLaMACppUsageEstimateMemorySummary, cnt)
@@ -347,7 +347,8 @@ func main() {
 				sprintf(es.ContextSize),
 				sprintf(es.FlashAttention),
 				sprintf(!es.NoMMap),
-				sprintf(es.Memory[i].OffloadLayers),
+				sprintf(tenary(es.Memory[i].FullOffloaded, sprintf("%d (%d + 1)", es.Memory[i].OffloadLayers, es.Memory[i].OffloadLayers-1), es.Memory[i].OffloadLayers)),
+				sprintf(tenary(es.Memory[i].FullOffloaded, "Yes", "No")),
 				sprintf(es.Memory[i].UMA),
 				sprintf(es.Memory[i].NonUMA.RAM),
 				sprintf(es.Memory[i].NonUMA.VRAM),
@@ -355,7 +356,7 @@ func main() {
 		}
 		tprint(
 			"ESTIMATE",
-			[]string{"Arch", "Context Size", "Flash Attention", "MMap Support", "Offload Layers", "UMA RAM", "NonUMA RAM", "NonUMA VRAM"},
+			[]string{"Arch", "Context Size", "Flash Attention", "MMap Support", "Offload Layers", "Full Offloaded", "UMA RAM", "NonUMA RAM", "NonUMA VRAM"},
 			bd...)
 	}
 }
