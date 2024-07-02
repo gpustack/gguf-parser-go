@@ -6,15 +6,15 @@ import (
 
 type (
 	_LLaMACppUsageEstimateOptions struct {
-		Architecture   *GGUFArchitectureMetadata
-		Tokenizer      *GGUFTokenizerMetadata
-		ContextSize    *int32
-		BatchSize      *int32
-		ParallelSize   *int32
-		CacheKeyType   *GGMLType
-		CacheValueType *GGMLType
-		OffloadLayers  *uint64
-		FlashAttention bool
+		Architecture      *GGUFArchitectureMetadata
+		Tokenizer         *GGUFTokenizerMetadata
+		ContextSize       *int32
+		PhysicalBatchSize *int32
+		ParallelSize      *int32
+		CacheKeyType      *GGMLType
+		CacheValueType    *GGMLType
+		OffloadLayers     *uint64
+		FlashAttention    bool
 	}
 	LLaMACppUsageEstimateOption func(*_LLaMACppUsageEstimateOptions)
 )
@@ -47,13 +47,13 @@ func WithContextSize(size int32) LLaMACppUsageEstimateOption {
 	}
 }
 
-// WithBatchSize sets the physical batch size for the estimate.
-func WithBatchSize(size int32) LLaMACppUsageEstimateOption {
+// WithPhysicalBatchSize sets the physical batch size for the estimate.
+func WithPhysicalBatchSize(size int32) LLaMACppUsageEstimateOption {
 	return func(o *_LLaMACppUsageEstimateOptions) {
 		if size <= 0 {
 			return
 		}
-		o.BatchSize = &size
+		o.PhysicalBatchSize = &size
 	}
 }
 

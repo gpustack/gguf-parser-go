@@ -514,27 +514,34 @@ const (
 	_PiBytes
 )
 
+var InMiBytes bool
+
 func (s GGUFBytesScalar) String() string {
 	if s == 0 {
 		return "0 B"
 	}
 	b, u := float64(1), "B"
-	switch {
-	case s >= _PiBytes:
-		b = _PiBytes
-		u = "PiB"
-	case s >= _TiBytes:
-		b = _TiBytes
-		u = "TiB"
-	case s >= _GiBytes:
-		b = _GiBytes
-		u = "GiB"
-	case s >= _MiBytes:
+	if InMiBytes {
 		b = _MiBytes
 		u = "MiB"
-	case s >= _KiBytes:
-		b = _KiBytes
-		u = "KiB"
+	} else {
+		switch {
+		case s >= _PiBytes:
+			b = _PiBytes
+			u = "PiB"
+		case s >= _TiBytes:
+			b = _TiBytes
+			u = "TiB"
+		case s >= _GiBytes:
+			b = _GiBytes
+			u = "GiB"
+		case s >= _MiBytes:
+			b = _MiBytes
+			u = "MiB"
+		case s >= _KiBytes:
+			b = _KiBytes
+			u = "KiB"
+		}
 	}
 	f := strconv.FormatFloat(float64(s)/b, 'f', 2, 64)
 	return strings.TrimSuffix(f, ".00") + " " + u

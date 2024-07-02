@@ -83,6 +83,8 @@ type GGUFArchitectureMetadata struct {
 
 	/* Appendix */
 
+	// EmbeddingGroup is the number of groups in the embedding layer.
+	EmbeddingGroup uint64 `json:"embeddingGroup,omitempty"`
 	// EmbeddingKeyGQA is the number of key GQA in the embedding layer.
 	EmbeddingKeyGQA uint64 `json:"embeddingKeyGQA,omitempty"`
 	// EmbeddingValueGQA is the number of value GQA in the embedding layer.
@@ -274,6 +276,9 @@ func (gf *GGUFFile) Architecture() (ga GGUFArchitectureMetadata) {
 	}
 
 	{
+		if ga.AttentionHeadCountKV > 0 {
+			ga.EmbeddingGroup = ga.AttentionHeadCount / ga.AttentionHeadCountKV
+		}
 		if ga.AttentionHeadCount > 0 {
 			ga.EmbeddingKeyGQA = uint64(ga.AttentionKeyLength) * ga.AttentionHeadCountKV
 			ga.EmbeddingValueGQA = uint64(ga.AttentionValueLength) * ga.AttentionHeadCountKV

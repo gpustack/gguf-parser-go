@@ -7,7 +7,7 @@ Review/Check/Estimate [GGUF](https://github.com/ggerganov/ggml/blob/master/docs/
 ```shell
 $ gguf-parser --help
 Usage of gguf-parser ...:
-  -batch-size int
+  -ubatch-size int
         Specify the physical maximum batch size, which is used to estimate the usage, default is 512. (default 512)
   -ctx-size int
         Specify the size of prompt context, which is used to estimate the usage, default is equal to the model's maximum context size. (default -1)

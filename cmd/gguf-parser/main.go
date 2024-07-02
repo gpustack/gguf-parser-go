@@ -32,10 +32,11 @@ func main() {
 		skipTLSVerify bool
 		// estimate options
 		ctxSize           = -1
-		batchSize         = 512
+		physicalBatchSize = 512
 		parallelSize      = 1
 		kvType            = "f16"
 		flashAttention    bool
+		platformFootprint = "150,250"
 		noMMap            bool
 		offloadLayers     = -1
 		offloadLayersStep uint64
@@ -45,6 +46,7 @@ func main() {
 		skipArchitecture bool
 		skipTokenizer    bool
 		skipEstimate     bool
+		inMib            bool
 		json             bool
 		jsonPretty       = true
 	)
@@ -61,15 +63,19 @@ func main() {
 		"/resolve/main/Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf. "+
 		"Note that gguf-parser does not need to download the entire GGUF file.")
 	fs.StringVar(&repo, "repo", repo, "Repository of HuggingFace which the GGUF file store, e.g. "+
-		"NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF, works with --file.")
+		"NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF, works with --file. [Deprecated, use --hf-repo instead]")
 	fs.StringVar(&file, "file", file, "Model file below the --repo, e.g. "+
+		"Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf. [Deprecated, use --hf-file instead]") // Deprecated.
+	fs.StringVar(&repo, "hf-repo", repo, "Repository of HuggingFace which the GGUF file store, e.g. "+
+		"NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF, works with --hf-file.") // Deprecated.
+	fs.StringVar(&file, "hf-file", file, "Model file below the --repo, e.g. "+
 		"Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf.")
 	fs.BoolVar(&debug, "debug", debug, "Enable debugging, verbosity.")
 	fs.BoolVar(&skipTLSVerify, "skip-tls-verify", skipTLSVerify, "Skip TLS verification, works with --url.")
 	fs.IntVar(&ctxSize, "ctx-size", ctxSize, "Specify the size of prompt context, "+
 		"which is used to estimate the usage, "+
 		"default is equal to the model's maximum context size.")
-	fs.IntVar(&batchSize, "batch-size", batchSize, "Specify the physical maximum batch size, "+
+	fs.IntVar(&physicalBatchSize, "ubatch-size", physicalBatchSize, "Specify the physical maximum batch size, "+
 		"which is used to estimate the usage, "+
 		"default is 512.")
 	fs.IntVar(&parallelSize, "parallel-size", parallelSize, "Specify the number of parallel sequences to decode, "+
@@ -82,20 +88,32 @@ func main() {
 	fs.BoolVar(&flashAttention, "flash-attention", flashAttention, "Specify enabling Flash Attention, "+
 		"which is used to estimate the usage. "+
 		"Flash Attention can reduce the usage of RAM/VRAM.")
+	fs.StringVar(&platformFootprint, "platform-footprint", platformFootprint, "Specify the platform footprint(RAM,VRAM) in MiB, "+
+		"which is used to estimate the NonUMA usage, "+
+		"default is 150,250. "+
+		"Different platform always gets different RAM and VRAM footprints, "+
+		"for example, within CUDA, `cudaMemGetInfo` would occupy some RAM and VRAM, "+
+		"see https://stackoverflow.com/questions/64854862/free-memory-occupied-by-cudamemgetinfo.")
 	fs.BoolVar(&noMMap, "no-mmap", noMMap, "Specify disabling Memory-Mapped using, "+
 		"which is used to estimate the usage. "+
 		"Memory-Mapped can avoid loading the entire model weights into RAM.")
 	fs.IntVar(&offloadLayers, "offload-layers", offloadLayers, "Specify how many layers to offload, "+
 		"which is used to estimate the usage, "+
+		"default is full offloaded. [Deprecated, use --gpu-layers instead]") // Deprecated.
+	fs.IntVar(&offloadLayers, "gpu-layers", offloadLayers, "Specify how many layers to offload, "+
+		"which is used to estimate the usage, "+
 		"default is full offloaded.")
 	fs.Uint64Var(&offloadLayersStep, "offload-layers-step", offloadLayersStep, "Specify the step of layers to offload, "+
-		"works with --offload-layers.")
+		"works with --offload-layers. [Deprecated, use --gpu-layers-step instead]") // Deprecated.
+	fs.Uint64Var(&offloadLayersStep, "gpu-layers-step", offloadLayersStep, "Specify the step of layers to offload, "+
+		"works with --gpu-layers.")
 	fs.BoolVar(&version, "version", version, "Show gguf-parser version.")
 	fs.BoolVar(&skipModel, "skip-model", skipModel, "Skip to display model metadata.")
 	fs.BoolVar(&skipArchitecture, "skip-architecture", skipArchitecture, "Skip to display architecture metadata.")
 	fs.BoolVar(&skipTokenizer, "skip-tokenizer", skipTokenizer, "Skip to display tokenizer metadata")
 	fs.BoolVar(&skipEstimate, "skip-estimate", skipEstimate, "Skip to estimate.")
-	fs.BoolVar(&json, "json", json, "Output as JSON,")
+	fs.BoolVar(&inMib, "in-mib", inMib, "Display the estimated result in table with MiB.")
+	fs.BoolVar(&json, "json", json, "Output as JSON.")
 	fs.BoolVar(&jsonPretty, "json-pretty", jsonPretty, "Output as pretty JSON.")
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		fmt.Println(err.Error())
@@ -127,8 +145,8 @@ func main() {
 	if ctxSize > 0 {
 		eopts = append(eopts, WithContextSize(int32(ctxSize)))
 	}
-	if batchSize > 0 {
-		eopts = append(eopts, WithBatchSize(int32(batchSize)))
+	if physicalBatchSize > 0 {
+		eopts = append(eopts, WithPhysicalBatchSize(int32(physicalBatchSize)))
 	}
 	if parallelSize > 0 {
 		eopts = append(eopts, WithParallelSize(int32(parallelSize)))
@@ -208,6 +226,23 @@ func main() {
 	}
 
 	// Output
+	var (
+		mmap                      = !noMMap
+		platformRAM, platformVRAM uint64
+	)
+	{
+		if platformFootprint != "" {
+			parts := strings.Split(platformFootprint, ",")
+			if len(parts) == 2 {
+				if v, err := strconv.ParseUint(parts[0], 10, 64); err == nil {
+					platformRAM = v * 1024 * 1024
+				}
+				if v, err := strconv.ParseUint(parts[1], 10, 64); err == nil {
+					platformVRAM = v * 1024 * 1024
+				}
+			}
+		}
+	}
 
 	if json {
 		o := map[string]any{}
@@ -221,7 +256,7 @@ func main() {
 			o["tokenizer"] = t
 		}
 		if !skipEstimate {
-			es := e.Summarize(!noMMap)
+			es := e.Summarize(mmap, platformRAM, platformVRAM)
 			switch {
 			case offloadLayersStep > e.OffloadLayers:
 				offloadLayersStep = e.OffloadLayers
@@ -241,7 +276,7 @@ func main() {
 						defer wg.Done()
 						eopts := eopts[:len(eopts):len(eopts)]
 						eopts = append(eopts, WithOffloadLayers(uint64(i)*offloadLayersStep))
-						ess[i] = gf.EstimateLLaMACppUsage(eopts...).SummarizeMemory(!noMMap)
+						ess[i] = gf.EstimateLLaMACppUsage(eopts...).SummarizeMemory(mmap, platformRAM, platformVRAM)
 					}(i)
 				}
 				wg.Wait()
@@ -262,6 +297,8 @@ func main() {
 
 		return
 	}
+
+	InMiBytes = inMib
 
 	if !skipModel {
 		tprint(
@@ -313,7 +350,7 @@ func main() {
 	}
 
 	if !skipEstimate {
-		es := e.Summarize(!noMMap)
+		es := e.Summarize(mmap, platformRAM, platformVRAM)
 		switch {
 		case offloadLayersStep > e.OffloadLayers:
 			offloadLayersStep = e.OffloadLayers
@@ -333,7 +370,7 @@ func main() {
 					defer wg.Done()
 					eopts := eopts[:len(eopts):len(eopts)]
 					eopts = append(eopts, WithOffloadLayers(uint64(i)*offloadLayersStep))
-					ess[i] = gf.EstimateLLaMACppUsage(eopts...).SummarizeMemory(!noMMap)
+					ess[i] = gf.EstimateLLaMACppUsage(eopts...).SummarizeMemory(mmap, platformRAM, platformVRAM)
 				}(i)
 			}
 			wg.Wait()
