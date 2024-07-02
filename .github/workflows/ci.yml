@@ -13,9 +13,21 @@ on:
   push:
     branches:
       - 'main'
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
+      - "**.mdx"
+      - "**.png"
+      - "**.jpg"
   pull_request:
     branches:
       - 'main'
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
+      - "**.mdx"
+      - "**.png"
+      - "**.jpg"
 
 jobs:
   ci:

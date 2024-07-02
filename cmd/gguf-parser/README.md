@@ -7,18 +7,26 @@ Review/Check/Estimate [GGUF](https://github.com/ggerganov/ggml/blob/master/docs/
 ```shell
 $ gguf-parser --help
 Usage of gguf-parser ...:
-  -ubatch-size int
-        Specify the physical maximum batch size, which is used to estimate the usage, default is 512. (default 512)
   -ctx-size int
         Specify the size of prompt context, which is used to estimate the usage, default is equal to the model's maximum context size. (default -1)
   -debug
         Enable debugging, verbosity.
   -file string
-        Model file below the --repo, e.g. Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf.
+        Model file below the --repo, e.g. Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf. [Deprecated, use --hf-file instead]
   -flash-attention
         Specify enabling Flash Attention, which is used to estimate the usage. Flash Attention can reduce the usage of RAM/VRAM.
+  -gpu-layers int
+        Specify how many layers to offload, which is used to estimate the usage, default is full offloaded. (default -1)
+  -gpu-layers-step uint
+        Specify the step of layers to offload, works with --gpu-layers.
+  -hf-file string
+        Model file below the --repo, e.g. Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf.
+  -hf-repo string
+        Repository of HuggingFace which the GGUF file store, e.g. NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF, works with --hf-file.
+  -in-mib
+        Display the estimated result in table with MiB.
   -json
-        Output as JSON,
+        Output as JSON.
   -json-pretty
         Output as pretty JSON. (default true)
   -kv-type string
@@ -26,15 +34,17 @@ Usage of gguf-parser ...:
   -no-mmap
         Specify disabling Memory-Mapped using, which is used to estimate the usage. Memory-Mapped can avoid loading the entire model weights into RAM.
   -offload-layers int
-        Specify how many layers to offload, which is used to estimate the usage, default is full offloaded. (default -1)
+        Specify how many layers to offload, which is used to estimate the usage, default is full offloaded. [Deprecated, use --gpu-layers instead] (default -1)
   -offload-layers-step uint
-        Specify the step of layers to offload, works with --offload-layers.
+        Specify the step of layers to offload, works with --offload-layers. [Deprecated, use --gpu-layers-step instead]
   -parallel-size int
         Specify the number of parallel sequences to decode, which is used to estimate the usage, default is 1. (default 1)
   -path string
         Path where the GGUF file to load, e.g. ~/.cache/lm-studio/models/NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF/Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf.
+  -platform-footprint cudaMemGetInfo
+        Specify the platform footprint(RAM,VRAM) in MiB, which is used to estimate the NonUMA usage, default is 150,250. Different platform always gets different RAM and VRAM footprints, for example, within CUDA, cudaMemGetInfo would occupy some RAM and VRAM, see https://stackoverflow.com/questions/64854862/free-memory-occupied-by-cudamemgetinfo. (default "150,250")
   -repo string
-        Repository of HuggingFace which the GGUF file store, e.g. NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF, works with --file.
+        Repository of HuggingFace which the GGUF file store, e.g. NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF, works with --file. [Deprecated, use --hf-repo instead]
   -skip-architecture
         Skip to display architecture metadata.
   -skip-estimate
@@ -45,6 +55,8 @@ Usage of gguf-parser ...:
         Skip TLS verification, works with --url.
   -skip-tokenizer
         Skip to display tokenizer metadata
+  -ubatch-size int
+        Specify the physical maximum batch size, which is used to estimate the usage, default is 512. (default 512)
   -url string
         Url where the GGUF file to load, e.g. https://huggingface.co/NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF/resolve/main/Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf. Note that gguf-parser does not need to download the entire GGUF file.
   -version
@@ -116,7 +128,7 @@ $ gguf-parser --url="https://huggingface.co/NousResearch/Nous-Hermes-2-Mixtral-8
 #### Parse HuggingFace GGUF file
 
 ```shell
-$ gguf-parser --repo="openbmb/MiniCPM-Llama3-V-2_5-gguf" --file="ggml-model-Q5_K_M.gguf" 
+$ gguf-parser --hf-repo="openbmb/MiniCPM-Llama3-V-2_5-gguf" --hf-file="ggml-model-Q5_K_M.gguf" 
 +-------+-------+-------+----------------------+----------------+---------------+----------+------------+----------+
 | MODEL | NAME  | ARCH  | QUANTIZATION VERSION |   FILE TYPE    | LITTLE ENDIAN |   SIZE   | PARAMETERS |   BPW    |
 +       +-------+-------+----------------------+----------------+---------------+----------+------------+----------+
@@ -138,7 +150,7 @@ $ gguf-parser --repo="openbmb/MiniCPM-Llama3-V-2_5-gguf" --file="ggml-model-Q5_K
 +----------+-------+--------------+-----------------+--------------+----------------+----------------+----------+------------+-------------+
 | ESTIMATE | ARCH  | CONTEXT SIZE | FLASH ATTENTION | MMAP SUPPORT | OFFLOAD LAYERS | FULL OFFLOADED | UMA RAM  | NONUMA RAM | NONUMA VRAM |
 +          +-------+--------------+-----------------+--------------+----------------+----------------+----------+------------+-------------+
-|          | llama |     8192     |      false      |     true     |  33 (32 + 1)   |      Yes       | 1.08 GiB | 234.61 MiB |  6.55 GiB   |
+|          | llama |     8192     |      false      |     true     |  33 (32 + 1)   |      Yes       | 1.08 GiB | 234.61 MiB |  6.49 GiB   |
 +----------+-------+--------------+-----------------+--------------+----------------+----------------+----------+------------+-------------+
 
 ```
@@ -148,11 +160,11 @@ $ gguf-parser --repo="openbmb/MiniCPM-Llama3-V-2_5-gguf" --file="ggml-model-Q5_K
 #### Estimate with zero layers offload
 
 ```shell
-$ gguf-parser --repo="mradermacher/Falcon2-8B-Dutch-GGUF" --file="Falcon2-8B-Dutch.Q5_K_M.gguf" --skip-model --skip-architecture --skip-tokenizer --offload-layers=0
+$ gguf-parser --hf-repo="mradermacher/Falcon2-8B-Dutch-GGUF" --hf-file="Falcon2-8B-Dutch.Q5_K_M.gguf" --skip-model --skip-architecture --skip-tokenizer --gpu-layers=0
 +----------+--------+--------------+-----------------+--------------+----------------+----------------+------------+------------+-------------+
 | ESTIMATE |  ARCH  | CONTEXT SIZE | FLASH ATTENTION | MMAP SUPPORT | OFFLOAD LAYERS | FULL OFFLOADED |  UMA RAM   | NONUMA RAM | NONUMA VRAM |
 +          +--------+--------------+-----------------+--------------+----------------+----------------+------------+------------+-------------+
-|          | falcon |     2048     |      false      |     true     |       0        |       No       | 383.46 MiB | 533.46 MiB | 404.91 MiB  |
+|          | falcon |     2048     |      false      |     true     |       0        |       No       | 391.46 MiB | 541.46 MiB | 654.91 MiB  |
 +----------+--------+--------------+-----------------+--------------+----------------+----------------+------------+------------+-------------+
 
 ```
@@ -160,11 +172,11 @@ $ gguf-parser --repo="mradermacher/Falcon2-8B-Dutch-GGUF" --file="Falcon2-8B-Dut
 #### Estimate with specific layers offload
 
 ```shell
-$ gguf-parser --repo="NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO-GGUF" --file="Nous-Hermes-2-Mixtral-8x7B-DPO.Q3_K_M.gguf" --skip-model --skip-architecture --skip-tokenizer --offload-layers=10
+$ gguf-parser --hf-repo="NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO-GGUF" --hf-file="Nous-Hermes-2-Mixtral-8x7B-DPO.Q3_K_M.gguf" --skip-model --skip-architecture --skip-tokenizer --gpu-layers=10
 +----------+-------+--------------+-----------------+--------------+----------------+----------------+-----------+------------+-------------+
 | ESTIMATE | ARCH  | CONTEXT SIZE | FLASH ATTENTION | MMAP SUPPORT | OFFLOAD LAYERS | FULL OFFLOADED |  UMA RAM  | NONUMA RAM | NONUMA VRAM |
 +          +-------+--------------+-----------------+--------------+----------------+----------------+-----------+------------+-------------+
-|          | llama |    32768     |      false      |    false     |       10       |       No       | 25.08 GiB | 17.50 GiB  |  9.83 GiB   |
+|          | llama |    32768     |      false      |    false     |       10       |       No       | 25.09 GiB | 17.51 GiB  |  10.19 GiB  |
 +----------+-------+--------------+-----------------+--------------+----------------+----------------+-----------+------------+-------------+
 
 ```
@@ -172,11 +184,11 @@ $ gguf-parser --repo="NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO-GGUF" --file="
 #### Estimate with specific context size
 
 ```shell
-$ gguf-parser --repo="NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO-GGUF" --file="Nous-Hermes-2-Mixtral-8x7B-DPO.Q3_K_M.gguf" --skip-model --skip-architecture --skip-tokenizer --ctx-size=4096
+$ gguf-parser --hf-repo="NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO-GGUF" --hf-file="Nous-Hermes-2-Mixtral-8x7B-DPO.Q3_K_M.gguf" --skip-model --skip-architecture --skip-tokenizer --ctx-size=4096
 +----------+-------+--------------+-----------------+--------------+----------------+----------------+-----------+------------+-------------+
 | ESTIMATE | ARCH  | CONTEXT SIZE | FLASH ATTENTION | MMAP SUPPORT | OFFLOAD LAYERS | FULL OFFLOADED |  UMA RAM  | NONUMA RAM | NONUMA VRAM |
 +          +-------+--------------+-----------------+--------------+----------------+----------------+-----------+------------+-------------+
-|          | llama |     4096     |      false      |    false     |  33 (32 + 1)   |      Yes       | 21.53 GiB | 236.68 MiB |  21.74 GiB  |
+|          | llama |     4096     |      false      |    false     |  33 (32 + 1)   |      Yes       | 21.53 GiB | 339.24 MiB |  21.89 GiB  |
 +----------+-------+--------------+-----------------+--------------+----------------+----------------+-----------+------------+-------------+
 
 ```
@@ -184,11 +196,11 @@ $ gguf-parser --repo="NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO-GGUF" --file="
 #### Estimate with Flash Attention
 
 ```shell
-$ gguf-parser --repo="NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO-GGUF" --file="Nous-Hermes-2-Mixtral-8x7B-DPO.Q3_K_M.gguf" --skip-model --skip-architecture --skip-tokenizer --flash-attention
+$ gguf-parser --hf-repo="NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO-GGUF" --hf-file="Nous-Hermes-2-Mixtral-8x7B-DPO.Q3_K_M.gguf" --skip-model --skip-architecture --skip-tokenizer --flash-attention
 +----------+-------+--------------+-----------------+--------------+----------------+----------------+-----------+------------+-------------+
 | ESTIMATE | ARCH  | CONTEXT SIZE | FLASH ATTENTION | MMAP SUPPORT | OFFLOAD LAYERS | FULL OFFLOADED |  UMA RAM  | NONUMA RAM | NONUMA VRAM |
 +          +-------+--------------+-----------------+--------------+----------------+----------------+-----------+------------+-------------+
-|          | llama |    32768     |      true       |    false     |  33 (32 + 1)   |      Yes       | 25.08 GiB | 292.68 MiB |  25.18 GiB  |
+|          | llama |    32768     |      true       |    false     |  33 (32 + 1)   |      Yes       | 25.08 GiB | 395.24 MiB |  25.33 GiB  |
 +----------+-------+--------------+-----------------+--------------+----------------+----------------+-----------+------------+-------------+
 
 ```
@@ -196,11 +208,11 @@ $ gguf-parser --repo="NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO-GGUF" --file="
 #### Estimate with No MMap
 
 ```shell
-$ gguf-parser --repo="NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO-GGUF" --file="Nous-Hermes-2-Mixtral-8x7B-DPO.Q3_K_M.gguf" --skip-model --skip-architecture --skip-tokenizer --offload-layers=10 --no-mmap
+$ gguf-parser --hf-repo="NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO-GGUF" --hf-file="Nous-Hermes-2-Mixtral-8x7B-DPO.Q3_K_M.gguf" --skip-model --skip-architecture --skip-tokenizer --offload-layers=10 --no-mmap
 +----------+-------+--------------+-----------------+--------------+----------------+----------------+-----------+------------+-------------+
 | ESTIMATE | ARCH  | CONTEXT SIZE | FLASH ATTENTION | MMAP SUPPORT | OFFLOAD LAYERS | FULL OFFLOADED |  UMA RAM  | NONUMA RAM | NONUMA VRAM |
 +          +-------+--------------+-----------------+--------------+----------------+----------------+-----------+------------+-------------+
-|          | llama |    32768     |      false      |    false     |       10       |       No       | 25.08 GiB | 17.50 GiB  |  9.83 GiB   |
+|          | llama |    32768     |      false      |    false     |       10       |       No       | 25.09 GiB | 17.51 GiB  |  10.19 GiB  |
 +----------+-------+--------------+-----------------+--------------+----------------+----------------+-----------+------------+-------------+
 
 ```
@@ -208,25 +220,25 @@ $ gguf-parser --repo="NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO-GGUF" --file="
 #### Estimate step-by-step offload layers
 
 ```shell
-$ gguf-parser --repo="NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO-GGUF" --file="Nous-Hermes-2-Mixtral-8x7B-DPO.Q3_K_M.gguf" --skip-model --skip-architecture --skip-tokenizer --offload-layers-step=5
+$ gguf-parser --hf-repo="NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO-GGUF" --hf-file="Nous-Hermes-2-Mixtral-8x7B-DPO.Q3_K_M.gguf" --skip-model --skip-architecture --skip-tokenizer --gpu-layers-step=5
 +----------+-------+--------------+-----------------+--------------+----------------+----------------+-----------+------------+-------------+
 | ESTIMATE | ARCH  | CONTEXT SIZE | FLASH ATTENTION | MMAP SUPPORT | OFFLOAD LAYERS | FULL OFFLOADED |  UMA RAM  | NONUMA RAM | NONUMA VRAM |
 +          +-------+--------------+-----------------+--------------+----------------+----------------+-----------+------------+-------------+
-|          | llama |    32768     |      false      |    false     |       0        |       No       | 25.08 GiB | 25.23 GiB  |  2.10 GiB   |
+|          | llama |    32768     |      false      |    false     |       0        |       No       | 25.09 GiB | 25.24 GiB  |  2.46 GiB   |
 +          +       +              +                 +              +----------------+                +           +------------+-------------+
-|          |       |              |                 |              |       5        |                |           | 21.36 GiB  |  5.97 GiB   |
+|          |       |              |                 |              |       5        |                |           | 21.37 GiB  |  6.33 GiB   |
 +          +       +              +                 +              +----------------+                +           +------------+-------------+
-|          |       |              |                 |              |       10       |                |           | 17.50 GiB  |  9.83 GiB   |
+|          |       |              |                 |              |       10       |                |           | 17.51 GiB  |  10.19 GiB  |
 +          +       +              +                 +              +----------------+                +           +------------+-------------+
-|          |       |              |                 |              |       15       |                |           | 13.63 GiB  |  13.70 GiB  |
+|          |       |              |                 |              |       15       |                |           | 13.64 GiB  |  14.06 GiB  |
 +          +       +              +                 +              +----------------+                +           +------------+-------------+
-|          |       |              |                 |              |       20       |                |           |  9.77 GiB  |  17.56 GiB  |
+|          |       |              |                 |              |       20       |                |           |  9.78 GiB  |  17.92 GiB  |
 +          +       +              +                 +              +----------------+                +           +------------+-------------+
-|          |       |              |                 |              |       25       |                |           |  5.91 GiB  |  21.42 GiB  |
+|          |       |              |                 |              |       25       |                |           |  5.91 GiB  |  21.79 GiB  |
 +          +       +              +                 +              +----------------+                +           +------------+-------------+
-|          |       |              |                 |              |       30       |                |           |  2.04 GiB  |  25.29 GiB  |
-+          +       +              +                 +              +----------------+----------------+           +------------+-------------+
-|          |       |              |                 |              |  33 (32 + 1)   |      Yes       |           | 292.68 MiB |  27.04 GiB  |
+|          |       |              |                 |              |       30       |                |           |  2.05 GiB  |  25.65 GiB  |
++          +       +              +                 +              +----------------+----------------+-----------+------------+-------------+
+|          |       |              |                 |              |  33 (32 + 1)   |      Yes       | 25.08 GiB | 395.24 MiB |  27.31 GiB  |
 +----------+-------+--------------+-----------------+--------------+----------------+----------------+-----------+------------+-------------+
 
 ```

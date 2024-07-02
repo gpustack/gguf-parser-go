@@ -1,6 +1,6 @@
 # GGUF Parser
 
-> tl;dr, Go parser for the [GGUR](https://github.com/ggerganov/ggml/blob/master/docs/gguf.md).
+> tl;dr, Go parser for the [GGUF](https://github.com/ggerganov/ggml/blob/master/docs/gguf.md).
 
 [GGUF](https://github.com/ggerganov/ggml/blob/master/docs/gguf.md) is a file format for storing models for inference
 with GGML and executors based on GGML. GGUF is a binary format that is designed for fast loading and saving of models,
