@@ -2,6 +2,10 @@
 
 > tl;dr, Go parser for the [GGUF](https://github.com/ggerganov/ggml/blob/master/docs/gguf.md).
 
+[![](https://img.shields.io/github/actions/workflow/status/thxcode/gguf-parser-go/cmd.yml?label=ci)](https://github.com/thxcode/gguf-parser-go/actions)
+[![](https://img.shields.io/github/license/thxcode/gguf-parser-go?label=license)](https://github.com/thxcode/gguf-parser-go#license)
+[![](https://img.shields.io/github/downloads/thxcode/gguf-parser-go/total)](https://github.com/thxcode/gguf-parser-go/releases)
+
 [GGUF](https://github.com/ggerganov/ggml/blob/master/docs/gguf.md) is a file format for storing models for inference
 with GGML and executors based on GGML. GGUF is a binary format that is designed for fast loading and saving of models,
 and for ease of reading. Models are traditionally developed using PyTorch or another framework, and then converted to
