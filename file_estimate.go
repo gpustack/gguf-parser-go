@@ -87,6 +87,9 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 	if o.CacheValueType == nil {
 		o.CacheValueType = ptr.To(GGMLTypeF16)
 	}
+	if o.OffloadKVCache == nil {
+		o.OffloadKVCache = ptr.To(true)
+	}
 	if o.PhysicalBatchSize == nil {
 		o.PhysicalBatchSize = ptr.To(int32(512))
 	}
@@ -247,6 +250,13 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 		e.Load.KVCache.Value = GGUFBytesScalar(vrs * nLoadLayers)
 		e.Offload.KVCache.Key = GGUFBytesScalar(krs * nOffloadLayers)
 		e.Offload.KVCache.Value = GGUFBytesScalar(vrs * nOffloadLayers)
+
+		if !*o.OffloadKVCache {
+			e.Load.KVCache.Key += e.Offload.KVCache.Key
+			e.Load.KVCache.Value += e.Offload.KVCache.Value
+			e.Offload.KVCache.Key = GGUFBytesScalar(0)
+			e.Offload.KVCache.Value = GGUFBytesScalar(0)
+		}
 	}
 
 	// Computation.
@@ -429,7 +439,12 @@ type (
 		// false for partial offloaded or zero offloaded.
 		FullOffloaded bool `json:"fullOffloaded"`
 		// UMA represents the usage of Unified Memory Architecture.
-		UMA GGUFBytesScalar `json:"uma"`
+		UMA struct {
+			// Load is the memory usage for loading the GGUF file in Load.
+			RAM GGUFBytesScalar `json:"ram"`
+			// VRAM is the memory usage for loading the GGUF file in VRAM.
+			VRAM GGUFBytesScalar `json:"vram"`
+		} `json:"uma"`
 		// NonUMA represents the usage of Non-Unified Memory Architecture.
 		NonUMA struct {
 			// Load is the memory usage for loading the GGUF file in Load.
@@ -442,7 +457,7 @@ type (
 
 // SummarizeMemory returns the summary of the estimated memory usage of loading the GGUF file in llama.cpp,
 // the input options are used to adjust the summary.
-func (e LLaMACppUsageEstimate) SummarizeMemory(mmap bool, platformRAM, platformVRAM uint64) (ems LLaMACppUsageEstimateMemorySummary) {
+func (e LLaMACppUsageEstimate) SummarizeMemory(mmap bool, ramFootprint, vramFootprint uint64) (ems LLaMACppUsageEstimateMemorySummary) {
 	ems.OffloadLayers, ems.FullOffloaded = e.OffloadLayers, e.FullOffloaded
 	if ems.FullOffloaded {
 		ems.OffloadLayers++ // The output layer is offloaded.
@@ -450,20 +465,27 @@ func (e LLaMACppUsageEstimate) SummarizeMemory(mmap bool, platformRAM, platformV
 
 	// UMA.
 	{
-		fp := e.Load.Footprint + e.Offload.Footprint
-		wg := e.Load.Weight.Sum() + e.Offload.Weight.Sum()
-		kv := e.Load.KVCache.Sum() + e.Offload.KVCache.Sum()
+		// RAM
+		fp := e.Load.Footprint
+		wg := e.Load.Weight.Sum()
+		kv := e.Load.KVCache.Sum()
 		cp := e.Load.Computation.Sum()
-		ems.UMA = fp + wg + kv + cp
+		ems.UMA.RAM = fp + wg + kv + cp
 		if !e.NoMMap && mmap {
-			ems.UMA -= wg
+			ems.UMA.RAM -= wg
 		}
+		// VRAM.
+		fp = e.Offload.Footprint
+		wg = e.Offload.Weight.Sum()
+		kv = e.Offload.KVCache.Sum()
+		cp = 0
+		ems.UMA.VRAM = fp + wg + kv + cp
 	}
 
 	// NonUMA.
 	{
 		// RAM.
-		fp := GGUFBytesScalar(platformRAM) + e.Load.Footprint
+		fp := GGUFBytesScalar(ramFootprint) + e.Load.Footprint
 		wg := e.Load.Weight.Sum()
 		kv := e.Load.KVCache.Sum()
 		cp := e.Load.Computation.Sum()
@@ -475,7 +497,7 @@ func (e LLaMACppUsageEstimate) SummarizeMemory(mmap bool, platformRAM, platformV
 			}
 		}
 		// VRAM.
-		fp = GGUFBytesScalar(platformVRAM) + e.Offload.Footprint
+		fp = GGUFBytesScalar(vramFootprint) + e.Offload.Footprint
 		wg = e.Offload.Weight.Sum()
 		kv = e.Offload.KVCache.Sum()
 		cp = e.Offload.Computation.Sum()
@@ -487,10 +509,10 @@ func (e LLaMACppUsageEstimate) SummarizeMemory(mmap bool, platformRAM, platformV
 
 // Summarize returns the summary of the estimated result of loading the GGUF file in llama.cpp,
 // the input options are used to adjust the summary.
-func (e LLaMACppUsageEstimate) Summarize(mmap bool, platformRAM, platformVRAM uint64) (es LLaMACppUsageEstimateSummary) {
+func (e LLaMACppUsageEstimate) Summarize(mmap bool, ramFootprint, vramFootprint uint64) (es LLaMACppUsageEstimateSummary) {
 	// Summarize memory.
 	es.Memory = []LLaMACppUsageEstimateMemorySummary{
-		e.SummarizeMemory(mmap, platformRAM, platformVRAM),
+		e.SummarizeMemory(mmap, ramFootprint, vramFootprint),
 	}
 
 	// Just copy from the original estimate.

@@ -41,6 +41,7 @@ func main() {
 		physicalBatchSize = 512
 		parallelSize      = 1
 		kvType            = "f16"
+		noKVOffload       bool
 		flashAttention    bool
 		platformFootprint = "150,250"
 		noMMap            bool
@@ -103,6 +104,9 @@ func main() {
 		"which is used to estimate the usage, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1], "+
 		"default is f16. "+
 		"Use quantization type means enabling --flash-attention as well.")
+	fs.BoolVar(&noKVOffload, "no-kv-offload", noKVOffload, "Specify disabling Key-Value offloading, "+
+		"which is used to estimate the usage. "+
+		"Key-Value offloading can reduce the usage of VRAM.")
 	fs.BoolVar(&flashAttention, "flash-attention", flashAttention, "Specify enabling Flash Attention, "+
 		"which is used to estimate the usage. "+
 		"Flash Attention can reduce the usage of RAM/VRAM.")
@@ -196,6 +200,9 @@ func main() {
 			kv = GGMLTypeQ5_1
 		}
 		eopts = append(eopts, WithCacheKeyType(kv), WithCacheValueType(kv))
+	}
+	if noKVOffload {
+		eopts = append(eopts, WithoutOffloadKVCache())
 	}
 	if flashAttention {
 		eopts = append(eopts, WithFlashAttention())
@@ -330,6 +337,7 @@ func main() {
 		tprint(
 			"MODEL",
 			[]string{"Name", "Arch", "Quantization Version", "File Type", "Little Endian", "Size", "Parameters", "BPW"},
+			nil,
 			[]string{
 				m.Name,
 				m.Architecture,
@@ -346,6 +354,7 @@ func main() {
 		tprint(
 			"ARCHITECTURE",
 			[]string{"Max Context Len", "Embedding Len", "Embedding GQA", "Attention Head Cnt", "Layers", "Feed Forward Len", "Expert Cnt", "Vocabulary Len"},
+			nil,
 			[]string{
 				sprintf(a.MaximumContextLength),
 				sprintf(a.EmbeddingLength),
@@ -362,6 +371,7 @@ func main() {
 		tprint(
 			"TOKENIZER",
 			[]string{"Model", "Tokens Size", "Tokens Len", "Added Tokens Len", "BOS Token", "EOS Token", "Unknown Token", "Separator Token", "Padding Token"},
+			nil,
 			[]string{
 				t.Model,
 				sprintf(GGUFBytesScalar(t.TokensSize)),
@@ -412,14 +422,15 @@ func main() {
 				sprintf(!es.NoMMap),
 				sprintf(tenary(es.Memory[i].FullOffloaded, sprintf("%d (%d + 1)", es.Memory[i].OffloadLayers, es.Memory[i].OffloadLayers-1), es.Memory[i].OffloadLayers)),
 				sprintf(tenary(es.Memory[i].FullOffloaded, "Yes", "No")),
-				sprintf(es.Memory[i].UMA),
+				sprintf("%s + %s = %s", es.Memory[i].UMA.RAM, es.Memory[i].NonUMA.VRAM, es.Memory[i].UMA.RAM+es.Memory[i].UMA.VRAM),
 				sprintf(es.Memory[i].NonUMA.RAM),
 				sprintf(es.Memory[i].NonUMA.VRAM),
 			}
 		}
 		tprint(
 			"ESTIMATE",
-			[]string{"Arch", "Context Size", "Flash Attention", "MMap Support", "Offload Layers", "Full Offloaded", "UMA RAM", "NonUMA RAM", "NonUMA VRAM"},
+			[]string{"Arch", "Context Size", "Flash Attention", "MMap Support", "Offload Layers", "Full Offloaded", "UMA (RAM + VRAM)", "NonUMA RAM", "NonUMA VRAM"},
+			[]int{0, 1, 2, 3, 5},
 			bd...)
 	}
 }
@@ -456,22 +467,37 @@ func sprintf(f any, a ...any) string {
 	}
 }
 
-func tprint(title string, header []string, body ...[]string) {
+func tprint(title string, header []string, merges []int, body ...[]string) {
 	title = strings.ToUpper(title)
-	for i := range header {
-		header[i] = strings.ToUpper(header[i])
-	}
 
 	tb := tablewriter.NewWriter(os.Stdout)
+
 	tb.SetTablePadding("\t")
 	tb.SetAlignment(tablewriter.ALIGN_CENTER)
 	tb.SetHeaderLine(true)
 	tb.SetRowLine(true)
-	tb.SetAutoMergeCells(true)
-	tb.Append(append([]string{title}, header...))
+
+	tb.SetHeaderAlignment(tablewriter.ALIGN_CENTER)
+	tb.SetAutoFormatHeaders(false)
+	tb.SetHeader(append([]string{"\\"}, header...))
+
+	tb.SetAutoWrapText(false)
+	tb.SetColMinWidth(0, 12)
+	tb.SetAutoMergeCellsByColumnIndex(func() (r []int) {
+		if len(merges) == 0 {
+			return []int{0}
+		}
+		r = make([]int, len(merges)+1)
+		r = append(r, 0)
+		for i := range merges {
+			r[i] = merges[i] + 1
+		}
+		return r
+	}())
 	for i := range body {
 		tb.Append(append([]string{title}, body[i]...))
 	}
+
 	tb.Render()
 	fmt.Println()
 }

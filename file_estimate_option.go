@@ -2,6 +2,8 @@ package gguf_parser
 
 import (
 	"slices"
+
+	"github.com/thxcode/gguf-parser-go/util/ptr"
 )
 
 type (
@@ -13,6 +15,7 @@ type (
 		ParallelSize      *int32
 		CacheKeyType      *GGMLType
 		CacheValueType    *GGMLType
+		OffloadKVCache    *bool
 		OffloadLayers     *uint64
 		FlashAttention    bool
 	}
@@ -92,6 +95,13 @@ func WithCacheValueType(t GGMLType) LLaMACppUsageEstimateOption {
 		if slices.Contains(_GGUFEstimateCacheTypeAllowList, t) {
 			o.CacheValueType = &t
 		}
+	}
+}
+
+// WithoutOffloadKVCache disables offloading the KV cache.
+func WithoutOffloadKVCache() LLaMACppUsageEstimateOption {
+	return func(o *_LLaMACppUsageEstimateOptions) {
+		o.OffloadKVCache = ptr.To(false)
 	}
 }
 
