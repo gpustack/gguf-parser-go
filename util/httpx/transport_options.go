@@ -23,7 +23,7 @@ func TransportOptions() *TransportOption {
 		TLSClientConfig: &tls.Config{
 			MinVersion: tls.VersionTLS12,
 		},
-		DialContext:           dialer.DialContext,
+		DialContext:           DNSCacheDialContext(dialer),
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          100,
 		IdleConnTimeout:       90 * time.Second,
@@ -163,13 +163,22 @@ func (o *TransportOption) WithTLSClientConfig(config *tls.Config) *TransportOpti
 	return o
 }
 
+// WithoutDNSCache disables the dns cache.
+func (o *TransportOption) WithoutDNSCache() *TransportOption {
+	if o == nil || o.transport == nil || o.dialer == nil {
+		return o
+	}
+	o.transport.DialContext = o.dialer.DialContext
+	return o
+}
+
 // WithDialer sets the dialer.
 func (o *TransportOption) WithDialer(dialer *net.Dialer) *TransportOption {
 	if o == nil || o.transport == nil || dialer == nil {
 		return o
 	}
 	o.dialer = dialer
-	o.transport.DialContext = dialer.DialContext
+	o.transport.DialContext = DNSCacheDialContext(o.dialer)
 	return o
 }
 

@@ -8,9 +8,10 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	stdjson "encoding/json"
 
 	"github.com/olekukonko/tablewriter"
+
+	"github.com/thxcode/gguf-parser-go/util/json"
 
 	. "github.com/thxcode/gguf-parser-go"
 )
@@ -24,9 +25,12 @@ func main() {
 
 	var (
 		// model options
-		path       string
-		url        string
-		repo, file string
+		path    string
+		url     string
+		hfRepo  string
+		hfFile  string
+		olModel string
+		olCrawl bool
 		// read options
 		debug         bool
 		skipTLSVerify bool
@@ -47,8 +51,8 @@ func main() {
 		skipTokenizer    bool
 		skipEstimate     bool
 		inMib            bool
-		json             bool
-		jsonPretty       = true
+		inJson           bool
+		inPrettyJson     = true
 	)
 	fs := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	fs.Usage = func() {
@@ -62,14 +66,18 @@ func main() {
 		"https://huggingface.co/NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF"+
 		"/resolve/main/Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf. "+
 		"Note that gguf-parser does not need to download the entire GGUF file.")
-	fs.StringVar(&repo, "repo", repo, "Repository of HuggingFace which the GGUF file store, e.g. "+
+	fs.StringVar(&hfRepo, "repo", hfRepo, "Repository of HuggingFace which the GGUF file store, e.g. "+
 		"NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF, works with --file. [Deprecated, use --hf-repo instead]")
-	fs.StringVar(&file, "file", file, "Model file below the --repo, e.g. "+
+	fs.StringVar(&hfFile, "file", hfFile, "Model file below the --repo, e.g. "+
 		"Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf. [Deprecated, use --hf-file instead]") // Deprecated.
-	fs.StringVar(&repo, "hf-repo", repo, "Repository of HuggingFace which the GGUF file store, e.g. "+
+	fs.StringVar(&hfRepo, "hf-repo", hfRepo, "Repository of HuggingFace which the GGUF file store, e.g. "+
 		"NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF, works with --hf-file.") // Deprecated.
-	fs.StringVar(&file, "hf-file", file, "Model file below the --repo, e.g. "+
+	fs.StringVar(&hfFile, "hf-file", hfFile, "Model file below the --repo, e.g. "+
 		"Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf.")
+	fs.StringVar(&olModel, "ol-model", olModel, "Model name of Ollama, e.g. "+
+		"gemma2.")
+	fs.BoolVar(&olCrawl, "ol-crawl", olCrawl, "Crawl the Ollama model instead of blobs fetching, "+
+		"which will be more efficient and faster, but lossy.")
 	fs.BoolVar(&debug, "debug", debug, "Enable debugging, verbosity.")
 	fs.BoolVar(&skipTLSVerify, "skip-tls-verify", skipTLSVerify, "Skip TLS verification, works with --url.")
 	fs.IntVar(&ctxSize, "ctx-size", ctxSize, "Specify the size of prompt context, "+
@@ -113,8 +121,8 @@ func main() {
 	fs.BoolVar(&skipTokenizer, "skip-tokenizer", skipTokenizer, "Skip to display tokenizer metadata")
 	fs.BoolVar(&skipEstimate, "skip-estimate", skipEstimate, "Skip to estimate.")
 	fs.BoolVar(&inMib, "in-mib", inMib, "Display the estimated result in table with MiB.")
-	fs.BoolVar(&json, "json", json, "Output as JSON.")
-	fs.BoolVar(&jsonPretty, "json-pretty", jsonPretty, "Output as pretty JSON.")
+	fs.BoolVar(&inJson, "json", inJson, "Output as JSON.")
+	fs.BoolVar(&inPrettyJson, "json-pretty", inPrettyJson, "Output as pretty JSON.")
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
@@ -192,8 +200,10 @@ func main() {
 			gf, err = ParseGGUFFile(path, ropts...)
 		case url != "":
 			gf, err = ParseGGUFFileRemote(ctx, url, ropts...)
-		case repo != "" && file != "":
-			gf, err = ParseGGUFFileFromHuggingFace(ctx, repo, file, ropts...)
+		case hfRepo != "" && hfFile != "":
+			gf, err = ParseGGUFFileFromHuggingFace(ctx, hfRepo, hfFile, ropts...)
+		case olModel != "":
+			gf, err = ParseGGUFFileFromOllama(ctx, olModel, olCrawl, ropts...)
 		}
 		if err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "failed to parse GGUF file: %s\n", err.Error())
@@ -244,7 +254,7 @@ func main() {
 		}
 	}
 
-	if json {
+	if inJson {
 		o := map[string]any{}
 		if !skipModel {
 			o["model"] = m
@@ -286,8 +296,8 @@ func main() {
 			o["estimate"] = es
 		}
 
-		enc := stdjson.NewEncoder(os.Stdout)
-		if jsonPretty {
+		enc := json.NewEncoder(os.Stdout)
+		if inPrettyJson {
 			enc.SetIndent("", "  ")
 		}
 		if err := enc.Encode(o); err != nil {

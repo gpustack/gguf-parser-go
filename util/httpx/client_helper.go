@@ -2,13 +2,14 @@ package httpx
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"regexp"
 
 	"github.com/henvic/httpretty"
+
+	"github.com/thxcode/gguf-parser-go/util/json"
 )
 
 var _ httpretty.Formatter = (*JSONFormatter)(nil)
@@ -57,4 +58,10 @@ func (c RoundTripperChain) RoundTrip(req *http.Request) (*http.Response, error) 
 		return c.Next.RoundTrip(req)
 	}
 	return nil, nil
+}
+
+type RoundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (fn RoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return fn(req)
 }

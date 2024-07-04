@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/davecgh/go-spew/spew"
 )
@@ -189,6 +190,10 @@ func TestParseGGUFFileFromHuggingFace(t *testing.T) {
 			"lmstudio-community/Yi-1.5-9B-Chat-GGUF",
 			"Yi-1.5-9B-Chat-Q5_K_M.gguf",
 		},
+		{
+			"bartowski/gemma-2-9b-it-GGUF",
+			"gemma-2-9b-it-Q3_K_M.gguf",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc[0]+"/"+tc[1], func(t *testing.T) {
@@ -200,4 +205,63 @@ func TestParseGGUFFileFromHuggingFace(t *testing.T) {
 			t.Log("\n", spew.Sdump(f), "\n")
 		})
 	}
+}
+
+func TestParseGGUFFileFromOllama(t *testing.T) {
+	ctx := context.Background()
+
+	cases := []string{
+		"gemma2",
+		"llama3:8b",
+		"qwen2:72b-instruct-q3_K_M",
+	}
+	for _, tc := range cases {
+		t.Run(tc, func(t *testing.T) {
+			start := time.Now()
+			cf, err := ParseGGUFFileFromOllama(ctx, tc, true, SkipLargeMetadata())
+			if err != nil {
+				t.Fatal(err)
+				return
+			}
+			t.Logf("cost: %v\n", time.Since(start))
+			t.Log("\n", spew.Sdump(cf), "\n")
+
+			start = time.Now()
+			sf, err := ParseGGUFFileFromOllama(ctx, tc, false, SkipLargeMetadata())
+			if err != nil {
+				t.Fatal(err)
+				return
+			}
+			t.Logf("cost: %v\n", time.Since(start))
+			t.Log("\n", spew.Sdump(sf), "\n")
+		})
+	}
+}
+
+func BenchmarkParseGGUFFileOllamaCrawl(b *testing.B) {
+	ctx := context.Background()
+
+	b.ReportAllocs()
+
+	b.ResetTimer()
+	b.Run("Without Crawl", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_, err := ParseGGUFFileFromOllama(ctx, "gemma2", false, SkipLargeMetadata())
+			if err != nil {
+				b.Fatal(err)
+				return
+			}
+		}
+	})
+
+	b.ResetTimer()
+	b.Run("With Crawl", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_, err := ParseGGUFFileFromOllama(ctx, "gemma2", true, SkipLargeMetadata())
+			if err != nil {
+				b.Fatal(err)
+				return
+			}
+		}
+	})
 }

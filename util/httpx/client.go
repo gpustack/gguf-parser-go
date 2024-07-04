@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/henvic/httpretty"
 
@@ -58,18 +59,41 @@ func Client(opts ...*ClientOption) *http.Client {
 		root = pretty.RoundTripper(root)
 	}
 
-	transport := RoundTripperChain{
+	rtc := RoundTripperChain{
 		Next: root,
 	}
-	for i := range o.roundTrips {
-		transport = RoundTripperChain{
-			Do:   o.roundTrips[i],
-			Next: transport,
+	for i := range o.roundTrippers {
+		rtc = RoundTripperChain{
+			Do:   o.roundTrippers[i],
+			Next: rtc,
 		}
 	}
 
+	var rt http.RoundTripper = rtc
+	if o.retryIf != nil {
+		rt = RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			for i := 0; ; i++ {
+				resp, err := rtc.RoundTrip(req)
+				if !o.retryIf(resp, err) {
+					return resp, err
+				}
+				w, ok := o.retryBackoff(i+1, resp)
+				if !ok {
+					return resp, err
+				}
+				wt := time.NewTimer(w)
+				select {
+				case <-req.Context().Done():
+					wt.Stop()
+					return resp, req.Context().Err()
+				case <-wt.C:
+				}
+			}
+		})
+	}
+
 	return &http.Client{
-		Transport: transport,
+		Transport: rt,
 		Timeout:   o.timeout,
 	}
 }

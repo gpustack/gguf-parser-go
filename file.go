@@ -2,22 +2,18 @@ package gguf_parser
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"golang.org/x/exp/constraints"
 
 	"github.com/thxcode/gguf-parser-go/util/bytex"
 	"github.com/thxcode/gguf-parser-go/util/funcx"
-	"github.com/thxcode/gguf-parser-go/util/httpx"
 	"github.com/thxcode/gguf-parser-go/util/osx"
 )
 
@@ -36,10 +32,14 @@ type GGUFFile struct {
 	TensorInfos GGUFTensorInfos `json:"tensorInfos"`
 	// Padding is the padding size of the GGUF file,
 	// which is used to split Header and TensorInfos from tensor data.
+	//
+	// This might be empty if parse from crawler.
 	Padding int64 `json:"padding"`
 	// TensorDataStartOffset is the offset in bytes of the tensor data in this file.
 	//
 	// The offset is the start of the file.
+	//
+	// This might be lossy if parse from crawler.
 	TensorDataStartOffset int64 `json:"tensorDataStartOffset"`
 
 	/* Appendix */
@@ -151,7 +151,7 @@ type (
 		Len uint64 `json:"len"`
 		// Array holds all array items.
 		//
-		// Array may be empty if skipping.
+		// This might be empty if skipping or parse from crawler.
 		Array []any `json:"array,omitempty"`
 
 		/* Appendix */
@@ -159,9 +159,13 @@ type (
 		// StartOffset is the offset in bytes of the GGUFMetadataKVArrayValue in the GGUFFile file.
 		//
 		// The offset is the start of the file.
+		//
+		// This might be empty if parse from crawler.
 		StartOffset int64 `json:"startOffset"`
 
 		// Size is the size of the array in bytes.
+		//
+		// This might be empty if parse from crawler.
 		Size int64 `json:"endOffset"`
 	}
 
@@ -195,6 +199,8 @@ type (
 		// StartOffset is the offset in bytes of the GGUFTensorInfo in the GGUFFile file.
 		//
 		// The offset is the start of the file.
+		//
+		// This might be empty if parse from crawler.
 		StartOffset int64 `json:"startOffset"`
 	}
 
@@ -235,70 +241,6 @@ func ParseGGUFFile(path string, opts ...GGUFReadOption) (*GGUFFile, error) {
 	}
 
 	return parseGGUFFile(s, f, o)
-}
-
-// ParseGGUFFileRemote parses a GGUF file from a remote URL,
-// and returns a GGUFFile, or an error if any.
-func ParseGGUFFileRemote(ctx context.Context, url string, opts ...GGUFReadOption) (*GGUFFile, error) {
-	var o _GGUFReadOptions
-	for _, opt := range opts {
-		opt(&o)
-	}
-
-	cli := httpx.Client(
-		httpx.ClientOptions().
-			WithUserAgent("gguf-parser-go").
-			If(o.Debug, func(x *httpx.ClientOption) *httpx.ClientOption {
-				return x.WithDebug()
-			}).
-			WithTimeout(0).
-			WithTransport(
-				httpx.TransportOptions().
-					WithoutKeepalive().
-					TimeoutForDial(5*time.Second).
-					TimeoutForTLSHandshake(5*time.Second).
-					TimeoutForResponseHeader(5*time.Second).
-					If(o.SkipProxy, func(x *httpx.TransportOption) *httpx.TransportOption {
-						return x.WithoutProxy()
-					}).
-					If(o.ProxyURL != nil, func(x *httpx.TransportOption) *httpx.TransportOption {
-						return x.WithProxy(http.ProxyURL(o.ProxyURL))
-					}).
-					If(o.SkipTLSVerification, func(x *httpx.TransportOption) *httpx.TransportOption {
-						return x.WithoutInsecureVerify()
-					})))
-
-	var (
-		f io.ReadSeeker
-		s int64
-	)
-	{
-		req, err := httpx.NewGetRequestWithContext(ctx, url)
-		if err != nil {
-			return nil, fmt.Errorf("new request: %w", err)
-		}
-
-		var sf *httpx.SeekerFile
-		if o.BufferSize > 0 {
-			sf, err = httpx.OpenSeekerFileWithSize(cli, req, o.BufferSize, 0)
-		} else {
-			sf, err = httpx.OpenSeekerFile(cli, req)
-		}
-		if err != nil {
-			return nil, fmt.Errorf("open http file: %w", err)
-		}
-		defer osx.Close(sf)
-		f = io.NewSectionReader(sf, 0, sf.Len())
-		s = sf.Len()
-	}
-
-	return parseGGUFFile(s, f, o)
-}
-
-// ParseGGUFFileFromHuggingFace parses a GGUF file from Hugging Face,
-// and returns a GGUFFile, or an error if any.
-func ParseGGUFFileFromHuggingFace(ctx context.Context, repo, file string, opts ...GGUFReadOption) (*GGUFFile, error) {
-	return ParseGGUFFileRemote(ctx, fmt.Sprintf("https://huggingface.co/%s/resolve/main/%s", repo, file), opts...)
 }
 
 func parseGGUFFile(s int64, f io.ReadSeeker, o _GGUFReadOptions) (_ *GGUFFile, err error) {
