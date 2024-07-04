@@ -46,6 +46,9 @@ func ParseGGUFFileRemote(ctx context.Context, url string, opts ...GGUFReadOption
 					}).
 					If(o.SkipTLSVerification, func(x *httpx.TransportOption) *httpx.TransportOption {
 						return x.WithoutInsecureVerify()
+					}).
+					If(o.SkipDNSCache, func(x *httpx.TransportOption) *httpx.TransportOption {
+						return x.WithoutDNSCache()
 					})))
 
 	return parseGGUFFileFromRemote(ctx, cli, url, o)

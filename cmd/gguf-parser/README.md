@@ -51,12 +51,16 @@ Usage of gguf-parser ...:
         Repository of HuggingFace which the GGUF file store, e.g. NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF, works with --file. [Deprecated, use --hf-repo instead]
   -skip-architecture
         Skip to display architecture metadata.
+  -skip-dns-cache
+        Skip DNS cache, works with --url/--hf-*/--ol-*, default is caching the DNS lookup result.
   -skip-estimate
         Skip to estimate.
   -skip-model
         Skip to display model metadata.
+  -skip-proxy
+        Skip proxy settings, works with --url/--hf-*/--ol-*, default is respecting the environment variables HTTP_PROXY/HTTPS_PROXY/NO_PROXY.
   -skip-tls-verify
-        Skip TLS verification, works with --url.
+        Skip TLS verification, works with --url/--hf-*/--ol-*, default is verifying the TLS certificate on HTTPs request.
   -skip-tokenizer
         Skip to display tokenizer metadata
   -ubatch-size int

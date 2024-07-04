@@ -33,7 +33,9 @@ func main() {
 		olCrawl bool
 		// read options
 		debug         bool
+		skipProxy     bool
 		skipTLSVerify bool
+		skipDNSCache  bool
 		// estimate options
 		ctxSize           = -1
 		physicalBatchSize = 512
@@ -79,7 +81,15 @@ func main() {
 	fs.BoolVar(&olCrawl, "ol-crawl", olCrawl, "Crawl the Ollama model instead of blobs fetching, "+
 		"which will be more efficient and faster, but lossy.")
 	fs.BoolVar(&debug, "debug", debug, "Enable debugging, verbosity.")
-	fs.BoolVar(&skipTLSVerify, "skip-tls-verify", skipTLSVerify, "Skip TLS verification, works with --url.")
+	fs.BoolVar(&skipProxy, "skip-proxy", skipProxy, "Skip proxy settings, "+
+		"works with --url/--hf-*/--ol-*, "+
+		"default is respecting the environment variables HTTP_PROXY/HTTPS_PROXY/NO_PROXY.")
+	fs.BoolVar(&skipTLSVerify, "skip-tls-verify", skipTLSVerify, "Skip TLS verification, "+
+		"works with --url/--hf-*/--ol-*, "+
+		"default is verifying the TLS certificate on HTTPs request.")
+	fs.BoolVar(&skipDNSCache, "skip-dns-cache", skipDNSCache, "Skip DNS cache, "+
+		"works with --url/--hf-*/--ol-*, "+
+		"default is caching the DNS lookup result.")
 	fs.IntVar(&ctxSize, "ctx-size", ctxSize, "Specify the size of prompt context, "+
 		"which is used to estimate the usage, "+
 		"default is equal to the model's maximum context size.")
@@ -142,8 +152,14 @@ func main() {
 	if debug {
 		ropts = append(ropts, UseDebug())
 	}
+	if skipProxy {
+		ropts = append(ropts, SkipProxy())
+	}
 	if skipTLSVerify {
 		ropts = append(ropts, SkipTLSVerification())
+	}
+	if skipDNSCache {
+		ropts = append(ropts, SkipDNSCache())
 	}
 
 	eopts := []LLaMACppUsageEstimateOption{

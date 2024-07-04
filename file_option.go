@@ -14,6 +14,7 @@ type (
 		ProxyURL            *url.URL
 		SkipProxy           bool
 		SkipTLSVerification bool
+		SkipDNSCache        bool
 		BufferSize          int
 	}
 	GGUFReadOption func(o *_GGUFReadOptions)
@@ -41,28 +42,35 @@ func UseMMap() GGUFReadOption {
 	}
 }
 
-// UseProxy uses the given url as a proxy when reading from a remote URL.
+// UseProxy uses the given url as a proxy when reading from remote.
 func UseProxy(url *url.URL) GGUFReadOption {
 	return func(o *_GGUFReadOptions) {
 		o.ProxyURL = url
 	}
 }
 
-// SkipProxy skips the proxy when reading from a remote URL.
+// SkipProxy skips the proxy when reading from remote.
 func SkipProxy() GGUFReadOption {
 	return func(o *_GGUFReadOptions) {
 		o.SkipProxy = true
 	}
 }
 
-// SkipTLSVerification skips the TLS verification when reading from a remote URL.
+// SkipTLSVerification skips the TLS verification when reading from remote.
 func SkipTLSVerification() GGUFReadOption {
 	return func(o *_GGUFReadOptions) {
 		o.SkipTLSVerification = true
 	}
 }
 
-// UseBufferSize sets the buffer size when reading from a remote URL.
+// SkipDNSCache skips the DNS cache when reading from remote.
+func SkipDNSCache() GGUFReadOption {
+	return func(o *_GGUFReadOptions) {
+		o.SkipDNSCache = true
+	}
+}
+
+// UseBufferSize sets the buffer size when reading from remote.
 func UseBufferSize(size int) GGUFReadOption {
 	const minSize = 32 * 1024
 	if size < minSize {

@@ -62,6 +62,9 @@ func ParseGGUFFileFromOllama(ctx context.Context, model string, crawl bool, opts
 					}).
 					If(o.SkipTLSVerification, func(x *httpx.TransportOption) *httpx.TransportOption {
 						return x.WithoutInsecureVerify()
+					}).
+					If(o.SkipDNSCache, func(x *httpx.TransportOption) *httpx.TransportOption {
+						return x.WithoutDNSCache()
 					})))
 
 	var ml OllamaModelLayer
