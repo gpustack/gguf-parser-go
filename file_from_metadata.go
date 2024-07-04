@@ -22,6 +22,7 @@ import (
 var (
 	ErrOllamaInvalidModel      = errors.New("ollama invalid model")
 	ErrOllamaBaseLayerNotFound = errors.New("ollama base layer not found")
+	ErrOllamaIllegalMetadata   = errors.New("ollama illegal metadata")
 )
 
 // ParseGGUFFileFromOllama parses a GGUF file from Ollama model's base layer,
@@ -97,38 +98,36 @@ func ParseGGUFFileFromOllama(ctx context.Context, model string, crawl bool, opts
 			if resp.StatusCode != http.StatusOK {
 				return fmt.Errorf("status code %d", resp.StatusCode)
 			}
-
 			n, err = html.Parse(resp.Body)
 			if err != nil {
 				return fmt.Errorf("parse html: %w", err)
 			}
-
 			return nil
 		})
-		if err != nil {
-			return nil, fmt.Errorf("do crawl request: %w", err)
-		}
-
-		var wk func(*html.Node) string
-		wk = func(n *html.Node) string {
-			if n.Type == html.ElementNode && n.Data == "div" {
-				for i := range n.Attr {
-					if n.Attr[i].Key == "class" && n.Attr[i].Val == "whitespace-pre-wrap" {
-						return n.FirstChild.Data
+		if err == nil {
+			var wk func(*html.Node) string
+			wk = func(n *html.Node) string {
+				if n.Type == html.ElementNode && n.Data == "div" {
+					for i := range n.Attr {
+						if n.Attr[i].Key == "class" && n.Attr[i].Val == "whitespace-pre-wrap" {
+							return n.FirstChild.Data
+						}
 					}
 				}
+				for c := n.FirstChild; c != nil; c = c.NextSibling {
+					if r := wk(c); r != "" {
+						return r
+					}
+				}
+				return ""
 			}
-			for c := n.FirstChild; c != nil; c = c.NextSibling {
-				if r := wk(c); r != "" {
-					return r
+
+			if r := wk(n); r != "" {
+				gf, err := parseGGUFFileFromMetadata("ollama", r, ml.Size)
+				if err == nil {
+					return gf, nil
 				}
 			}
-			return ""
-		}
-
-		r := wk(n)
-		if r != "" {
-			return parseGGUFFileFromMetadata("ollama", r, ml.Size)
 		}
 
 		// Fallback to the default behavior.
@@ -155,13 +154,22 @@ func parseGGUFFileFromMetadata(source, data string, size uint64) (*GGUFFile, err
 	}
 
 	var m _OllamaMetadata
-	if err := json.Unmarshal([]byte(data), &m); err != nil {
-		return nil, fmt.Errorf("unmarshal metadata: %w", err)
+	{
+		if err := json.Unmarshal([]byte(data), &m); err != nil {
+			return nil, fmt.Errorf("unmarshal metadata: %w", err)
+		}
+		if len(m.Metadata) == 0 || len(m.Tensors) == 0 {
+			return nil, ErrOllamaIllegalMetadata
+		}
 	}
 
-	arrayMetadataValueRegex := regexp.MustCompile(`^\.{3} \((?P<len>\d+) values\)$`)
+	// Convert.
 
-	var gf GGUFFile
+	var (
+		arrayMetadataValueRegex = regexp.MustCompile(`^\.{3} \((?P<len>\d+) values\)$`)
+
+		gf GGUFFile
+	)
 
 	gf.Header.Magic = GGUFMagicGGUFLe
 	gf.Header.Version = GGUFVersion(m.Version)
