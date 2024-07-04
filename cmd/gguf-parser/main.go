@@ -275,7 +275,7 @@ func main() {
 			}
 			if offloadLayersStep < e.OffloadLayers {
 				cnt := e.OffloadLayers/offloadLayersStep + 1
-				if e.OffloadLayers%offloadLayersStep != 0 {
+				if e.OffloadLayers%offloadLayersStep != 0 || e.FullOffloaded {
 					cnt++
 				}
 				ess := make([]LLaMACppUsageEstimateMemorySummary, cnt)
