@@ -12,7 +12,7 @@ Usage of gguf-parser ...:
   -debug
         Enable debugging, verbosity.
   -file string
-        Model file below the --repo, e.g. Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf. [Deprecated, use --hf-file instead]
+        [DEPRECATED, use --hf-file instead] Model file below the --repo, e.g. Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf.
   -flash-attention
         Specify enabling Flash Attention, which is used to estimate the usage. Flash Attention can reduce the usage of RAM/VRAM.
   -gpu-layers int
@@ -36,21 +36,25 @@ Usage of gguf-parser ...:
   -no-mmap
         Specify disabling Memory-Mapped using, which is used to estimate the usage. Memory-Mapped can avoid loading the entire model weights into RAM.
   -offload-layers int
-        Specify how many layers to offload, which is used to estimate the usage, default is full offloaded. [Deprecated, use --gpu-layers instead] (default -1)
+        [DEPRECATED, use --gpu-layers instead] Specify how many layers to offload, which is used to estimate the usage, default is full offloaded. (default -1)
   -offload-layers-step uint
-        Specify the step of layers to offload, works with --offload-layers. [Deprecated, use --gpu-layers-step instead]
+        [DEPRECATED, use --gpu-layers-step instead] Specify the step of layers to offload, works with --offload-layers.
   -ol-crawl
         Crawl the Ollama model instead of blobs fetching, which will be more efficient and faster, but lossy.
   -ol-model string
         Model name of Ollama, e.g. gemma2.
+  -ol-usage
+        Specify respecting the extending layers introduced by Ollama, which affects the usage estimation.
   -parallel-size int
         Specify the number of parallel sequences to decode, which is used to estimate the usage, default is 1. (default 1)
   -path string
         Path where the GGUF file to load, e.g. ~/.cache/lm-studio/models/NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF/Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf.
   -platform-footprint cudaMemGetInfo
         Specify the platform footprint(RAM,VRAM) in MiB, which is used to estimate the NonUMA usage, default is 150,250. Different platform always gets different RAM and VRAM footprints, for example, within CUDA, cudaMemGetInfo would occupy some RAM and VRAM, see https://stackoverflow.com/questions/64854862/free-memory-occupied-by-cudamemgetinfo. (default "150,250")
+  -raw
+        Output the file only, skip anything.
   -repo string
-        Repository of HuggingFace which the GGUF file store, e.g. NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF, works with --file. [Deprecated, use --hf-repo instead]
+        [DEPRECATED, use --hf-repo instead] Repository of HuggingFace which the GGUF file store, e.g. NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF, works with --file.
   -skip-architecture
         Skip to display architecture metadata.
   -skip-dns-cache
