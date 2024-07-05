@@ -410,11 +410,14 @@ func (gf *GGUFFile) layers() GGUFLayerTensorInfos {
 	pm := make(map[string]any)
 	for i := range gf.TensorInfos {
 		ps := strings.Split(gf.TensorInfos[i].Name, ".")
+		if len(ps) < 2 {
+			ret = append(ret, gf.TensorInfos[i])
+			continue
+		}
 		switch {
 		default:
 			ret = append(ret, gf.TensorInfos[i])
-			continue
-		case len(ps) >= 2 && ps[0] == "blk":
+		case ps[0] == "blk" || ps[0] == "mm":
 			p := strings.Join([]string{ps[0], ps[1]}, ".")
 			if _, ok := pm[p]; !ok {
 				l := &GGUFNamedTensorInfos{Name: p}
@@ -423,7 +426,7 @@ func (gf *GGUFFile) layers() GGUFLayerTensorInfos {
 			}
 			l := pm[p].(*GGUFNamedTensorInfos)
 			l.GGUFLayerTensorInfos = append(l.GGUFLayerTensorInfos, gf.TensorInfos[i])
-		case len(ps) >= 3 && (ps[0] == "decoder" || ps[0] == "encoder"):
+		case ps[0] == "v" || ps[0] == "t": // Clip.
 			p := ps[0]
 			if _, ok := pm[p]; !ok {
 				xl := &GGUFNamedTensorInfos{Name: p}
@@ -431,7 +434,27 @@ func (gf *GGUFFile) layers() GGUFLayerTensorInfos {
 				ret = append(ret, xl)
 			}
 			xl := pm[p].(*GGUFNamedTensorInfos)
-			if ps[1] != "block" {
+			if ps[1] != "blk" || len(ps) < 3 {
+				xl.GGUFLayerTensorInfos = append(xl.GGUFLayerTensorInfos, gf.TensorInfos[i])
+				continue
+			}
+			p = strings.Join([]string{ps[0], ps[1], ps[2]}, ".")
+			if _, ok := pm[p]; !ok {
+				l := &GGUFNamedTensorInfos{Name: p}
+				pm[p] = l
+				xl.GGUFLayerTensorInfos = append(xl.GGUFLayerTensorInfos, l)
+			}
+			l := pm[p].(*GGUFNamedTensorInfos)
+			l.GGUFLayerTensorInfos = append(l.GGUFLayerTensorInfos, gf.TensorInfos[i])
+		case ps[0] == "decoder" || ps[0] == "encoder": // BERT.
+			p := ps[0]
+			if _, ok := pm[p]; !ok {
+				xl := &GGUFNamedTensorInfos{Name: p}
+				pm[p] = xl
+				ret = append(ret, xl)
+			}
+			xl := pm[p].(*GGUFNamedTensorInfos)
+			if ps[1] != "block" || len(ps) < 3 {
 				xl.GGUFLayerTensorInfos = append(xl.GGUFLayerTensorInfos, gf.TensorInfos[i])
 				continue
 			}

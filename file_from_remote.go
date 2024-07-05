@@ -17,7 +17,7 @@ func ParseGGUFFileFromHuggingFace(ctx context.Context, repo, file string, opts .
 	return ParseGGUFFileRemote(ctx, fmt.Sprintf("https://huggingface.co/%s/resolve/main/%s", repo, file), opts...)
 }
 
-// ParseGGUFFileRemote parses a GGUF file from a remote URL,
+// ParseGGUFFileRemote parses a GGUF file from a remote BlobURL,
 // and returns a GGUFFile, or an error if any.
 func ParseGGUFFileRemote(ctx context.Context, url string, opts ...GGUFReadOption) (*GGUFFile, error) {
 	var o _GGUFReadOptions

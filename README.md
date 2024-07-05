@@ -23,12 +23,7 @@ go get github.com/thxcode/gguf-parser-go
 
 ```
 
-You can also use the command-line package.
-
-```shell
-go install github.com/thxcode/gguf-parser-go/cmd/gguf-parser
-
-```
+If you need one-shot command-line, try [gguf-parser](./cmd/gguf-parser) please.
 
 ## Examples
 

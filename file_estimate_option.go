@@ -18,6 +18,7 @@ type (
 		OffloadKVCache    *bool
 		OffloadLayers     *uint64
 		FlashAttention    bool
+		ClipUsage         *uint64
 	}
 	LLaMACppUsageEstimateOption func(*_LLaMACppUsageEstimateOptions)
 )
@@ -116,5 +117,13 @@ func WithOffloadLayers(layers uint64) LLaMACppUsageEstimateOption {
 func WithFlashAttention() LLaMACppUsageEstimateOption {
 	return func(o *_LLaMACppUsageEstimateOptions) {
 		o.FlashAttention = true
+	}
+}
+
+// WithClipUsage sets the clip usage for the estimate,
+// which affects the usage of VRAM.
+func WithClipUsage(clip uint64) LLaMACppUsageEstimateOption {
+	return func(o *_LLaMACppUsageEstimateOptions) {
+		o.ClipUsage = &clip
 	}
 }

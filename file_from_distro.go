@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"golang.org/x/exp/maps"
-	"golang.org/x/net/html"
 
 	"github.com/thxcode/gguf-parser-go/util/funcx"
 	"github.com/thxcode/gguf-parser-go/util/httpx"
@@ -32,14 +31,24 @@ var (
 // which will be more efficient and faster, but lossy.
 // If the crawling fails, it will fall back to the default behavior.
 func ParseGGUFFileFromOllama(ctx context.Context, model string, crawl bool, opts ...GGUFReadOption) (*GGUFFile, error) {
+	return ParseGGUFFileFromOllamaModel(ctx, ParseOllamaModel(model), crawl, opts...)
+}
+
+// ParseGGUFFileFromOllamaModel is similar to ParseGGUFFileFromOllama,
+// but inputs an OllamaModel instead of a string.
+//
+// The given OllamaModel will be completed(fetching MediaType, Config and Layers) after calling this function.
+// If the crawl is true, it will try to crawl the metadata from Ollama website instead of blobs fetching,
+// which will be more efficient and faster, but lossy.
+// If the crawling fails, it will fall back to the default behavior.
+func ParseGGUFFileFromOllamaModel(ctx context.Context, model *OllamaModel, crawl bool, opts ...GGUFReadOption) (*GGUFFile, error) {
+	if model == nil {
+		return nil, ErrOllamaInvalidModel
+	}
+
 	var o _GGUFReadOptions
 	for _, opt := range opts {
 		opt(&o)
-	}
-
-	om := ParseOllamaModel(model)
-	if om == nil {
-		return nil, ErrOllamaInvalidModel
 	}
 
 	cli := httpx.Client(
@@ -70,70 +79,31 @@ func ParseGGUFFileFromOllama(ctx context.Context, model string, crawl bool, opts
 
 	var ml OllamaModelLayer
 	{
-		err := om.Complete(ctx, cli)
+		err := model.Complete(ctx, cli)
 		if err != nil {
 			return nil, fmt.Errorf("complete ollama model: %w", err)
 		}
 
 		var ok bool
-		ml, ok = om.GetLayer("application/vnd.ollama.image.model")
+		ml, ok = model.GetLayer("application/vnd.ollama.image.model")
 		if !ok {
 			return nil, ErrOllamaBaseLayerNotFound
 		}
 	}
 
 	if crawl {
-		mwu, lwu := om.WebURL().String(), ml.WebURL().String()
-		req, err := httpx.NewGetRequestWithContext(ctx, lwu)
-		if err != nil {
-			return nil, fmt.Errorf("new request: %w", err)
-		}
-		req.Header.Add("Referer", mwu)
-		req.Header.Add("Hx-Current-Url", mwu)
-		req.Header.Add("Hx-Request", "true")
-		req.Header.Add("Hx-Target", "file-explorer")
-
-		var n *html.Node
-		err = httpx.Do(cli, req, func(resp *http.Response) error {
-			if resp.StatusCode != http.StatusOK {
-				return fmt.Errorf("status code %d", resp.StatusCode)
-			}
-			n, err = html.Parse(resp.Body)
-			if err != nil {
-				return fmt.Errorf("parse html: %w", err)
-			}
-			return nil
-		})
+		r, err := ml.FetchWebPage(ctx, cli)
 		if err == nil {
-			var wk func(*html.Node) string
-			wk = func(n *html.Node) string {
-				if n.Type == html.ElementNode && n.Data == "div" {
-					for i := range n.Attr {
-						if n.Attr[i].Key == "class" && n.Attr[i].Val == "whitespace-pre-wrap" {
-							return n.FirstChild.Data
-						}
-					}
-				}
-				for c := n.FirstChild; c != nil; c = c.NextSibling {
-					if r := wk(c); r != "" {
-						return r
-					}
-				}
-				return ""
-			}
-
-			if r := wk(n); r != "" {
-				gf, err := parseGGUFFileFromMetadata("ollama", r, ml.Size)
-				if err == nil {
-					return gf, nil
-				}
+			gf, err := parseGGUFFileFromDistroMetadata("ollama", r, ml.Size)
+			if err == nil {
+				return gf, nil
 			}
 		}
 
 		// Fallback to the default behavior.
 	}
 
-	return parseGGUFFileFromRemote(ctx, cli, ml.URL().String(), o)
+	return parseGGUFFileFromRemote(ctx, cli, ml.BlobURL().String(), o)
 }
 
 type _OllamaMetadata struct {
@@ -148,7 +118,7 @@ type _OllamaMetadata struct {
 	Version uint32 `json:"version"`
 }
 
-func parseGGUFFileFromMetadata(source, data string, size uint64) (*GGUFFile, error) {
+func parseGGUFFileFromDistroMetadata(source, data string, size uint64) (*GGUFFile, error) {
 	if source != "ollama" {
 		return nil, fmt.Errorf("invalid source %q", source)
 	}
@@ -174,7 +144,7 @@ func parseGGUFFileFromMetadata(source, data string, size uint64) (*GGUFFile, err
 	gf.Header.Magic = GGUFMagicGGUFLe
 	gf.Header.Version = GGUFVersion(m.Version)
 	gf.Header.TensorCount = uint64(len(m.Tensors))
-	gf.Header.MetadataKVCount = uint64(len(m.Metadata) + 1 /* tokenizer.chat_template */)
+	gf.Header.MetadataKVCount = uint64(1 /* tokenizer.chat_template */ + len(m.Metadata))
 	gf.Size = GGUFBytesScalar(size)
 	gf.ModelParameters = GGUFParametersScalar(m.NumParams)
 
@@ -223,6 +193,24 @@ func parseGGUFFileFromMetadata(source, data string, size uint64) (*GGUFFile, err
 				}
 				v = av
 			}
+		case []any:
+			vt = GGUFMetadataValueTypeArray
+			av := GGUFMetadataKVArrayValue{
+				Type: GGUFMetadataValueTypeString,
+				Len:  uint64(len(vv)),
+			}
+			if av.Len > 0 {
+				av.Array = vv
+				switch vv[0].(type) {
+				case bool:
+					av.Type = GGUFMetadataValueTypeBool
+				case float64:
+					av.Type = GGUFMetadataValueTypeFloat32
+				case int64:
+					av.Type = GGUFMetadataValueTypeUint32
+				}
+			}
+			v = av
 		}
 		gf.Header.MetadataKV = append(gf.Header.MetadataKV, GGUFMetadataKV{
 			Key:       k,

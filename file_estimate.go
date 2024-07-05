@@ -42,6 +42,8 @@ type (
 		KVCache LLaMACppKVCacheUsage `json:"kvCache"`
 		// Computation is the memory usage of computation.
 		Computation LLaMACppComputationUsage `json:"computation"`
+		// Clipper is the memory usage of clipper.
+		Clipper GGUFBytesScalar `json:"clipper"`
 	}
 
 	// LLaMACppWeightUsage represents the memory usage of loading weights in llama.cpp.
@@ -170,6 +172,11 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 		isOffloadOutputLayer bool
 	)
 	{
+		// For clip,
+		// see https://github.com/ggerganov/llama.cpp/blob/148ec970b62c3c5ae0a8bfdaad2fc237aaae350d/examples/llava/clip.cpp#L994-L1008.
+		if a.Architecture == "clip" {
+			o.OffloadLayers = ptr.To(a.BlockCount + 1) // Clip means full offload.
+		}
 		if v := o.OffloadLayers; v == nil {
 			o.OffloadLayers = ptr.To(a.BlockCount)
 			nOffloadLayers = a.BlockCount
@@ -221,12 +228,17 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 	// Weight.
 	{
 		// Compute.
-		for i, offloadStart := uint64(0), uint64(len(tfLs))-nOffloadLayers; i < uint64(len(tfLs)); i++ {
-			switch {
-			case i < nLoadLayers:
-				e.Load.Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
-			case i >= offloadStart:
-				e.Offload.Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
+		switch a.Architecture {
+		case "clip":
+			e.Offload.Weight.Compute = GGUFBytesScalar(ls.Bytes())
+		default:
+			for i, offloadStart := uint64(0), uint64(len(tfLs))-nOffloadLayers; i < uint64(len(tfLs)); i++ {
+				switch {
+				case i < nLoadLayers:
+					e.Load.Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
+				case i >= offloadStart:
+					e.Offload.Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
+				}
 			}
 		}
 
@@ -290,10 +302,13 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 			inpSMask  = GGMLTypeF32.RowSizeOf([]uint64{1, nKV})                    // F32 [1, n_kv]
 			inpSSeq   = GGMLTypeI32.RowSizeOf([]uint64{nKV, nBatch})               // I32 [n_kv, n_batch]
 		)
-		if a.Architecture == "mamba" {
+		switch a.Architecture {
+		case "clip":
+			// NOP.
+		case "mamba":
 			e.Load.Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + inpSMask + inpSSeq + inpOutIds)
 			e.Offload.Computation.Input = GGUFBytesScalar(inpEmbd + inpSMask + inpSSeq + inpOutIds)
-		} else {
+		default:
 			e.Load.Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + inpPos + inpKQMask + inpOutIds)
 			e.Offload.Computation.Input = GGUFBytesScalar(inpEmbd + inpPos + inpKQMask + inpOutIds)
 		}
@@ -301,7 +316,10 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 		// the allocated memory can be reused for the next layer.
 		// So, we only consider the usage of the largest layer,
 		// which is the last layer by default.
-		if a.Architecture == "mamba" {
+		switch a.Architecture {
+		case "clip":
+			// NOP.
+		case "mamba":
 			convInc := GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingKeyGQA, nKV}) // F32 [n_embd_key_gqa, n_kv] reshape
 			for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.(attn_norm|ssm_in|ssm_conv1d)\.weight`)) {
 				if !strings.HasSuffix(l.Name, ".ssm_conv1d.weight") {
@@ -325,7 +343,7 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 				ssmInc += rs
 			}
 			e.Offload.Computation.Compute = GGUFBytesScalar(convInc + ssmInc)
-		} else {
+		default:
 			loadAttnInc, offloadAttnInc := uint64(0), uint64(0)
 			if o.FlashAttention {
 				// https://github.com/ggerganov/llama.cpp/blob/172c8256840ffd882ab9992ecedbb587d9b21f15/llama.cpp#L7387.
@@ -389,7 +407,10 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 			}
 		}
 		// Finally, get the usage of output layer.
-		{
+		switch a.Architecture {
+		case "clip":
+			// NOP.
+		default:
 			outInc := inpEmbd
 			if a.Architecture == "mamba" {
 				outInc += inpSMask + inpSSeq
@@ -403,6 +424,11 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 			}
 			outInc += uint64(e.Load.Weight.Output)
 			e.Offload.Computation.Output = GGUFBytesScalar(outInc)
+		}
+
+		// Clipper.
+		if o.ClipUsage != nil {
+			e.Offload.Clipper = GGUFBytesScalar(*o.ClipUsage)
 		}
 	}
 
@@ -457,7 +483,7 @@ type (
 
 // SummarizeMemory returns the summary of the estimated memory usage of loading the GGUF file in llama.cpp,
 // the input options are used to adjust the summary.
-func (e LLaMACppUsageEstimate) SummarizeMemory(mmap bool, ramFootprint, vramFootprint uint64) (ems LLaMACppUsageEstimateMemorySummary) {
+func (e LLaMACppUsageEstimate) SummarizeMemory(mmap bool, nonUMARamFootprint, nonUMAVramFootprint uint64) (ems LLaMACppUsageEstimateMemorySummary) {
 	ems.OffloadLayers, ems.FullOffloaded = e.OffloadLayers, e.FullOffloaded
 	if ems.FullOffloaded {
 		ems.OffloadLayers++ // The output layer is offloaded.
@@ -479,13 +505,14 @@ func (e LLaMACppUsageEstimate) SummarizeMemory(mmap bool, ramFootprint, vramFoot
 		wg = e.Offload.Weight.Sum()
 		kv = e.Offload.KVCache.Sum()
 		cp = 0
-		ems.UMA.VRAM = fp + wg + kv + cp
+		cl := e.Offload.Clipper
+		ems.UMA.VRAM = fp + wg + kv + cp + cl
 	}
 
 	// NonUMA.
 	{
 		// RAM.
-		fp := GGUFBytesScalar(ramFootprint) + e.Load.Footprint
+		fp := GGUFBytesScalar(nonUMARamFootprint) + e.Load.Footprint
 		wg := e.Load.Weight.Sum()
 		kv := e.Load.KVCache.Sum()
 		cp := e.Load.Computation.Sum()
@@ -497,11 +524,12 @@ func (e LLaMACppUsageEstimate) SummarizeMemory(mmap bool, ramFootprint, vramFoot
 			}
 		}
 		// VRAM.
-		fp = GGUFBytesScalar(vramFootprint) + e.Offload.Footprint
+		fp = GGUFBytesScalar(nonUMAVramFootprint) + e.Offload.Footprint
 		wg = e.Offload.Weight.Sum()
 		kv = e.Offload.KVCache.Sum()
 		cp = e.Offload.Computation.Sum()
-		ems.NonUMA.VRAM = fp + wg + kv + cp
+		cl := e.Offload.Clipper
+		ems.NonUMA.VRAM = fp + wg + kv + cp + cl
 	}
 
 	return ems
@@ -509,10 +537,10 @@ func (e LLaMACppUsageEstimate) SummarizeMemory(mmap bool, ramFootprint, vramFoot
 
 // Summarize returns the summary of the estimated result of loading the GGUF file in llama.cpp,
 // the input options are used to adjust the summary.
-func (e LLaMACppUsageEstimate) Summarize(mmap bool, ramFootprint, vramFootprint uint64) (es LLaMACppUsageEstimateSummary) {
+func (e LLaMACppUsageEstimate) Summarize(mmap bool, nonUMARamFootprint, nonUMAVramFootprint uint64) (es LLaMACppUsageEstimateSummary) {
 	// Summarize memory.
 	es.Memory = []LLaMACppUsageEstimateMemorySummary{
-		e.SummarizeMemory(mmap, ramFootprint, vramFootprint),
+		e.SummarizeMemory(mmap, nonUMARamFootprint, nonUMAVramFootprint),
 	}
 
 	// Just copy from the original estimate.

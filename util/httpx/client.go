@@ -246,5 +246,8 @@ func Do(cli *http.Client, req *http.Request, respFunc func(*http.Response) error
 		return fmt.Errorf("do request: %w", err)
 	}
 	defer Close(resp)
+	if respFunc == nil {
+		return nil
+	}
 	return respFunc(resp)
 }

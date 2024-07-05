@@ -37,12 +37,11 @@ func init() {
 		}
 	}
 	jsoniter.RegisterTypeDecoderFunc("interface {}", decodeNumberAsInt64IfPossible)
+	jsoniter.RegisterTypeDecoderFunc("any", decodeNumberAsInt64IfPossible)
 }
 
 var (
 	Marshal    = json.Marshal
 	Unmarshal  = json.Unmarshal
 	NewDecoder = json.NewDecoder
-	NewEncoder = json.NewEncoder
-	Valid      = json.Valid
 )

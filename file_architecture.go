@@ -45,7 +45,7 @@ type GGUFArchitectureMetadata struct {
 	AttentionClampKQV float32 `json:"attentionClampKQV,omitempty"`
 	// AttentionLayerNormEpsilon is the epsilon value used in the LayerNorm(Layer Normalization).
 	AttentionLayerNormEpsilon float32 `json:"attentionLayerNormEpsilon,omitempty"`
-	// AttentionLayerNormRMSEpsilon is the epsilon value used in the RMSNorm(Root Mean Square Layer Normalization),
+	// AttentionLayerNormRMSEpsilon is the epsilon value used in the RMSNorm(root Mean Square Layer Normalization),
 	// which is a simplification of the original LayerNorm.
 	AttentionLayerNormRMSEpsilon float32 `json:"attentionLayerNormRMSEpsilon,omitempty"`
 	// AttentionKeyLength(n_embd_head_k) is the size of a key head.
@@ -91,6 +91,23 @@ type GGUFArchitectureMetadata struct {
 	EmbeddingValueGQA uint64 `json:"embeddingValueGQA,omitempty"`
 	// EmbeddingGGQA is the GQA of the embedding layer.
 	EmbeddingGQA uint64 `json:"embeddingGQA,omitempty"`
+
+	// ClipHasTextEncoder indicates whether the clip model has text encoder or not.
+	//
+	// Only used when Architecture is "clip".
+	ClipHasTextEncoder bool `json:"clipHasTextEncoder,omitempty"`
+	// ClipHasVisionEncoder indicates whether the clip model has vision encoder or not.
+	//
+	// Only used when Architecture is "clip".
+	ClipHasVisionEncoder bool `json:"clipHasVisionEncoder,omitempty"`
+	// ClipHasLLaVaProjector indicates whether the clip model has LLaVa projector or not.
+	//
+	// Only used when Architecture is "clip".
+	ClipHasLLaVaProjector bool `json:"clipHasLLaVaProjector,omitempty"`
+	// ClipProjectorType is the type of the projector used in the clip model.
+	//
+	// Only used when Architecture is "clip".
+	ClipProjectorType string `json:"clipProjectorType,omitempty"`
 }
 
 // Architecture returns the architecture metadata of the GGUF file.
@@ -99,6 +116,120 @@ func (gf *GGUFFile) Architecture() (ga GGUFArchitectureMetadata) {
 	if v, ok := gf.Header.MetadataKV.Get("general.architecture"); ok {
 		arch = v.ValueString()
 	}
+
+	if arch == "clip" {
+		return gf.clipArchitecture()
+	}
+	return gf.transformArchitecture(arch)
+}
+
+func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitectureMetadata) {
+	var (
+		hasTextEncoderKey    = "clip.has_text_encoder"
+		hasVisionEncoderKey  = "clip.has_vision_encoder"
+		hasLLaVaProjectorKey = "clip.has_llava_projector"
+		projectorTypeKey     = "clip.projector_type"
+
+		textEmbeddingLengthKey              = "clip.text.embedding_length"
+		textBlockCountKey                   = "clip.text.block_count"
+		textFeedForwardLengthKey            = "clip.text.feed_forward_length"
+		textAttentionHeadCountKey           = "clip.text.attention.head_count"
+		textAttentionLayerNormRMSEpsilonKey = "clip.text.attention.layer_norm_epsilon"
+
+		visionEmbeddingLengthKey              = "clip.vision.embedding_length"
+		visionBlockCountKey                   = "clip.vision.block_count"
+		visionFeedForwardLengthKey            = "clip.vision.feed_forward_length"
+		visionAttentionHeadCountKey           = "clip.vision.attention.head_count"
+		visionAttentionLayerNormRMSEpsilonKey = "clip.vision.attention.layer_norm_epsilon"
+	)
+
+	ga.Architecture = "clip"
+
+	m, _ := gf.Header.MetadataKV.Index([]string{
+		hasTextEncoderKey,
+		hasVisionEncoderKey,
+		hasLLaVaProjectorKey,
+		projectorTypeKey,
+		textEmbeddingLengthKey,
+		textBlockCountKey,
+		textFeedForwardLengthKey,
+		textAttentionHeadCountKey,
+		textAttentionLayerNormRMSEpsilonKey,
+		visionEmbeddingLengthKey,
+		visionBlockCountKey,
+		visionFeedForwardLengthKey,
+		visionAttentionHeadCountKey,
+		visionAttentionLayerNormRMSEpsilonKey,
+	})
+
+	if v, ok := m[hasTextEncoderKey]; ok {
+		ga.ClipHasTextEncoder = v.ValueBool()
+	}
+	if v, ok := m[hasVisionEncoderKey]; ok {
+		ga.ClipHasVisionEncoder = v.ValueBool()
+	}
+	if v, ok := m[hasLLaVaProjectorKey]; ok {
+		ga.ClipHasLLaVaProjector = v.ValueBool()
+	}
+	if v, ok := m[projectorTypeKey]; ok {
+		ga.ClipProjectorType = v.ValueString()
+	} else {
+		ga.ClipProjectorType = "mlp"
+	}
+
+	if v, ok := m[textEmbeddingLengthKey]; ok {
+		ga.EmbeddingLength = ValueNumeric[uint64](v)
+	}
+	if v, ok := m[textBlockCountKey]; ok {
+		ga.BlockCount = ValueNumeric[uint64](v)
+	}
+	if v, ok := m[textFeedForwardLengthKey]; ok {
+		ga.FeedForwardLength = ValueNumeric[uint64](v)
+	}
+	if v, ok := m[textAttentionHeadCountKey]; ok {
+		ga.AttentionHeadCount = ValueNumeric[uint64](v)
+	}
+	if v, ok := m[textAttentionLayerNormRMSEpsilonKey]; ok {
+		ga.AttentionLayerNormRMSEpsilon = ValueNumeric[float32](v)
+	}
+
+	if v, ok := m[visionEmbeddingLengthKey]; ok {
+		ga.EmbeddingLength = ValueNumeric[uint64](v)
+	}
+	if v, ok := m[visionBlockCountKey]; ok {
+		ga.BlockCount = ValueNumeric[uint64](v)
+	}
+	if v, ok := m[visionFeedForwardLengthKey]; ok {
+		ga.FeedForwardLength = ValueNumeric[uint64](v)
+	}
+	if v, ok := m[visionAttentionHeadCountKey]; ok {
+		ga.AttentionHeadCount = ValueNumeric[uint64](v)
+	}
+	if v, ok := m[visionAttentionLayerNormRMSEpsilonKey]; ok {
+		ga.AttentionLayerNormRMSEpsilon = ValueNumeric[float32](v)
+	}
+
+	ga.AttentionHeadCountKV = ga.AttentionHeadCount
+
+	{
+		if ga.AttentionHeadCountKV > 0 {
+			ga.EmbeddingGroup = ga.AttentionHeadCount / ga.AttentionHeadCountKV
+		}
+		if ga.AttentionHeadCount > 0 {
+			ga.EmbeddingKeyGQA = uint64(ga.AttentionKeyLength) * ga.AttentionHeadCountKV
+			ga.EmbeddingValueGQA = uint64(ga.AttentionValueLength) * ga.AttentionHeadCountKV
+		}
+		if ga.Architecture == "mamba" {
+			ga.EmbeddingKeyGQA = uint64((ga.SSMConvolutionKernel - 1) * ga.SSMInnerSize)
+			ga.EmbeddingValueGQA = uint64(ga.SSMStateSize * ga.SSMInnerSize)
+		}
+		ga.EmbeddingGQA = ga.EmbeddingValueGQA
+	}
+
+	return ga
+}
+
+func (gf *GGUFFile) transformArchitecture(arch string) (ga GGUFArchitectureMetadata) {
 	var (
 		contextLengthKey     = arch + ".context_length"
 		embeddingLengthKey   = arch + ".embedding_length"

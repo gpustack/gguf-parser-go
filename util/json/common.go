@@ -10,6 +10,8 @@ type RawMessage = stdjson.RawMessage
 var (
 	MarshalIndent = stdjson.MarshalIndent
 	Indent        = stdjson.Indent
+	NewEncoder    = stdjson.NewEncoder
+	Valid         = stdjson.Valid
 )
 
 // MustMarshal is similar to Marshal,

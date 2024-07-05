@@ -132,6 +132,8 @@ func (gf *GGUFFile) Model() (gm GGUFModelMetadata) {
 
 	if v, ok := m[architectureKey]; ok {
 		gm.Architecture = v.ValueString()
+	} else {
+		gm.Architecture = "llama"
 	}
 	if v, ok := m[quantizationKey]; ok {
 		gm.QuantizationVersion = ValueNumeric[uint32](v)

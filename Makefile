@@ -70,8 +70,10 @@ gguf-parser:
 	[[ -d "$(SRCDIR)/.dist" ]] || mkdir -p "$(SRCDIR)/.dist"
 
 	cd "$(SRCDIR)/cmd/gguf-parser" && for os in darwin linux windows; do \
+  		tags="netgo"; \
   		if [[ $$os == "windows" ]]; then \
 		  suffix=".exe"; \
+		  tags="netcgo"; \
 		else \
 		  suffix=""; \
 		fi; \
@@ -80,7 +82,7 @@ gguf-parser:
 			GOOS="$$os" GOARCH="$$arch" CGO_ENABLED=1 go build \
 				-trimpath \
 				-ldflags="-w -s -X main.Version=$(VERSION)" \
-				-tags="netgo" \
+				-tags="$$tags" \
 				-o $(SRCDIR)/.dist/gguf-parser-$$os-$$arch$$suffix; \
 		done; \
 		if [[ $$os == "darwin" ]]; then \

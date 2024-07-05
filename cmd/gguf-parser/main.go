@@ -11,9 +11,11 @@ import (
 
 	"github.com/olekukonko/tablewriter"
 
+	"github.com/thxcode/gguf-parser-go/util/anyx"
 	"github.com/thxcode/gguf-parser-go/util/json"
 
 	. "github.com/thxcode/gguf-parser-go"
+	"regexp"
 )
 
 var Version = "v0.0.0"
@@ -31,6 +33,7 @@ func main() {
 		hfFile  string
 		olModel string
 		olCrawl bool
+		olUsage bool
 		// read options
 		debug         bool
 		skipProxy     bool
@@ -49,6 +52,7 @@ func main() {
 		offloadLayersStep uint64
 		// output options
 		version          bool
+		raw              bool
 		skipModel        bool
 		skipArchitecture bool
 		skipTokenizer    bool
@@ -69,18 +73,22 @@ func main() {
 		"https://huggingface.co/NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF"+
 		"/resolve/main/Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf. "+
 		"Note that gguf-parser does not need to download the entire GGUF file.")
-	fs.StringVar(&hfRepo, "repo", hfRepo, "Repository of HuggingFace which the GGUF file store, e.g. "+
-		"NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF, works with --file. [Deprecated, use --hf-repo instead]")
-	fs.StringVar(&hfFile, "file", hfFile, "Model file below the --repo, e.g. "+
-		"Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf. [Deprecated, use --hf-file instead]") // Deprecated.
+	fs.StringVar(&hfRepo, "repo", hfRepo, "[DEPRECATED, use --hf-repo instead] "+ // Deprecated, remove when release v0.3.0.
+		"Repository of HuggingFace which the GGUF file store, e.g. "+
+		"NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF, works with --file.")
+	fs.StringVar(&hfFile, "file", hfFile, "[DEPRECATED, use --hf-file instead] "+ // Deprecated, remove when release v0.3.0.
+		"Model file below the --repo, e.g. "+
+		"Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf.")
 	fs.StringVar(&hfRepo, "hf-repo", hfRepo, "Repository of HuggingFace which the GGUF file store, e.g. "+
-		"NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF, works with --hf-file.") // Deprecated.
+		"NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF, works with --hf-file.")
 	fs.StringVar(&hfFile, "hf-file", hfFile, "Model file below the --repo, e.g. "+
 		"Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf.")
 	fs.StringVar(&olModel, "ol-model", olModel, "Model name of Ollama, e.g. "+
 		"gemma2.")
 	fs.BoolVar(&olCrawl, "ol-crawl", olCrawl, "Crawl the Ollama model instead of blobs fetching, "+
 		"which will be more efficient and faster, but lossy.")
+	fs.BoolVar(&olUsage, "ol-usage", olUsage, "Specify respecting the extending layers introduced by Ollama, "+
+		"which affects the usage estimation.")
 	fs.BoolVar(&debug, "debug", debug, "Enable debugging, verbosity.")
 	fs.BoolVar(&skipProxy, "skip-proxy", skipProxy, "Skip proxy settings, "+
 		"works with --url/--hf-*/--ol-*, "+
@@ -119,17 +127,20 @@ func main() {
 	fs.BoolVar(&noMMap, "no-mmap", noMMap, "Specify disabling Memory-Mapped using, "+
 		"which is used to estimate the usage. "+
 		"Memory-Mapped can avoid loading the entire model weights into RAM.")
-	fs.IntVar(&offloadLayers, "offload-layers", offloadLayers, "Specify how many layers to offload, "+
+	fs.IntVar(&offloadLayers, "offload-layers", offloadLayers, "[DEPRECATED, use --gpu-layers instead] "+ // Deprecated, remove when release v0.3.0.
+		"Specify how many layers to offload, "+
 		"which is used to estimate the usage, "+
-		"default is full offloaded. [Deprecated, use --gpu-layers instead]") // Deprecated.
+		"default is full offloaded.")
 	fs.IntVar(&offloadLayers, "gpu-layers", offloadLayers, "Specify how many layers to offload, "+
 		"which is used to estimate the usage, "+
 		"default is full offloaded.")
-	fs.Uint64Var(&offloadLayersStep, "offload-layers-step", offloadLayersStep, "Specify the step of layers to offload, "+
-		"works with --offload-layers. [Deprecated, use --gpu-layers-step instead]") // Deprecated.
+	fs.Uint64Var(&offloadLayersStep, "offload-layers-step", offloadLayersStep, "[DEPRECATED, use --gpu-layers-step instead] "+ // Deprecated, remove when release v0.3.0.
+		"Specify the step of layers to offload, "+
+		"works with --offload-layers.")
 	fs.Uint64Var(&offloadLayersStep, "gpu-layers-step", offloadLayersStep, "Specify the step of layers to offload, "+
 		"works with --gpu-layers.")
 	fs.BoolVar(&version, "version", version, "Show gguf-parser version.")
+	fs.BoolVar(&raw, "raw", raw, "Output the file only, skip anything.")
 	fs.BoolVar(&skipModel, "skip-model", skipModel, "Skip to display model metadata.")
 	fs.BoolVar(&skipArchitecture, "skip-architecture", skipArchitecture, "Skip to display architecture metadata.")
 	fs.BoolVar(&skipTokenizer, "skip-tokenizer", skipTokenizer, "Skip to display tokenizer metadata")
@@ -226,13 +237,58 @@ func main() {
 		case hfRepo != "" && hfFile != "":
 			gf, err = ParseGGUFFileFromHuggingFace(ctx, hfRepo, hfFile, ropts...)
 		case olModel != "":
-			gf, err = ParseGGUFFileFromOllama(ctx, olModel, olCrawl, ropts...)
+			om := ParseOllamaModel(olModel)
+			gf, err = ParseGGUFFileFromOllamaModel(ctx, om, olCrawl, ropts...)
+			if om != nil && olUsage {
+				// Parameters override.
+				{
+					ps, _ := om.Params(ctx, nil)
+					if v, ok := ps["num_ctx"]; ok {
+						eopts = append(eopts, WithContextSize(anyx.Number[int32](v)))
+					} else if ctxSize <= 0 {
+						eopts = append(eopts, WithContextSize(2048))
+					}
+					if v, ok := ps["use_mmap"]; ok && !anyx.Bool(v) {
+						noMMap = true
+					}
+					if v, ok := ps["num_gpu"]; ok {
+						offloadLayers = anyx.Number[int](v)
+					}
+				}
+				// Projector overlap,
+				// in here, we just assume the projector is overlapped with its size to VRAM.
+				{
+					var sz uint64
+					mls := om.SearchLayers(regexp.MustCompile(`^application/vnd\.ollama\.image\.projector$`))
+					for i := range mls {
+						sz += mls[i].Size
+					}
+					eopts = append(eopts, WithClipUsage(sz))
+				}
+
+			}
 		}
 		if err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "failed to parse GGUF file: %s\n", err.Error())
 			os.Exit(1)
 		}
 	}
+
+	// Output raw.
+
+	if raw {
+		enc := json.NewEncoder(os.Stdout)
+		if inPrettyJson {
+			enc.SetIndent("", "  ")
+		}
+		if err := enc.Encode(gf); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "failed to encode JSON: %s\n", err.Error())
+			os.Exit(1)
+		}
+		return
+	}
+
+	// Otherwise, display the metadata and estimate the usage.
 
 	var (
 		m GGUFModelMetadata
@@ -258,7 +314,8 @@ func main() {
 		e = gf.EstimateLLaMACppUsage(eopts...)
 	}
 
-	// Output
+	// Then, output as JSON or table.
+
 	var (
 		mmap                      = !noMMap
 		platformRAM, platformVRAM uint64
@@ -285,11 +342,135 @@ func main() {
 		if !skipArchitecture {
 			o["architecture"] = a
 		}
-		if !skipTokenizer {
+		if !skipTokenizer && t.Model != "" {
 			o["tokenizer"] = t
 		}
 		if !skipEstimate {
 			es := e.Summarize(mmap, platformRAM, platformVRAM)
+			if e.Architecture != "clip" {
+				switch {
+				case offloadLayersStep > e.OffloadLayers:
+					offloadLayersStep = e.OffloadLayers
+				case offloadLayersStep <= 0:
+					offloadLayersStep = e.OffloadLayers
+				}
+				if offloadLayersStep < e.OffloadLayers {
+					cnt := e.OffloadLayers/offloadLayersStep + 1
+					if e.OffloadLayers%offloadLayersStep != 0 || e.FullOffloaded {
+						cnt++
+					}
+					ess := make([]LLaMACppUsageEstimateMemorySummary, cnt)
+					var wg sync.WaitGroup
+					for i := 0; i < cap(ess); i++ {
+						wg.Add(1)
+						go func(i int) {
+							defer wg.Done()
+							eopts := eopts[:len(eopts):len(eopts)]
+							eopts = append(eopts, WithOffloadLayers(uint64(i)*offloadLayersStep))
+							ess[i] = gf.EstimateLLaMACppUsage(eopts...).SummarizeMemory(mmap, platformRAM, platformVRAM)
+						}(i)
+					}
+					wg.Wait()
+					ess[cap(ess)-1] = es.Memory[0]
+					es.Memory = ess
+				}
+			}
+			o["estimate"] = es
+		}
+
+		enc := json.NewEncoder(os.Stdout)
+		if inPrettyJson {
+			enc.SetIndent("", "  ")
+		}
+		if err := enc.Encode(o); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "failed to encode JSON: %s\n", err.Error())
+			os.Exit(1)
+		}
+
+		return
+	}
+
+	InMiBytes = inMib
+
+	if !skipModel {
+		tprint(
+			"MODEL",
+			[]string{"Name", "Arch", "Quantization", "Little Endian", "Size", "Parameters", "BPW"},
+			nil,
+			[]string{
+				m.Name,
+				m.Architecture,
+				sprintf(m.FileType),
+				sprintf(m.LittleEndian),
+				sprintf(m.Size),
+				sprintf(m.Parameters),
+				sprintf(m.BitsPerWeight),
+			})
+	}
+
+	if !skipArchitecture {
+		var (
+			hd []string
+			bd []string
+		)
+		if a.Architecture != "clip" {
+			hd = []string{"Max Context Len", "Embedding Len", "Embedding GQA", "Attention Head Cnt", "Layers", "Feed Forward Len", "Expert Cnt", "Vocabulary Len"}
+			bd = []string{
+				sprintf(a.MaximumContextLength),
+				sprintf(a.EmbeddingLength),
+				sprintf(a.EmbeddingGQA),
+				sprintf(tenary(a.AttentionHeadCountKV == 0 || a.AttentionHeadCountKV == a.AttentionHeadCount, "N/A", a.AttentionHeadCount)),
+				sprintf(a.BlockCount),
+				sprintf(a.FeedForwardLength),
+				sprintf(a.ExpertCount),
+				sprintf(a.VocabularyLength),
+			}
+		} else {
+			hd = []string{"Embedding Len", "Layers", "Feed Forward Len", "Encoder", "LLaVA Projector"}
+			bd = []string{
+				sprintf(a.EmbeddingLength),
+				sprintf(a.BlockCount),
+				sprintf(a.FeedForwardLength),
+				sprintf(tenary(a.ClipHasTextEncoder, tenary(a.ClipHasVisionEncoder, "Text & Vision", "Text"), tenary(a.ClipHasVisionEncoder, "Vision", "N/A"))),
+				sprintf(tenary(a.ClipHasLLaVaProjector, a.ClipProjectorType, "N/A")),
+			}
+		}
+		tprint(
+			"ARCHITECTURE",
+			hd,
+			nil,
+			bd)
+	}
+
+	if !skipTokenizer && t.Model != "" {
+		tprint(
+			"TOKENIZER",
+			[]string{"Model", "Tokens Size", "Tokens Len", "Added Tokens Len", "BOS Token", "EOS Token", "Unknown Token", "Separator Token", "Padding Token"},
+			nil,
+			[]string{
+				t.Model,
+				sprintf(GGUFBytesScalar(t.TokensSize)),
+				sprintf(t.TokensLength),
+				sprintf(t.AddedTokensLength),
+				sprintf(tenary(t.BOSTokenID < 0, "N/A", t.BOSTokenID)),
+				sprintf(tenary(t.EOSTokenID < 0, "N/A", t.EOSTokenID)),
+				sprintf(tenary(t.UnknownTokenID < 0, "N/A", t.UnknownTokenID)),
+				sprintf(tenary(t.SeparatorTokenID < 0, "N/A", t.SeparatorTokenID)),
+				sprintf(tenary(t.PaddingTokenID < 0, "N/A", t.PaddingTokenID)),
+			})
+	}
+
+	if !skipEstimate {
+		var (
+			hd  []string
+			mg  []int
+			bds [][]string
+		)
+		es := e.Summarize(mmap, platformRAM, platformVRAM)
+		if e.Architecture != "clip" {
+			hd = []string{"Arch", "Context Size", "Flash Attention", "MMap Support", "Offload Layers", "Full Offloaded", "UMA (RAM + VRAM)", "NonUMA RAM", "NonUMA VRAM"}
+			mg = []int{0, 1, 2, 3, 5}
+
 			switch {
 			case offloadLayersStep > e.OffloadLayers:
 				offloadLayersStep = e.OffloadLayers
@@ -316,155 +497,48 @@ func main() {
 				ess[cap(ess)-1] = es.Memory[0]
 				es.Memory = ess
 			}
-			o["estimate"] = es
-		}
 
-		enc := json.NewEncoder(os.Stdout)
-		if inPrettyJson {
-			enc.SetIndent("", "  ")
-		}
-		if err := enc.Encode(o); err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "failed to encode JSON: %s\n", err.Error())
-			os.Exit(1)
-		}
-
-		return
-	}
-
-	InMiBytes = inMib
-
-	if !skipModel {
-		tprint(
-			"MODEL",
-			[]string{"Name", "Arch", "Quantization Version", "File Type", "Little Endian", "Size", "Parameters", "BPW"},
-			nil,
-			[]string{
-				m.Name,
-				m.Architecture,
-				sprintf(m.QuantizationVersion),
-				sprintf(m.FileType),
-				sprintf(m.LittleEndian),
-				sprintf(m.Size),
-				sprintf(m.Parameters),
-				sprintf(m.BitsPerWeight),
-			})
-	}
-
-	if !skipArchitecture {
-		tprint(
-			"ARCHITECTURE",
-			[]string{"Max Context Len", "Embedding Len", "Embedding GQA", "Attention Head Cnt", "Layers", "Feed Forward Len", "Expert Cnt", "Vocabulary Len"},
-			nil,
-			[]string{
-				sprintf(a.MaximumContextLength),
-				sprintf(a.EmbeddingLength),
-				sprintf(a.EmbeddingGQA),
-				sprintf(tenary(a.AttentionHeadCountKV == 0 || a.AttentionHeadCountKV == a.AttentionHeadCount, "N/A", a.AttentionHeadCount)),
-				sprintf(a.BlockCount),
-				sprintf(a.FeedForwardLength),
-				sprintf(a.ExpertCount),
-				sprintf(a.VocabularyLength),
-			})
-	}
-
-	if !skipTokenizer {
-		tprint(
-			"TOKENIZER",
-			[]string{"Model", "Tokens Size", "Tokens Len", "Added Tokens Len", "BOS Token", "EOS Token", "Unknown Token", "Separator Token", "Padding Token"},
-			nil,
-			[]string{
-				t.Model,
-				sprintf(GGUFBytesScalar(t.TokensSize)),
-				sprintf(t.TokensLength),
-				sprintf(t.AddedTokensLength),
-				sprintf(tenary(t.BOSTokenID < 0, "N/A", t.BOSTokenID)),
-				sprintf(tenary(t.EOSTokenID < 0, "N/A", t.EOSTokenID)),
-				sprintf(tenary(t.UnknownTokenID < 0, "N/A", t.UnknownTokenID)),
-				sprintf(tenary(t.SeparatorTokenID < 0, "N/A", t.SeparatorTokenID)),
-				sprintf(tenary(t.PaddingTokenID < 0, "N/A", t.PaddingTokenID)),
-			})
-	}
-
-	if !skipEstimate {
-		es := e.Summarize(mmap, platformRAM, platformVRAM)
-		switch {
-		case offloadLayersStep > e.OffloadLayers:
-			offloadLayersStep = e.OffloadLayers
-		case offloadLayersStep <= 0:
-			offloadLayersStep = e.OffloadLayers
-		}
-		if offloadLayersStep < e.OffloadLayers {
-			cnt := e.OffloadLayers/offloadLayersStep + 1
-			if e.OffloadLayers%offloadLayersStep != 0 || e.FullOffloaded {
-				cnt++
+			bds = make([][]string, len(es.Memory))
+			for i := range es.Memory {
+				bds[i] = []string{
+					sprintf(es.Architecture),
+					sprintf(es.ContextSize),
+					sprintf(es.FlashAttention),
+					sprintf(!es.NoMMap),
+					sprintf(tenary(es.Memory[i].FullOffloaded, sprintf("%d (%d + 1)", es.Memory[i].OffloadLayers, es.Memory[i].OffloadLayers-1), es.Memory[i].OffloadLayers)),
+					sprintf(tenary(es.Memory[i].FullOffloaded, "Yes", "No")),
+					sprintf("%s + %s = %s", es.Memory[i].UMA.RAM, es.Memory[i].UMA.VRAM, es.Memory[i].UMA.RAM+es.Memory[i].UMA.VRAM),
+					sprintf(es.Memory[i].NonUMA.RAM),
+					sprintf(es.Memory[i].NonUMA.VRAM),
+				}
 			}
-			ess := make([]LLaMACppUsageEstimateMemorySummary, cnt)
-			var wg sync.WaitGroup
-			for i := 0; i < cap(ess); i++ {
-				wg.Add(1)
-				go func(i int) {
-					defer wg.Done()
-					eopts := eopts[:len(eopts):len(eopts)]
-					eopts = append(eopts, WithOffloadLayers(uint64(i)*offloadLayersStep))
-					ess[i] = gf.EstimateLLaMACppUsage(eopts...).SummarizeMemory(mmap, platformRAM, platformVRAM)
-				}(i)
-			}
-			wg.Wait()
-			ess[cap(ess)-1] = es.Memory[0]
-			es.Memory = ess
-		}
-		bd := make([][]string, len(es.Memory))
-		for i := range es.Memory {
-			bd[i] = []string{
-				sprintf(es.Architecture),
-				sprintf(es.ContextSize),
-				sprintf(es.FlashAttention),
-				sprintf(!es.NoMMap),
-				sprintf(tenary(es.Memory[i].FullOffloaded, sprintf("%d (%d + 1)", es.Memory[i].OffloadLayers, es.Memory[i].OffloadLayers-1), es.Memory[i].OffloadLayers)),
-				sprintf(tenary(es.Memory[i].FullOffloaded, "Yes", "No")),
-				sprintf("%s + %s = %s", es.Memory[i].UMA.RAM, es.Memory[i].NonUMA.VRAM, es.Memory[i].UMA.RAM+es.Memory[i].UMA.VRAM),
-				sprintf(es.Memory[i].NonUMA.RAM),
-				sprintf(es.Memory[i].NonUMA.VRAM),
+		} else {
+			hd = []string{"Arch", "Offload Layers", "Full Offloaded", "(V)RAM"}
+			bds = [][]string{
+				{
+					sprintf(es.Architecture),
+					sprintf(es.Memory[0].OffloadLayers),
+					sprintf(tenary(es.Memory[0].FullOffloaded, "Yes", "No")),
+					sprintf(max(es.Memory[0].UMA.RAM, es.Memory[0].UMA.VRAM)),
+				},
 			}
 		}
 		tprint(
 			"ESTIMATE",
-			[]string{"Arch", "Context Size", "Flash Attention", "MMap Support", "Offload Layers", "Full Offloaded", "UMA (RAM + VRAM)", "NonUMA RAM", "NonUMA VRAM"},
-			[]int{0, 1, 2, 3, 5},
-			bd...)
+			hd,
+			mg,
+			bds...)
 	}
 }
 
 func sprintf(f any, a ...any) string {
-	switch v := f.(type) {
-	case string:
+	if v, ok := f.(string); ok {
 		if len(a) != 0 {
 			return fmt.Sprintf(v, a...)
 		}
 		return v
-	case []byte:
-		return string(v)
-	case int:
-		return strconv.Itoa(v)
-	case int32:
-		return strconv.Itoa(int(v))
-	case int64:
-		return strconv.Itoa(int(v))
-	case uint:
-		return strconv.Itoa(int(v))
-	case uint32:
-		return strconv.Itoa(int(v))
-	case uint64:
-		return strconv.Itoa(int(v))
-	case float32:
-		return strconv.FormatFloat(float64(v), 'f', -1, 32)
-	case float64:
-		return strconv.FormatFloat(v, 'f', -1, 64)
-	case bool:
-		return strconv.FormatBool(v)
-	default:
-		return fmt.Sprintf("%v", v)
 	}
+	return anyx.String(f)
 }
 
 func tprint(title string, header []string, merges []int, body ...[]string) {
