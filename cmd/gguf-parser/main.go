@@ -41,6 +41,7 @@ func main() {
 		skipDNSCache  bool
 		// estimate options
 		ctxSize           = -1
+		inMaxCtxSize      bool
 		physicalBatchSize = 512
 		parallelSize      = 1
 		kvType            = "f16"
@@ -102,6 +103,8 @@ func main() {
 	fs.IntVar(&ctxSize, "ctx-size", ctxSize, "Specify the size of prompt context, "+
 		"which is used to estimate the usage, "+
 		"default is equal to the model's maximum context size.")
+	fs.BoolVar(&inMaxCtxSize, "in-max-ctx-size", inMaxCtxSize, "Limit the context size to the maximum context size of the model, "+
+		"if the context size is larger than the maximum context size.")
 	fs.IntVar(&physicalBatchSize, "ubatch-size", physicalBatchSize, "Specify the physical maximum batch size, "+
 		"which is used to estimate the usage, "+
 		"default is 512.")
@@ -183,6 +186,9 @@ func main() {
 	}
 	if ctxSize > 0 {
 		eopts = append(eopts, WithContextSize(int32(ctxSize)))
+	}
+	if inMaxCtxSize {
+		eopts = append(eopts, WithinMaxContextSize())
 	}
 	if physicalBatchSize > 0 {
 		eopts = append(eopts, WithPhysicalBatchSize(int32(physicalBatchSize)))
@@ -449,9 +455,9 @@ func main() {
 			nil,
 			[]string{
 				t.Model,
-				sprintf(GGUFBytesScalar(t.TokensSize)),
-				sprintf(t.TokensLength),
-				sprintf(t.AddedTokensLength),
+				sprintf(tenary(t.TokensSize <= 0, "N/A", GGUFBytesScalar(t.TokensSize))),
+				sprintf(tenary(t.TokensLength <= 0, "N/A", t.TokensLength)),
+				sprintf(tenary(t.AddedTokensLength <= 0, "N/A", t.AddedTokensLength)),
 				sprintf(tenary(t.BOSTokenID < 0, "N/A", t.BOSTokenID)),
 				sprintf(tenary(t.EOSTokenID < 0, "N/A", t.EOSTokenID)),
 				sprintf(tenary(t.UnknownTokenID < 0, "N/A", t.UnknownTokenID)),

@@ -11,6 +11,7 @@ type (
 		Architecture      *GGUFArchitectureMetadata
 		Tokenizer         *GGUFTokenizerMetadata
 		ContextSize       *int32
+		InMaxContextSize  bool
 		PhysicalBatchSize *int32
 		ParallelSize      *int32
 		CacheKeyType      *GGMLType
@@ -48,6 +49,14 @@ func WithContextSize(size int32) LLaMACppUsageEstimateOption {
 			return
 		}
 		o.ContextSize = &size
+	}
+}
+
+// WithinMaxContextSize limits the context size to the maximum,
+// if the context size is over the maximum.
+func WithinMaxContextSize() LLaMACppUsageEstimateOption {
+	return func(o *_LLaMACppUsageEstimateOptions) {
+		o.InMaxContextSize = true
 	}
 }
 

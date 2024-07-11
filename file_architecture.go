@@ -83,14 +83,12 @@ type GGUFArchitectureMetadata struct {
 
 	/* Appendix */
 
-	// EmbeddingGroup is the number of groups in the embedding layer.
-	EmbeddingGroup uint64 `json:"embeddingGroup,omitempty"`
+	// EmbeddingGGQA is the GQA of the embedding layer.
+	EmbeddingGQA uint64 `json:"embeddingGQA,omitempty"`
 	// EmbeddingKeyGQA is the number of key GQA in the embedding layer.
 	EmbeddingKeyGQA uint64 `json:"embeddingKeyGQA,omitempty"`
 	// EmbeddingValueGQA is the number of value GQA in the embedding layer.
 	EmbeddingValueGQA uint64 `json:"embeddingValueGQA,omitempty"`
-	// EmbeddingGGQA is the GQA of the embedding layer.
-	EmbeddingGQA uint64 `json:"embeddingGQA,omitempty"`
 
 	// ClipHasTextEncoder indicates whether the clip model has text encoder or not.
 	//
@@ -213,7 +211,7 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitectureMetadata) {
 
 	{
 		if ga.AttentionHeadCountKV > 0 {
-			ga.EmbeddingGroup = ga.AttentionHeadCount / ga.AttentionHeadCountKV
+			ga.EmbeddingGQA = ga.AttentionHeadCount / ga.AttentionHeadCountKV
 		}
 		if ga.AttentionHeadCount > 0 {
 			ga.EmbeddingKeyGQA = uint64(ga.AttentionKeyLength) * ga.AttentionHeadCountKV
@@ -223,7 +221,6 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitectureMetadata) {
 			ga.EmbeddingKeyGQA = uint64((ga.SSMConvolutionKernel - 1) * ga.SSMInnerSize)
 			ga.EmbeddingValueGQA = uint64(ga.SSMStateSize * ga.SSMInnerSize)
 		}
-		ga.EmbeddingGQA = ga.EmbeddingValueGQA
 	}
 
 	return ga
@@ -408,7 +405,7 @@ func (gf *GGUFFile) transformArchitecture(arch string) (ga GGUFArchitectureMetad
 
 	{
 		if ga.AttentionHeadCountKV > 0 {
-			ga.EmbeddingGroup = ga.AttentionHeadCount / ga.AttentionHeadCountKV
+			ga.EmbeddingGQA = ga.AttentionHeadCount / ga.AttentionHeadCountKV
 		}
 		if ga.AttentionHeadCount > 0 {
 			ga.EmbeddingKeyGQA = uint64(ga.AttentionKeyLength) * ga.AttentionHeadCountKV
@@ -418,7 +415,6 @@ func (gf *GGUFFile) transformArchitecture(arch string) (ga GGUFArchitectureMetad
 			ga.EmbeddingKeyGQA = uint64((ga.SSMConvolutionKernel - 1) * ga.SSMInnerSize)
 			ga.EmbeddingValueGQA = uint64(ga.SSMStateSize * ga.SSMInnerSize)
 		}
-		ga.EmbeddingGQA = ga.EmbeddingValueGQA
 	}
 
 	return ga
