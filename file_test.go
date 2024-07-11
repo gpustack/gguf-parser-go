@@ -207,6 +207,35 @@ func TestParseGGUFFileFromHuggingFace(t *testing.T) {
 	}
 }
 
+func TestParseGGUFFileFromModelScope(t *testing.T) {
+	ctx := context.Background()
+
+	cases := [][2]string{
+		{
+			"qwen/Qwen1.5-0.5B-Chat-GGUF",
+			"qwen1_5-0_5b-chat-q5_k_m.gguf",
+		},
+		{
+			"HIT-SCIR/huozi3-gguf",
+			"huozi3-q2_k.gguf",
+		},
+		{
+			"shaowenchen/chinese-alpaca-2-13b-16k-gguf",
+			"chinese-alpaca-2-13b-16k.Q5_K.gguf",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc[0]+"/"+tc[1], func(t *testing.T) {
+			f, err := ParseGGUFFileFromModelScope(ctx, tc[0], tc[1], SkipLargeMetadata())
+			if err != nil {
+				t.Fatal(err)
+				return
+			}
+			t.Log("\n", spew.Sdump(f), "\n")
+		})
+	}
+}
+
 func TestParseGGUFFileFromOllama(t *testing.T) {
 	ctx := context.Background()
 

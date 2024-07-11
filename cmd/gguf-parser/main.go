@@ -31,6 +31,8 @@ func main() {
 		url     string
 		hfRepo  string
 		hfFile  string
+		msRepo  string
+		msFile  string
 		olModel string
 		olCrawl bool
 		olUsage bool
@@ -82,8 +84,12 @@ func main() {
 		"Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf.")
 	fs.StringVar(&hfRepo, "hf-repo", hfRepo, "Repository of HuggingFace which the GGUF file store, e.g. "+
 		"NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF, works with --hf-file.")
-	fs.StringVar(&hfFile, "hf-file", hfFile, "Model file below the --repo, e.g. "+
+	fs.StringVar(&hfFile, "hf-file", hfFile, "Model file below the --hf-repo, e.g. "+
 		"Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf.")
+	fs.StringVar(&msRepo, "ms-repo", msRepo, "Repository of ModelScope which the GGUF file store, e.g. "+
+		"qwen/Qwen1.5-0.5B-Chat-GGUF, works with --ms-file.")
+	fs.StringVar(&msFile, "ms-file", msFile, "Model file below the --ms-repo, e.g. "+
+		"qwen1.5-0.5b-chat.gguf.")
 	fs.StringVar(&olModel, "ol-model", olModel, "Model name of Ollama, e.g. "+
 		"gemma2.")
 	fs.BoolVar(&olCrawl, "ol-crawl", olCrawl, "Crawl the Ollama model instead of blobs fetching, "+
@@ -242,6 +248,8 @@ func main() {
 			gf, err = ParseGGUFFileRemote(ctx, url, ropts...)
 		case hfRepo != "" && hfFile != "":
 			gf, err = ParseGGUFFileFromHuggingFace(ctx, hfRepo, hfFile, ropts...)
+		case msRepo != "" && msFile != "":
+			gf, err = ParseGGUFFileFromModelScope(ctx, msRepo, msFile, ropts...)
 		case olModel != "":
 			om := ParseOllamaModel(olModel)
 			gf, err = ParseGGUFFileFromOllamaModel(ctx, om, olCrawl, ropts...)

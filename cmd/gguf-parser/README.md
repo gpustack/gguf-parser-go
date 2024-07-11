@@ -20,7 +20,7 @@ Usage of gguf-parser ...:
   -gpu-layers-step uint
         Specify the step of layers to offload, works with --gpu-layers.
   -hf-file string
-        Model file below the --repo, e.g. Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf.
+        Model file below the --hf-repo, e.g. Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf.
   -hf-repo string
         Repository of HuggingFace which the GGUF file store, e.g. NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF, works with --hf-file.
   -in-max-ctx-size
@@ -33,6 +33,10 @@ Usage of gguf-parser ...:
         Output as pretty JSON. (default true)
   -kv-type string
         Specify the type of Key-Value cache, which is used to estimate the usage, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1], default is f16. Use quantization type means enabling --flash-attention as well. (default "f16")
+  -ms-file string
+        Model file below the --ms-repo, e.g. qwen1.5-0.5b-chat.gguf.
+  -ms-repo string
+        Repository of ModelScope which the GGUF file store, e.g. qwen/Qwen1.5-0.5B-Chat-GGUF, works with --ms-file.
   -no-kv-offload
         Specify disabling Key-Value offloading, which is used to estimate the usage. Key-Value offloading can reduce the usage of VRAM.
   -no-mmap
@@ -169,6 +173,36 @@ $ gguf-parser --hf-repo="openbmb/MiniCPM-Llama3-V-2_5-gguf" --hf-file="ggml-mode
 +--------------+-------+--------------+-----------------+--------------+----------------+----------------+---------------------------------+------------+-------------+
 |   ESTIMATE   | llama |     8192     |      false      |     true     |  33 (32 + 1)   |      Yes       | 84.61 MiB + 5.59 GiB = 5.68 GiB | 234.61 MiB |  6.49 GiB   |
 +--------------+-------+--------------+-----------------+--------------+----------------+----------------+---------------------------------+------------+-------------+
+
+```
+
+#### Parse ModelScope GGUF file
+
+```shell
+$ gguf-parser --ms-repo="shaowenchen/chinese-alpaca-2-13b-16k-gguf" --ms-file="chinese-alpaca-2-13b-16k.Q5_K.gguf"
++--------------+------+-------+----------------+---------------+----------+------------+----------+
+|      \       | Name | Arch  |  Quantization  | Little Endian |   Size   | Parameters |   BPW    |
++--------------+------+-------+----------------+---------------+----------+------------+----------+
+|    MODEL     |  ..  | llama | IQ3_XXS/Q5_K_M |     true      | 8.76 GiB |  13.25 B   | 5.68 bpw |
++--------------+------+-------+----------------+---------------+----------+------------+----------+
+
++--------------+-----------------+---------------+---------------+--------------------+--------+------------------+------------+----------------+
+|      \       | Max Context Len | Embedding Len | Embedding GQA | Attention Head Cnt | Layers | Feed Forward Len | Expert Cnt | Vocabulary Len |
++--------------+-----------------+---------------+---------------+--------------------+--------+------------------+------------+----------------+
+| ARCHITECTURE |      16384      |     5120      |       1       |        N/A         |   40   |      13824       |     0      |     55296      |
++--------------+-----------------+---------------+---------------+--------------------+--------+------------------+------------+----------------+
+
++--------------+-------+-------------+------------+------------------+-----------+-----------+---------------+-----------------+---------------+
+|      \       | Model | Tokens Size | Tokens Len | Added Tokens Len | BOS Token | EOS Token | Unknown Token | Separator Token | Padding Token |
++--------------+-------+-------------+------------+------------------+-----------+-----------+---------------+-----------------+---------------+
+|  TOKENIZER   | llama | 769.83 KiB  |   55296    |       N/A        |     1     |     2     |      N/A      |       N/A       |      N/A      |
++--------------+-------+-------------+------------+------------------+-----------+-----------+---------------+-----------------+---------------+
+
++--------------+-------+--------------+-----------------+--------------+----------------+----------------+-----------------------------------+------------+-------------+
+|      \       | Arch  | Context Size | Flash Attention | MMap Support | Offload Layers | Full Offloaded |         UMA (RAM + VRAM)          | NonUMA RAM | NonUMA VRAM |
++--------------+-------+--------------+-----------------+--------------+----------------+----------------+-----------------------------------+------------+-------------+
+|   ESTIMATE   | llama |    16384     |      false      |     true     |  41 (40 + 1)   |      Yes       | 61.18 MiB + 20.87 GiB = 20.92 GiB | 211.18 MiB |  22.74 GiB  |
++--------------+-------+--------------+-----------------+--------------+----------------+----------------+-----------------------------------+------------+-------------+
 
 ```
 

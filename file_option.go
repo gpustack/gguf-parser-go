@@ -11,11 +11,12 @@ type (
 		MMap bool
 
 		// Remote.
-		ProxyURL            *url.URL
-		SkipProxy           bool
-		SkipTLSVerification bool
-		SkipDNSCache        bool
-		BufferSize          int
+		ProxyURL                   *url.URL
+		SkipProxy                  bool
+		SkipTLSVerification        bool
+		SkipDNSCache               bool
+		BufferSize                 int
+		SkipRangeDownloadDetection bool
 	}
 	GGUFReadOption func(o *_GGUFReadOptions)
 )
@@ -78,5 +79,12 @@ func UseBufferSize(size int) GGUFReadOption {
 	}
 	return func(o *_GGUFReadOptions) {
 		o.BufferSize = size
+	}
+}
+
+// SkipRangeDownloadDetection skips the range download detection when reading from remote.
+func SkipRangeDownloadDetection() GGUFReadOption {
+	return func(o *_GGUFReadOptions) {
+		o.SkipRangeDownloadDetection = true
 	}
 }

@@ -21,11 +21,9 @@ type SeekerFile struct {
 	l   int64
 }
 
-func OpenSeekerFile(cli *http.Client, req *http.Request) (*SeekerFile, error) {
-	return OpenSeekerFileWithSize(cli, req, 0, 0)
-}
-
-func OpenSeekerFileWithSize(cli *http.Client, req *http.Request, bufSize, size int) (*SeekerFile, error) {
+// OpenSeekerFile tries the GET http.Request as a SeekerFile,
+// and returns a SeekerFile, or an error if any.
+func OpenSeekerFile(cli *http.Client, req *http.Request, opts ...*SeekerFileOption) (*SeekerFile, error) {
 	if cli == nil {
 		return nil, errors.New("client is nil")
 	}
@@ -36,37 +34,57 @@ func OpenSeekerFileWithSize(cli *http.Client, req *http.Request, bufSize, size i
 		return nil, errors.New("request method is not GET")
 	}
 
+	var o *SeekerFileOption
+	if len(opts) > 0 {
+		o = opts[0]
+	} else {
+		o = SeekerFileOptions()
+	}
+	if o.bufSize <= 0 {
+		o.bufSize = 4 * 1024 * 1024 // 4mb
+	}
+
 	var l int64
 	{
-		req := req.Clone(req.Context())
-		req.Method = http.MethodHead
-		err := Do(cli, req, func(resp *http.Response) error {
-			if resp.StatusCode != http.StatusOK {
-				return fmt.Errorf("stat: status code %d", resp.StatusCode)
+		if !o.skipRangeDownloadDetect {
+			req := req.Clone(req.Context())
+			req.Method = http.MethodHead
+			err := Do(cli, req, func(resp *http.Response) error {
+				if resp.StatusCode != http.StatusOK {
+					return fmt.Errorf("stat: status code %d", resp.StatusCode)
+				}
+				if !strings.EqualFold(resp.Header.Get("Accept-Ranges"), "bytes") {
+					return fmt.Errorf("stat: not support range download")
+				}
+				l = resp.ContentLength
+				return nil
+			})
+			if err != nil {
+				return nil, fmt.Errorf("stat: do head request: %w", err)
 			}
-			if !strings.EqualFold(resp.Header.Get("Accept-Ranges"), "bytes") {
-				return fmt.Errorf("stat: not support range download")
+		} else {
+			req := req.Clone(req.Context())
+			err := Do(cli, req, func(resp *http.Response) error {
+				if resp.StatusCode != http.StatusOK {
+					return fmt.Errorf("stat: status code %d", resp.StatusCode)
+				}
+				l = resp.ContentLength
+				return nil
+			})
+			if err != nil {
+				return nil, fmt.Errorf("stat: do get request: %w", err)
 			}
-			l = resp.ContentLength
-			return nil
-		})
-		if err != nil {
-			return nil, fmt.Errorf("stat: do head request: %w", err)
 		}
-		switch sz := int64(size); {
+		switch sz := int64(o.size); {
 		case sz > l:
-			return nil, fmt.Errorf("size %d is greater than limit %d", size, l)
+			return nil, fmt.Errorf("size %d is greater than limit %d", o.size, l)
 		case sz <= 0:
 		default:
 			l = sz
 		}
 	}
 
-	if bufSize <= 0 {
-		bufSize = 4 * 1024 * 1024 // 4mb
-	}
-
-	b := ringbuffer.New(bufSize).WithCancel(req.Context())
+	b := ringbuffer.New(o.bufSize).WithCancel(req.Context())
 	return &SeekerFile{cli: cli, req: req, b: b, c: 1<<63 - 1, l: l}, nil
 }
 

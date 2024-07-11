@@ -11,10 +11,17 @@ import (
 	"github.com/thxcode/gguf-parser-go/util/osx"
 )
 
-// ParseGGUFFileFromHuggingFace parses a GGUF file from Hugging Face,
+// ParseGGUFFileFromHuggingFace parses a GGUF file from Hugging Face(https://huggingface.co/),
 // and returns a GGUFFile, or an error if any.
 func ParseGGUFFileFromHuggingFace(ctx context.Context, repo, file string, opts ...GGUFReadOption) (*GGUFFile, error) {
 	return ParseGGUFFileRemote(ctx, fmt.Sprintf("https://huggingface.co/%s/resolve/main/%s", repo, file), opts...)
+}
+
+// ParseGGUFFileFromModelScope parses a GGUF file from Model Scope(https://modelscope.cn/),
+// and returns a GGUFFile, or an error if any.
+func ParseGGUFFileFromModelScope(ctx context.Context, repo, file string, opts ...GGUFReadOption) (*GGUFFile, error) {
+	opts = append(opts[:len(opts):len(opts)], SkipRangeDownloadDetection())
+	return ParseGGUFFileRemote(ctx, fmt.Sprintf("https://modelscope.cn/models/%s/resolve/master/%s", repo, file), opts...)
 }
 
 // ParseGGUFFileRemote parses a GGUF file from a remote BlobURL,
@@ -65,16 +72,17 @@ func parseGGUFFileFromRemote(ctx context.Context, cli *http.Client, url string, 
 			return nil, fmt.Errorf("new request: %w", err)
 		}
 
-		var sf *httpx.SeekerFile
-		if o.BufferSize > 0 {
-			sf, err = httpx.OpenSeekerFileWithSize(cli, req, o.BufferSize, 0)
-		} else {
-			sf, err = httpx.OpenSeekerFile(cli, req)
-		}
+		sf, err := httpx.OpenSeekerFile(cli, req,
+			httpx.SeekerFileOptions().
+				WithBufferSize(o.BufferSize).
+				If(o.SkipRangeDownloadDetection, func(x *httpx.SeekerFileOption) *httpx.SeekerFileOption {
+					return x.WithoutRangeDownloadDetect()
+				}))
 		if err != nil {
 			return nil, fmt.Errorf("open http file: %w", err)
 		}
 		defer osx.Close(sf)
+
 		f = io.NewSectionReader(sf, 0, sf.Len())
 		s = sf.Len()
 	}
