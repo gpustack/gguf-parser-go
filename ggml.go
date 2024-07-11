@@ -133,10 +133,15 @@ func (t GGMLType) RowSizeOf(dimensions []uint64) uint64 {
 }
 
 // GGMLMemoryPadding returns the padded size of the given size according to GGML memory padding,
-// see https://github.com/ggerganov/ggml/blob/0cbb7c0e053f5419cfbebb46fbf4d4ed60182cf5/include/ggml/ggml.h#L255.
+// see https://github.com/ggerganov/ggml/blob/0cbb7c0/include/ggml/ggml.h#L238-L243.
 func GGMLMemoryPadding(size uint64) uint64 {
-	// https://github.com/ggerganov/ggml/blob/0cbb7c0/include/ggml/ggml.h#L238-L243
 	const align = 16
+	return GGMLPadding(size, align)
+}
+
+// GGMLPadding returns the padded size of the given size according to given align,
+// see https://github.com/ggerganov/ggml/blob/0cbb7c0e053f5419cfbebb46fbf4d4ed60182cf5/include/ggml/ggml.h#L255.
+func GGMLPadding(size, align uint64) uint64 {
 	return (size + align - 1) &^ (align - 1)
 }
 

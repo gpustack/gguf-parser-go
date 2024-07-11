@@ -144,6 +144,13 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 		if o.ContextSize != nil {
 			nContext = uint64(*o.ContextSize)
 		}
+		// Padding context size,
+		// see https://github.com/ggerganov/llama.cpp/blob/278d0e18469aacf505be18ce790a63c7cc31be26/src/llama.cpp#L19001-L19002.
+		if o.FlashAttention {
+			nContext = GGMLPadding(nContext, 256)
+		} else {
+			nContext = GGMLPadding(nContext, 32)
+		}
 		// Correct token size,
 		// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L12221-L12224.
 		nTokens = min(nContext, uint64(*o.PhysicalBatchSize))
