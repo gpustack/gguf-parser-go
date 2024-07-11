@@ -39,12 +39,15 @@ func _() {
 	_ = x[GGMLTypeF64-28]
 	_ = x[GGMLTypeIQ1_M-29]
 	_ = x[GGMLTypeBF16-30]
-	_ = x[_GGMLTypeCount-31]
+	_ = x[GGMLTypeQ4_0_4_4-31]
+	_ = x[GGMLTypeQ4_0_4_8-32]
+	_ = x[GGMLTypeQ4_0_8_8-33]
+	_ = x[_GGMLTypeCount-34]
 }
 
-const _GGMLType_name = "F32F16Q4_0Q4_1Q4_2Q4_3Q5_0Q5_1Q8_0Q8_1Q2_KQ3_KQ4_KQ5_KQ6_KQ8_KIQ2_XXSIQ2_XSIQ3_XXSIQ1_SIQ4_NLIQ3_SIQ2_SIQ4_XSI8I16I32I64F64IQ1_MBF16Unknown"
+const _GGMLType_name = "F32F16Q4_0Q4_1Q4_2Q4_3Q5_0Q5_1Q8_0Q8_1Q2_KQ3_KQ4_KQ5_KQ6_KQ8_KIQ2_XXSIQ2_XSIQ3_XXSIQ1_SIQ4_NLIQ3_SIQ2_SIQ4_XSI8I16I32I64F64IQ1_MBF16Q4_0_4_4Q4_0_4_8Q4_0_8_8Unknown"
 
-var _GGMLType_index = [...]uint8{0, 3, 6, 10, 14, 18, 22, 26, 30, 34, 38, 42, 46, 50, 54, 58, 62, 69, 75, 82, 87, 93, 98, 103, 109, 111, 114, 117, 120, 123, 128, 132, 139}
+var _GGMLType_index = [...]uint8{0, 3, 6, 10, 14, 18, 22, 26, 30, 34, 38, 42, 46, 50, 54, 58, 62, 69, 75, 82, 87, 93, 98, 103, 109, 111, 114, 117, 120, 123, 128, 132, 140, 148, 156, 163}
 
 func (i GGMLType) String() string {
 	if i >= GGMLType(len(_GGMLType_index)-1) {

@@ -64,7 +64,7 @@ type GGUFModelMetadata struct {
 }
 
 // GGUFFileType is a type of GGUF file,
-// see https://github.com/ggerganov/ggml/blob/0cbb7c0e053f5419cfbebb46fbf4d4ed60182cf5/include/ggml/ggml.h#L396-L421.
+// see https://github.com/ggerganov/llama.cpp/blob/278d0e18469aacf505be18ce790a63c7cc31be26/ggml/include/ggml.h#L404-L433.
 type GGUFFileType uint32
 
 // GGUFFileType constants.
@@ -99,6 +99,9 @@ const (
 	GGUFFileTypeMostlyIQ4_XS                       // IQ4_XS
 	GGUFFileTypeMostlyIQ1_M                        // IQ1_M
 	GGUFFileTypeMostlyBF16                         // BF16
+	GGUFFileTypeMostlyQ4_0_4_4                     // Q4_0_4x4
+	GGUFFileTypeMostlyQ4_0_4_8                     // Q4_0_4x8
+	GGUFFileTypeMostlyQ4_0_8_8                     // Q4_0_8x8
 	_GGUFFileTypeCount                             // Unknown
 )
 
@@ -228,6 +231,12 @@ func (t GGUFFileType) GGMLType() GGMLType {
 		return GGMLTypeIQ1_M
 	case GGUFFileTypeMostlyBF16:
 		return GGMLTypeBF16
+	case GGUFFileTypeMostlyQ4_0_4_4:
+		return GGMLTypeQ4_0_4_4
+	case GGUFFileTypeMostlyQ4_0_4_8:
+		return GGMLTypeQ4_0_4_8
+	case GGUFFileTypeMostlyQ4_0_8_8:
+		return GGMLTypeQ4_0_8_8
 	default:
 	}
 	return _GGMLTypeCount
@@ -329,6 +338,12 @@ func (gf *GGUFFile) guessFileType() GGUFFileType {
 		return GGUFFileTypeMostlyIQ1_M
 	case GGMLTypeBF16:
 		return GGUFFileTypeMostlyBF16
+	case GGMLTypeQ4_0_4_4:
+		return GGUFFileTypeMostlyQ4_0_4_4
+	case GGMLTypeQ4_0_4_8:
+		return GGUFFileTypeMostlyQ4_0_4_8
+	case GGMLTypeQ4_0_8_8:
+		return GGUFFileTypeMostlyQ4_0_8_8
 	default:
 	}
 	return _GGUFFileTypeCount
