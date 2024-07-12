@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -41,7 +42,7 @@ func ParseGGUFFileFromOllama(ctx context.Context, model string, crawl bool, opts
 // If the crawl is true, it will try to crawl the metadata from Ollama website instead of blobs fetching,
 // which will be more efficient and faster, but lossy.
 // If the crawling fails, it will fall back to the default behavior.
-func ParseGGUFFileFromOllamaModel(ctx context.Context, model *OllamaModel, crawl bool, opts ...GGUFReadOption) (*GGUFFile, error) {
+func ParseGGUFFileFromOllamaModel(ctx context.Context, model *OllamaModel, crawl bool, opts ...GGUFReadOption) (gf *GGUFFile, err error) {
 	if model == nil {
 		return nil, ErrOllamaInvalidModel
 	}
@@ -49,6 +50,29 @@ func ParseGGUFFileFromOllamaModel(ctx context.Context, model *OllamaModel, crawl
 	var o _GGUFReadOptions
 	for _, opt := range opts {
 		opt(&o)
+	}
+
+	// Cache.
+	{
+		if o.CachePath != "" {
+			o.CachePath = filepath.Join(o.CachePath, "distro", "ollama")
+			if crawl {
+				o.CachePath = filepath.Join(o.CachePath, "brief")
+			}
+		}
+		c := GGUFFileCache(o.CachePath)
+
+		// Get from cache.
+		if gf, err = c.Get(model.String(), o.CacheExpiration); err == nil {
+			return gf, nil
+		}
+
+		// Put to cache.
+		defer func() {
+			if err == nil {
+				_ = c.Put(model.String(), gf)
+			}
+		}()
 	}
 
 	cli := httpx.Client(
@@ -94,7 +118,7 @@ func ParseGGUFFileFromOllamaModel(ctx context.Context, model *OllamaModel, crawl
 	if crawl {
 		r, err := ml.FetchWebPage(ctx, cli)
 		if err == nil {
-			gf, err := parseGGUFFileFromDistroMetadata("ollama", r, ml.Size)
+			gf, err = parseGGUFFileFromDistroMetadata("ollama", r, ml.Size)
 			if err == nil {
 				return gf, nil
 			}

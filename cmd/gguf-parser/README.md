@@ -63,6 +63,8 @@ Usage of gguf-parser ...:
         [DEPRECATED, use --hf-repo instead] Repository of HuggingFace which the GGUF file store, e.g. NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF, works with --file.
   -skip-architecture
         Skip to display architecture metadata.
+  -skip-cache
+        Skip cache, works with --url/--hf-*/--ms-*/--ol-*, default is caching the read result.
   -skip-dns-cache
         Skip DNS cache, works with --url/--hf-*/--ms-*/--ol-*, default is caching the DNS lookup result.
   -skip-estimate

@@ -1,6 +1,15 @@
 package gguf_parser
 
-import "net/url"
+import (
+	"net/url"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"time"
+
+	"github.com/thxcode/gguf-parser-go/util/osx"
+)
 
 type (
 	_GGUFReadOptions struct {
@@ -17,6 +26,8 @@ type (
 		SkipDNSCache               bool
 		BufferSize                 int
 		SkipRangeDownloadDetection bool
+		CachePath                  string
+		CacheExpiration            time.Duration
 	}
 	GGUFReadOption func(o *_GGUFReadOptions)
 )
@@ -86,5 +97,55 @@ func UseBufferSize(size int) GGUFReadOption {
 func SkipRangeDownloadDetection() GGUFReadOption {
 	return func(o *_GGUFReadOptions) {
 		o.SkipRangeDownloadDetection = true
+	}
+}
+
+// UseCache caches the remote reading result.
+func UseCache() GGUFReadOption {
+	var cd string
+	{
+		hd, err := os.UserHomeDir()
+		if err != nil {
+			hd = filepath.Join(os.TempDir(), time.Now().Format(time.DateOnly))
+		}
+		cd = filepath.Join(hd, ".cache")
+		if runtime.GOOS == "windows" {
+			cd = osx.Getenv("APPDATA", cd)
+		}
+	}
+	return func(o *_GGUFReadOptions) {
+		o.CachePath = filepath.Join(cd, "gguf-parser")
+		o.CacheExpiration = 24 * time.Hour
+	}
+}
+
+// SkipCache skips the cache when reading from remote.
+func SkipCache() GGUFReadOption {
+	return func(o *_GGUFReadOptions) {
+		o.CachePath = ""
+		o.CacheExpiration = 0
+	}
+}
+
+// UseCachePath uses the given path to cache the remote reading result.
+func UseCachePath(path string) GGUFReadOption {
+	path = strings.TrimSpace(filepath.Clean(path))
+	return func(o *_GGUFReadOptions) {
+		if path == "" {
+			return
+		}
+		o.CachePath = path
+	}
+}
+
+// UseCacheExpiration uses the given expiration to cache the remote reading result.
+//
+// Disable cache expiration by setting it to 0.
+func UseCacheExpiration(expiration time.Duration) GGUFReadOption {
+	if expiration < 0 {
+		expiration = 0
+	}
+	return func(o *_GGUFReadOptions) {
+		o.CacheExpiration = expiration
 	}
 }

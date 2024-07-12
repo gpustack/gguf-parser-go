@@ -42,6 +42,7 @@ func main() {
 		skipTLSVerify          bool
 		skipDNSCache           bool
 		skipRangDownloadDetect bool
+		skipCache              bool
 		// estimate options
 		ctxSize           = -1
 		inMaxCtxSize      bool
@@ -112,6 +113,9 @@ func main() {
 	fs.BoolVar(&skipRangDownloadDetect, "skip-rang-download-detect", skipRangDownloadDetect, "Skip range download detect, "+
 		"works with --url/--hf-*/--ms-*/--ol-*, "+
 		"default is detecting the range download support.")
+	fs.BoolVar(&skipCache, "skip-cache", skipCache, "Skip cache, "+
+		"works with --url/--hf-*/--ms-*/--ol-*, "+
+		"default is caching the read result.")
 	fs.IntVar(&ctxSize, "ctx-size", ctxSize, "Specify the size of prompt context, "+
 		"which is used to estimate the usage, "+
 		"default is equal to the model's maximum context size.")
@@ -178,6 +182,7 @@ func main() {
 	ropts := []GGUFReadOption{
 		SkipLargeMetadata(),
 		UseMMap(),
+		UseCache(),
 	}
 	if debug {
 		ropts = append(ropts, UseDebug())
@@ -193,6 +198,9 @@ func main() {
 	}
 	if skipRangDownloadDetect {
 		ropts = append(ropts, SkipRangeDownloadDetection())
+	}
+	if skipCache {
+		ropts = append(ropts, SkipCache())
 	}
 
 	eopts := []LLaMACppUsageEstimateOption{

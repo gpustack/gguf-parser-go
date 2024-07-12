@@ -82,3 +82,22 @@ func Close(c io.Closer) {
 	}
 	_ = c.Close()
 }
+
+// WriteFile is similar to os.WriteFile but supports ~ as the home directory,
+// and also supports the parent directory creation.
+func WriteFile(name string, data []byte, perm os.FileMode) error {
+	p := filepath.Clean(name)
+	if strings.HasPrefix(p, "~"+string(filepath.Separator)) {
+		hd, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		p = filepath.Join(hd, p[2:])
+	}
+
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		return err
+	}
+
+	return os.WriteFile(p, data, perm)
+}

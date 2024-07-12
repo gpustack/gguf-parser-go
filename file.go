@@ -12,6 +12,7 @@ import (
 
 	"golang.org/x/exp/constraints"
 
+	"github.com/thxcode/gguf-parser-go/util/anyx"
 	"github.com/thxcode/gguf-parser-go/util/bytex"
 	"github.com/thxcode/gguf-parser-go/util/funcx"
 	"github.com/thxcode/gguf-parser-go/util/osx"
@@ -557,91 +558,109 @@ func (kv GGUFMetadataKV) ValueUint8() uint8 {
 	if kv.ValueType != GGUFMetadataValueTypeUint8 {
 		panic(fmt.Errorf("invalid type: %v", kv.ValueType))
 	}
-	return kv.Value.(uint8)
+	return anyx.Number[uint8](kv.Value)
 }
 
 func (kv GGUFMetadataKV) ValueInt8() int8 {
 	if kv.ValueType != GGUFMetadataValueTypeInt8 {
 		panic(fmt.Errorf("invalid type: %v", kv.ValueType))
 	}
-	return kv.Value.(int8)
+	return anyx.Number[int8](kv.Value)
 }
 
 func (kv GGUFMetadataKV) ValueUint16() uint16 {
 	if kv.ValueType != GGUFMetadataValueTypeUint16 {
 		panic(fmt.Errorf("invalid type: %v", kv.ValueType))
 	}
-	return kv.Value.(uint16)
+	return anyx.Number[uint16](kv.Value)
 }
 
 func (kv GGUFMetadataKV) ValueInt16() int16 {
 	if kv.ValueType != GGUFMetadataValueTypeInt16 {
 		panic(fmt.Errorf("invalid type: %v", kv.ValueType))
 	}
-	return kv.Value.(int16)
+	return anyx.Number[int16](kv.Value)
 }
 
 func (kv GGUFMetadataKV) ValueUint32() uint32 {
 	if kv.ValueType != GGUFMetadataValueTypeUint32 {
 		panic(fmt.Errorf("invalid type: %v", kv.ValueType))
 	}
-	return kv.Value.(uint32)
+	return anyx.Number[uint32](kv.Value)
 }
 
 func (kv GGUFMetadataKV) ValueInt32() int32 {
 	if kv.ValueType != GGUFMetadataValueTypeInt32 {
 		panic(fmt.Errorf("invalid type: %v", kv.ValueType))
 	}
-	return kv.Value.(int32)
+	return anyx.Number[int32](kv.Value)
 }
 
 func (kv GGUFMetadataKV) ValueFloat32() float32 {
 	if kv.ValueType != GGUFMetadataValueTypeFloat32 {
 		panic(fmt.Errorf("invalid type: %v", kv.ValueType))
 	}
-	return kv.Value.(float32)
+	return anyx.Number[float32](kv.Value)
 }
 
 func (kv GGUFMetadataKV) ValueBool() bool {
 	if kv.ValueType != GGUFMetadataValueTypeBool {
 		panic(fmt.Errorf("invalid type: %v", kv.ValueType))
 	}
-	return kv.Value.(bool)
+	return anyx.Bool(kv.Value)
 }
 
 func (kv GGUFMetadataKV) ValueString() string {
 	if kv.ValueType != GGUFMetadataValueTypeString {
 		panic(fmt.Errorf("invalid type: %v", kv.ValueType))
 	}
-	return kv.Value.(string)
+	return anyx.String(kv.Value)
 }
 
 func (kv GGUFMetadataKV) ValueArray() GGUFMetadataKVArrayValue {
 	if kv.ValueType != GGUFMetadataValueTypeArray {
 		panic(fmt.Errorf("invalid type: %v", kv.ValueType))
 	}
-	return kv.Value.(GGUFMetadataKVArrayValue)
+	switch t := kv.Value.(type) {
+	case GGUFMetadataKVArrayValue:
+		return t
+	case map[string]any:
+		return GGUFMetadataKVArrayValue{
+			Type: anyx.Number[GGUFMetadataValueType](t["type"]),
+			Len:  anyx.Number[uint64](t["len"]),
+			Array: func() []any {
+				if vv, ok := t["array"].([]any); ok {
+					return vv
+				}
+				return nil
+			}(),
+			StartOffset: anyx.Number[int64](t["startOffset"]),
+			Size:        anyx.Number[int64](t["size"]),
+		}
+	default:
+		panic(fmt.Errorf("invalid type: %T", kv.Value))
+	}
 }
 
 func (kv GGUFMetadataKV) ValueUint64() uint64 {
 	if kv.ValueType != GGUFMetadataValueTypeUint64 {
 		panic(fmt.Errorf("invalid type: %v", kv.ValueType))
 	}
-	return kv.Value.(uint64)
+	return anyx.Number[uint64](kv.Value)
 }
 
 func (kv GGUFMetadataKV) ValueInt64() int64 {
 	if kv.ValueType != GGUFMetadataValueTypeInt64 {
 		panic(fmt.Errorf("invalid type: %v", kv.ValueType))
 	}
-	return kv.Value.(int64)
+	return anyx.Number[int64](kv.Value)
 }
 
 func (kv GGUFMetadataKV) ValueFloat64() float64 {
 	if kv.ValueType != GGUFMetadataValueTypeFloat64 {
 		panic(fmt.Errorf("invalid type: %v", kv.ValueType))
 	}
-	return kv.Value.(float64)
+	return anyx.Number[float64](kv.Value)
 }
 
 // ValueNumeric returns the numeric values of the GGUFMetadataKV,
@@ -654,28 +673,19 @@ func (kv GGUFMetadataKV) ValueFloat64() float64 {
 func ValueNumeric[T constraints.Integer | constraints.Float](kv GGUFMetadataKV) T {
 	switch kv.ValueType {
 	case GGUFMetadataValueTypeUint8:
-		return T(kv.Value.(uint8))
 	case GGUFMetadataValueTypeInt8:
-		return T(kv.Value.(int8))
 	case GGUFMetadataValueTypeUint16:
-		return T(kv.Value.(int16))
 	case GGUFMetadataValueTypeInt16:
-		return T(kv.Value.(int16))
 	case GGUFMetadataValueTypeUint32:
-		return T(kv.Value.(uint32))
 	case GGUFMetadataValueTypeInt32:
-		return T(kv.Value.(int32))
 	case GGUFMetadataValueTypeFloat32:
-		return T(kv.Value.(float32))
 	case GGUFMetadataValueTypeUint64:
-		return T(kv.Value.(uint64))
 	case GGUFMetadataValueTypeInt64:
-		return T(kv.Value.(int64))
 	case GGUFMetadataValueTypeFloat64:
-		return T(kv.Value.(float64))
 	default:
+		panic(fmt.Errorf("invalid type: %v", kv.ValueType))
 	}
-	panic(fmt.Errorf("invalid type: %v", kv.ValueType))
+	return anyx.Number[T](kv.Value)
 }
 
 func (av GGUFMetadataKVArrayValue) ValuesUint8() []uint8 {
@@ -684,7 +694,7 @@ func (av GGUFMetadataKVArrayValue) ValuesUint8() []uint8 {
 	}
 	v := make([]uint8, av.Len)
 	for i := uint64(0); i < av.Len; i++ {
-		v[i] = av.Array[i].(uint8)
+		v[i] = anyx.Number[uint8](av.Array[i])
 	}
 	return v
 }
@@ -695,7 +705,7 @@ func (av GGUFMetadataKVArrayValue) ValuesInt8() []int8 {
 	}
 	v := make([]int8, av.Len)
 	for i := uint64(0); i < av.Len; i++ {
-		v[i] = av.Array[i].(int8)
+		v[i] = anyx.Number[int8](av.Array[i])
 	}
 	return v
 }
@@ -706,7 +716,7 @@ func (av GGUFMetadataKVArrayValue) ValuesUint16() []uint16 {
 	}
 	v := make([]uint16, av.Len)
 	for i := uint64(0); i < av.Len; i++ {
-		v[i] = av.Array[i].(uint16)
+		v[i] = anyx.Number[uint16](av.Array[i])
 	}
 	return v
 }
@@ -717,7 +727,7 @@ func (av GGUFMetadataKVArrayValue) ValuesInt16() []int16 {
 	}
 	v := make([]int16, av.Len)
 	for i := uint64(0); i < av.Len; i++ {
-		v[i] = av.Array[i].(int16)
+		v[i] = anyx.Number[int16](av.Array[i])
 	}
 	return v
 }
@@ -728,7 +738,7 @@ func (av GGUFMetadataKVArrayValue) ValuesUint32() []uint32 {
 	}
 	v := make([]uint32, av.Len)
 	for i := uint64(0); i < av.Len; i++ {
-		v[i] = av.Array[i].(uint32)
+		v[i] = anyx.Number[uint32](av.Array[i])
 	}
 	return v
 }
@@ -739,7 +749,7 @@ func (av GGUFMetadataKVArrayValue) ValuesInt32() []int32 {
 	}
 	v := make([]int32, av.Len)
 	for i := uint64(0); i < av.Len; i++ {
-		v[i] = av.Array[i].(int32)
+		v[i] = anyx.Number[int32](av.Array[i])
 	}
 	return v
 }
@@ -750,7 +760,7 @@ func (av GGUFMetadataKVArrayValue) ValuesFloat32() []float32 {
 	}
 	v := make([]float32, av.Len)
 	for i := uint64(0); i < av.Len; i++ {
-		v[i] = av.Array[i].(float32)
+		v[i] = anyx.Number[float32](av.Array[i])
 	}
 	return v
 }
@@ -761,7 +771,7 @@ func (av GGUFMetadataKVArrayValue) ValuesBool() []bool {
 	}
 	v := make([]bool, av.Len)
 	for i := uint64(0); i < av.Len; i++ {
-		v[i] = av.Array[i].(bool)
+		v[i] = anyx.Bool(av.Array[i])
 	}
 	return v
 }
@@ -772,7 +782,7 @@ func (av GGUFMetadataKVArrayValue) ValuesString() []string {
 	}
 	v := make([]string, av.Len)
 	for i := uint64(0); i < av.Len; i++ {
-		v[i] = av.Array[i].(string)
+		v[i] = anyx.String(av.Array[i])
 	}
 	return v
 }
@@ -783,7 +793,25 @@ func (av GGUFMetadataKVArrayValue) ValuesArray() []GGUFMetadataKVArrayValue {
 	}
 	v := make([]GGUFMetadataKVArrayValue, av.Len)
 	for i := uint64(0); i < av.Len; i++ {
-		v[i] = av.Array[i].(GGUFMetadataKVArrayValue)
+		switch t := av.Array[i].(type) {
+		case GGUFMetadataKVArrayValue:
+			v[i] = t
+		case map[string]any:
+			v[i] = GGUFMetadataKVArrayValue{
+				Type: anyx.Number[GGUFMetadataValueType](t["type"]),
+				Len:  anyx.Number[uint64](t["len"]),
+				Array: func() []any {
+					if vv, ok := t["array"].([]any); ok {
+						return vv
+					}
+					return nil
+				}(),
+				StartOffset: anyx.Number[int64](t["startOffset"]),
+				Size:        anyx.Number[int64](t["size"]),
+			}
+		default:
+			panic(fmt.Errorf("invalid type: %T", av.Array[i]))
+		}
 	}
 	return v
 }
@@ -794,7 +822,7 @@ func (av GGUFMetadataKVArrayValue) ValuesUint64() []uint64 {
 	}
 	v := make([]uint64, av.Len)
 	for i := uint64(0); i < av.Len; i++ {
-		v[i] = av.Array[i].(uint64)
+		v[i] = anyx.Number[uint64](av.Array[i])
 	}
 	return v
 }
@@ -805,7 +833,7 @@ func (av GGUFMetadataKVArrayValue) ValuesInt64() []int64 {
 	}
 	v := make([]int64, av.Len)
 	for i := uint64(0); i < av.Len; i++ {
-		v[i] = av.Array[i].(int64)
+		v[i] = anyx.Number[int64](av.Array[i])
 	}
 	return v
 }
@@ -816,7 +844,7 @@ func (av GGUFMetadataKVArrayValue) ValuesFloat64() []float64 {
 	}
 	v := make([]float64, av.Len)
 	for i := uint64(0); i < av.Len; i++ {
-		v[i] = av.Array[i].(float64)
+		v[i] = anyx.Number[float64](av.Array[i])
 	}
 	return v
 }
@@ -833,28 +861,19 @@ func ValuesNumeric[T constraints.Integer | constraints.Float](av GGUFMetadataKVA
 	for i := uint64(0); i < av.Len; i++ {
 		switch av.Type {
 		case GGUFMetadataValueTypeUint8:
-			v[i] = T(av.Array[i].(uint8))
 		case GGUFMetadataValueTypeInt8:
-			v[i] = T(av.Array[i].(int8))
 		case GGUFMetadataValueTypeUint16:
-			v[i] = T(av.Array[i].(uint16))
 		case GGUFMetadataValueTypeInt16:
-			v[i] = T(av.Array[i].(int16))
 		case GGUFMetadataValueTypeUint32:
-			v[i] = T(av.Array[i].(uint32))
 		case GGUFMetadataValueTypeInt32:
-			v[i] = T(av.Array[i].(int32))
 		case GGUFMetadataValueTypeFloat32:
-			v[i] = T(av.Array[i].(float32))
 		case GGUFMetadataValueTypeUint64:
-			v[i] = T(av.Array[i].(uint64))
 		case GGUFMetadataValueTypeInt64:
-			v[i] = T(av.Array[i].(int64))
 		case GGUFMetadataValueTypeFloat64:
-			v[i] = T(av.Array[i].(float64))
 		default:
 			panic(fmt.Errorf("invalid type: %v", av.Type))
 		}
+		v[i] = anyx.Number[T](av.Array[i])
 	}
 	return v
 }

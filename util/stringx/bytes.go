@@ -9,6 +9,6 @@ func FromBytes(b *[]byte) string {
 
 // ToBytes converts a string to a byte slice,
 // which is impossible to modify the item of slice.
-func ToBytes(s string) (bs []byte) {
-	return unsafe.Slice(unsafe.StringData(s), len(s))
+func ToBytes(s *string) (bs []byte) {
+	return unsafe.Slice(unsafe.StringData(*s), len(*s))
 }

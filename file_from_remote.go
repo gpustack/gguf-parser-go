@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"time"
 
 	"github.com/thxcode/gguf-parser-go/util/httpx"
@@ -26,10 +27,33 @@ func ParseGGUFFileFromModelScope(ctx context.Context, repo, file string, opts ..
 
 // ParseGGUFFileRemote parses a GGUF file from a remote BlobURL,
 // and returns a GGUFFile, or an error if any.
-func ParseGGUFFileRemote(ctx context.Context, url string, opts ...GGUFReadOption) (*GGUFFile, error) {
+func ParseGGUFFileRemote(ctx context.Context, url string, opts ...GGUFReadOption) (gf *GGUFFile, err error) {
 	var o _GGUFReadOptions
 	for _, opt := range opts {
 		opt(&o)
+	}
+
+	// Cache.
+	{
+		if o.CachePath != "" {
+			o.CachePath = filepath.Join(o.CachePath, "remote")
+			if o.SkipLargeMetadata {
+				o.CachePath = filepath.Join(o.CachePath, "brief")
+			}
+		}
+		c := GGUFFileCache(o.CachePath)
+
+		// Get from cache.
+		if gf, err = c.Get(url, o.CacheExpiration); err == nil {
+			return gf, nil
+		}
+
+		// Put to cache.
+		defer func() {
+			if err == nil {
+				_ = c.Put(url, gf)
+			}
+		}()
 	}
 
 	cli := httpx.Client(
