@@ -46,11 +46,11 @@ Usage of gguf-parser ...:
   -offload-layers-step uint
         [DEPRECATED, use --gpu-layers-step instead] Specify the step of layers to offload, works with --offload-layers.
   -ol-crawl
-        Crawl the Ollama model instead of blobs fetching, which will be more efficient and faster, but lossy.
+        Crawl the Ollama model instead of blobs fetching, works with --ol-model, which will be more efficient and faster, but lossy.
   -ol-model string
         Model name of Ollama, e.g. gemma2.
   -ol-usage
-        Specify respecting the extending layers introduced by Ollama, which affects the usage estimation.
+        Specify respecting the extending layers introduced by Ollama, works with --ol-model, which affects the usage estimation.
   -parallel-size int
         Specify the number of parallel sequences to decode, which is used to estimate the usage, default is 1. (default 1)
   -path string
@@ -64,15 +64,17 @@ Usage of gguf-parser ...:
   -skip-architecture
         Skip to display architecture metadata.
   -skip-dns-cache
-        Skip DNS cache, works with --url/--hf-*/--ol-*, default is caching the DNS lookup result.
+        Skip DNS cache, works with --url/--hf-*/--ms-*/--ol-*, default is caching the DNS lookup result.
   -skip-estimate
         Skip to estimate.
   -skip-model
         Skip to display model metadata.
   -skip-proxy
-        Skip proxy settings, works with --url/--hf-*/--ol-*, default is respecting the environment variables HTTP_PROXY/HTTPS_PROXY/NO_PROXY.
+        Skip proxy settings, works with --url/--hf-*/--ms-*/--ol-*, default is respecting the environment variables HTTP_PROXY/HTTPS_PROXY/NO_PROXY.
+  -skip-rang-download-detect
+        Skip range download detect, works with --url/--hf-*/--ms-*/--ol-*, default is detecting the range download support.
   -skip-tls-verify
-        Skip TLS verification, works with --url/--hf-*/--ol-*, default is verifying the TLS certificate on HTTPs request.
+        Skip TLS verification, works with --url/--hf-*/--ms-*/--ol-*, default is verifying the TLS certificate on HTTPs request.
   -skip-tokenizer
         Skip to display tokenizer metadata
   -ubatch-size int

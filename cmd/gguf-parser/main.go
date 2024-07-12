@@ -37,10 +37,11 @@ func main() {
 		olCrawl bool
 		olUsage bool
 		// read options
-		debug         bool
-		skipProxy     bool
-		skipTLSVerify bool
-		skipDNSCache  bool
+		debug                  bool
+		skipProxy              bool
+		skipTLSVerify          bool
+		skipDNSCache           bool
+		skipRangDownloadDetect bool
 		// estimate options
 		ctxSize           = -1
 		inMaxCtxSize      bool
@@ -93,19 +94,24 @@ func main() {
 	fs.StringVar(&olModel, "ol-model", olModel, "Model name of Ollama, e.g. "+
 		"gemma2.")
 	fs.BoolVar(&olCrawl, "ol-crawl", olCrawl, "Crawl the Ollama model instead of blobs fetching, "+
+		"works with --ol-model, "+
 		"which will be more efficient and faster, but lossy.")
 	fs.BoolVar(&olUsage, "ol-usage", olUsage, "Specify respecting the extending layers introduced by Ollama, "+
+		"works with --ol-model, "+
 		"which affects the usage estimation.")
 	fs.BoolVar(&debug, "debug", debug, "Enable debugging, verbosity.")
 	fs.BoolVar(&skipProxy, "skip-proxy", skipProxy, "Skip proxy settings, "+
-		"works with --url/--hf-*/--ol-*, "+
+		"works with --url/--hf-*/--ms-*/--ol-*, "+
 		"default is respecting the environment variables HTTP_PROXY/HTTPS_PROXY/NO_PROXY.")
 	fs.BoolVar(&skipTLSVerify, "skip-tls-verify", skipTLSVerify, "Skip TLS verification, "+
-		"works with --url/--hf-*/--ol-*, "+
+		"works with --url/--hf-*/--ms-*/--ol-*, "+
 		"default is verifying the TLS certificate on HTTPs request.")
 	fs.BoolVar(&skipDNSCache, "skip-dns-cache", skipDNSCache, "Skip DNS cache, "+
-		"works with --url/--hf-*/--ol-*, "+
+		"works with --url/--hf-*/--ms-*/--ol-*, "+
 		"default is caching the DNS lookup result.")
+	fs.BoolVar(&skipRangDownloadDetect, "skip-rang-download-detect", skipRangDownloadDetect, "Skip range download detect, "+
+		"works with --url/--hf-*/--ms-*/--ol-*, "+
+		"default is detecting the range download support.")
 	fs.IntVar(&ctxSize, "ctx-size", ctxSize, "Specify the size of prompt context, "+
 		"which is used to estimate the usage, "+
 		"default is equal to the model's maximum context size.")
@@ -184,6 +190,9 @@ func main() {
 	}
 	if skipDNSCache {
 		ropts = append(ropts, SkipDNSCache())
+	}
+	if skipRangDownloadDetect {
+		ropts = append(ropts, SkipRangeDownloadDetection())
 	}
 
 	eopts := []LLaMACppUsageEstimateOption{
