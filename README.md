@@ -2,6 +2,7 @@
 
 > tl;dr, Go parser for the [GGUF](https://github.com/ggerganov/ggml/blob/master/docs/gguf.md).
 
+[![](https://goreportcard.com/badge/github.com/thxcode/gguf-parser-go)](https://goreportcard.com/report/github.com/thxcode/gguf-parser-go)
 [![](https://img.shields.io/github/actions/workflow/status/thxcode/gguf-parser-go/cmd.yml?label=ci)](https://github.com/thxcode/gguf-parser-go/actions)
 [![](https://img.shields.io/github/license/thxcode/gguf-parser-go?label=license)](https://github.com/thxcode/gguf-parser-go#license)
 [![](https://img.shields.io/github/downloads/thxcode/gguf-parser-go/total)](https://github.com/thxcode/gguf-parser-go/releases)
@@ -20,10 +21,25 @@ Import the package as below.
 
 ```shell
 go get github.com/thxcode/gguf-parser-go
-
 ```
 
-If you need one-shot command-line, try [gguf-parser](./cmd/gguf-parser) please.
+If you need one-shot command-line, try [gguf-parser](./cmd/gguf-parser) from [releases](https://github.com/thxCode/gguf-parser-go/releases) or `go install github.com/thxcode/gguf-parser-go/cmd/gguf-parser` from HEAD.
+
+## Calls
+
+```mermaid
+flowchart
+    parseGGUFFileRemote[/parseGGUFFileRemote/]
+    parseGGUFFile[/parseGGUFFile/]
+    parseGGUFFileFromDistroMetadata[/parseGGUFFileFromDistroMetadata/]
+    ParseGGUFFile -.-> parseGGUFFile
+    ParseGGUFFileFromHuggingFace -.-> ParseGGUFFileRemote
+    ParseGGUFFileFromModelScope -.-> ParseGGUFFileRemote
+    ParseGGUFFileRemote -.-> parseGGUFFileRemote
+    parseGGUFFileRemote -.-> parseGGUFFile
+    ParseGGUFFileFromOllama -.-> parseGGUFFileRemote
+    ParseGGUFFileFromOllama -..->|crawl| parseGGUFFileFromDistroMetadata
+```
 
 ## Examples
 
@@ -116,7 +132,7 @@ spew.Dump(es)
 
 // Since the estimated result is detail and lack of context,
 // you can summarize the result as below.
-s := es.Summarize(true /* load via mmap */)
+s := es.Summarize(true /* load via mmap */, 0, 0 /* no unified memory RAM, VRAM footprint */)
 spew.Dump(s)
 
 ```
@@ -129,7 +145,7 @@ spew.Dump(es)
 
 // Since the estimated result is detail and lack of context,
 // you can summarize the result as below.
-s := es.Summarize(true /* load via mmap */)
+s := es.Summarize(true /* load via mmap */, 0, 0 /* no unified memory RAM, VRAM footprint */)
 spew.Dump(s)
 
 ```
@@ -142,7 +158,7 @@ spew.Dump(es)
 
 // Since the estimated result is detail and lack of context,
 // you can summarize the result as below.
-s := es.Summarize(true /* load via mmap */)
+s := es.Summarize(true /* load via mmap */, 0, 0 /* no unified memory RAM, VRAM footprint */)
 spew.Dump(s)
 
 ```
