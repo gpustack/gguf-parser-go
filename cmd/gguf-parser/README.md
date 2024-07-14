@@ -23,6 +23,8 @@ Usage of gguf-parser ...:
         Model file below the --hf-repo, e.g. Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf.
   -hf-repo string
         Repository of HuggingFace which the GGUF file store, e.g. NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF, works with --hf-file.
+  -hf-token string
+        User access token of HuggingFace, optional, works with --hf-repo/--hf-file. See https://huggingface.co/settings/tokens.
   -in-max-ctx-size
         Limit the context size to the maximum context size of the model, if the context size is larger than the maximum context size.
   -in-mib
@@ -37,6 +39,8 @@ Usage of gguf-parser ...:
         Model file below the --ms-repo, e.g. qwen1.5-0.5b-chat.gguf.
   -ms-repo string
         Repository of ModelScope which the GGUF file store, e.g. qwen/Qwen1.5-0.5B-Chat-GGUF, works with --ms-file.
+  -ms-token string
+        Git access token of ModelScope, optional, works with --ms-repo/--ms-file. See https://modelscope.cn/my/myaccesstoken.
   -no-kv-offload
         Specify disabling Key-Value offloading, which is used to estimate the usage. Key-Value offloading can reduce the usage of VRAM.
   -no-mmap
@@ -79,6 +83,8 @@ Usage of gguf-parser ...:
         Skip TLS verification, works with --url/--hf-*/--ms-*/--ol-*, default is verifying the TLS certificate on HTTPs request.
   -skip-tokenizer
         Skip to display tokenizer metadata
+  -token string
+        Bearer auth token to load GGUF file, optional, works with --url.
   -ubatch-size int
         Specify the physical maximum batch size, which is used to estimate the usage, default is 512. (default 512)
   -url string

@@ -20,6 +20,7 @@ type (
 		MMap bool
 
 		// Remote.
+		BearerAuthToken            string
 		ProxyURL                   *url.URL
 		SkipProxy                  bool
 		SkipTLSVerification        bool
@@ -51,6 +52,13 @@ func SkipLargeMetadata() GGUFReadOption {
 func UseMMap() GGUFReadOption {
 	return func(o *_GGUFReadOptions) {
 		o.MMap = true
+	}
+}
+
+// UseBearerAuth uses the given token as a bearer auth when reading from remote.
+func UseBearerAuth(token string) GGUFReadOption {
+	return func(o *_GGUFReadOptions) {
+		o.BearerAuthToken = token
 	}
 }
 

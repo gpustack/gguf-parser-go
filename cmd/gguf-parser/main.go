@@ -29,10 +29,13 @@ func main() {
 		// model options
 		path    string
 		url     string
+		token   string
 		hfRepo  string
 		hfFile  string
+		hfToken string
 		msRepo  string
 		msFile  string
+		msToken string
 		olModel string
 		olCrawl bool
 		olUsage bool
@@ -78,6 +81,8 @@ func main() {
 		"https://huggingface.co/NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF"+
 		"/resolve/main/Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf. "+
 		"Note that gguf-parser does not need to download the entire GGUF file.")
+	fs.StringVar(&token, "token", token, "Bearer auth token to load GGUF file, optional, "+
+		"works with --url.")
 	fs.StringVar(&hfRepo, "repo", hfRepo, "[DEPRECATED, use --hf-repo instead] "+ // Deprecated, remove when release v0.3.0.
 		"Repository of HuggingFace which the GGUF file store, e.g. "+
 		"NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF, works with --file.")
@@ -88,10 +93,16 @@ func main() {
 		"NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF, works with --hf-file.")
 	fs.StringVar(&hfFile, "hf-file", hfFile, "Model file below the --hf-repo, e.g. "+
 		"Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf.")
+	fs.StringVar(&hfToken, "hf-token", hfToken, "User access token of HuggingFace, optional, "+
+		"works with --hf-repo/--hf-file. "+
+		"See https://huggingface.co/settings/tokens.")
 	fs.StringVar(&msRepo, "ms-repo", msRepo, "Repository of ModelScope which the GGUF file store, e.g. "+
 		"qwen/Qwen1.5-0.5B-Chat-GGUF, works with --ms-file.")
 	fs.StringVar(&msFile, "ms-file", msFile, "Model file below the --ms-repo, e.g. "+
 		"qwen1.5-0.5b-chat.gguf.")
+	fs.StringVar(&msToken, "ms-token", msToken, "Git access token of ModelScope, optional, "+
+		"works with --ms-repo/--ms-file. "+
+		"See https://modelscope.cn/my/myaccesstoken.")
 	fs.StringVar(&olModel, "ol-model", olModel, "Model name of Ollama, e.g. "+
 		"gemma2.")
 	fs.BoolVar(&olCrawl, "ol-crawl", olCrawl, "Crawl the Ollama model instead of blobs fetching, "+
@@ -264,8 +275,14 @@ func main() {
 		case url != "":
 			gf, err = ParseGGUFFileRemote(ctx, url, ropts...)
 		case hfRepo != "" && hfFile != "":
+			if hfToken != "" {
+				ropts = append(ropts, UseBearerAuth(hfToken))
+			}
 			gf, err = ParseGGUFFileFromHuggingFace(ctx, hfRepo, hfFile, ropts...)
 		case msRepo != "" && msFile != "":
+			if msToken != "" {
+				ropts = append(ropts, UseBearerAuth(msToken))
+			}
 			gf, err = ParseGGUFFileFromModelScope(ctx, msRepo, msFile, ropts...)
 		case olModel != "":
 			om := ParseOllamaModel(olModel)

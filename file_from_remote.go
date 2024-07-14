@@ -62,6 +62,9 @@ func ParseGGUFFileRemote(ctx context.Context, url string, opts ...GGUFReadOption
 			If(o.Debug, func(x *httpx.ClientOption) *httpx.ClientOption {
 				return x.WithDebug()
 			}).
+			If(o.BearerAuthToken != "", func(x *httpx.ClientOption) *httpx.ClientOption {
+				return x.WithBearerAuth(o.BearerAuthToken)
+			}).
 			WithTimeout(0).
 			WithTransport(
 				httpx.TransportOptions().
