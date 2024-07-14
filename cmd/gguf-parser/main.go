@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"regexp"
 
 	"github.com/olekukonko/tablewriter"
 
@@ -15,7 +16,6 @@ import (
 	"github.com/thxcode/gguf-parser-go/util/json"
 
 	. "github.com/thxcode/gguf-parser-go"
-	"regexp"
 )
 
 var Version = "v0.0.0"
@@ -83,12 +83,6 @@ func main() {
 		"Note that gguf-parser does not need to download the entire GGUF file.")
 	fs.StringVar(&token, "token", token, "Bearer auth token to load GGUF file, optional, "+
 		"works with --url.")
-	fs.StringVar(&hfRepo, "repo", hfRepo, "[DEPRECATED, use --hf-repo instead] "+ // Deprecated, remove when release v0.3.0.
-		"Repository of HuggingFace which the GGUF file store, e.g. "+
-		"NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF, works with --file.")
-	fs.StringVar(&hfFile, "file", hfFile, "[DEPRECATED, use --hf-file instead] "+ // Deprecated, remove when release v0.3.0.
-		"Model file below the --repo, e.g. "+
-		"Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf.")
 	fs.StringVar(&hfRepo, "hf-repo", hfRepo, "Repository of HuggingFace which the GGUF file store, e.g. "+
 		"NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF, works with --hf-file.")
 	fs.StringVar(&hfFile, "hf-file", hfFile, "Model file below the --hf-repo, e.g. "+
@@ -157,16 +151,9 @@ func main() {
 	fs.BoolVar(&noMMap, "no-mmap", noMMap, "Specify disabling Memory-Mapped using, "+
 		"which is used to estimate the usage. "+
 		"Memory-Mapped can avoid loading the entire model weights into RAM.")
-	fs.IntVar(&offloadLayers, "offload-layers", offloadLayers, "[DEPRECATED, use --gpu-layers instead] "+ // Deprecated, remove when release v0.3.0.
-		"Specify how many layers to offload, "+
-		"which is used to estimate the usage, "+
-		"default is full offloaded.")
 	fs.IntVar(&offloadLayers, "gpu-layers", offloadLayers, "Specify how many layers to offload, "+
 		"which is used to estimate the usage, "+
 		"default is full offloaded.")
-	fs.Uint64Var(&offloadLayersStep, "offload-layers-step", offloadLayersStep, "[DEPRECATED, use --gpu-layers-step instead] "+ // Deprecated, remove when release v0.3.0.
-		"Specify the step of layers to offload, "+
-		"works with --offload-layers.")
 	fs.Uint64Var(&offloadLayersStep, "gpu-layers-step", offloadLayersStep, "Specify the step of layers to offload, "+
 		"works with --gpu-layers.")
 	fs.BoolVar(&version, "version", version, "Show gguf-parser version.")

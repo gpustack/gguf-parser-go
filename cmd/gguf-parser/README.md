@@ -11,8 +11,6 @@ Usage of gguf-parser ...:
         Specify the size of prompt context, which is used to estimate the usage, default is equal to the model's maximum context size. (default -1)
   -debug
         Enable debugging, verbosity.
-  -file string
-        [DEPRECATED, use --hf-file instead] Model file below the --repo, e.g. Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf.
   -flash-attention
         Specify enabling Flash Attention, which is used to estimate the usage. Flash Attention can reduce the usage of RAM/VRAM.
   -gpu-layers int
@@ -45,10 +43,6 @@ Usage of gguf-parser ...:
         Specify disabling Key-Value offloading, which is used to estimate the usage. Key-Value offloading can reduce the usage of VRAM.
   -no-mmap
         Specify disabling Memory-Mapped using, which is used to estimate the usage. Memory-Mapped can avoid loading the entire model weights into RAM.
-  -offload-layers int
-        [DEPRECATED, use --gpu-layers instead] Specify how many layers to offload, which is used to estimate the usage, default is full offloaded. (default -1)
-  -offload-layers-step uint
-        [DEPRECATED, use --gpu-layers-step instead] Specify the step of layers to offload, works with --offload-layers.
   -ol-crawl
         Crawl the Ollama model instead of blobs fetching, works with --ol-model, which will be more efficient and faster, but lossy.
   -ol-model string
@@ -63,8 +57,6 @@ Usage of gguf-parser ...:
         Specify the platform footprint(RAM,VRAM) in MiB, which is used to estimate the NonUMA usage, default is 150,250. Different platform always gets different RAM and VRAM footprints, for example, within CUDA, cudaMemGetInfo would occupy some RAM and VRAM, see https://stackoverflow.com/questions/64854862/free-memory-occupied-by-cudamemgetinfo. (default "150,250")
   -raw
         Output the file only, skip anything.
-  -repo string
-        [DEPRECATED, use --hf-repo instead] Repository of HuggingFace which the GGUF file store, e.g. NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF, works with --file.
   -skip-architecture
         Skip to display architecture metadata.
   -skip-cache
