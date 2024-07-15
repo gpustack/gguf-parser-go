@@ -11,7 +11,9 @@ import (
 // DefaultResolver is the default DNS resolver used by the package,
 // which caches DNS lookups in memory.
 var DefaultResolver = &dnscache.Resolver{
-	Timeout:  time.Second,
+	// NB(thxCode): usually, a high latency DNS is about 3s,
+	// so we set the timeout to 5s here.
+	Timeout:  5 * time.Second,
 	Resolver: net.DefaultResolver,
 }
 
