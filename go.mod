@@ -10,7 +10,6 @@ require (
 	github.com/smallnest/ringbuffer v0.0.0-20240423223918-bab516b2000b
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/exp v0.0.0-20240707233637-46b078467d37
-	golang.org/x/net v0.27.0
 	golang.org/x/sync v0.7.0
 	golang.org/x/sys v0.22.0
 	golang.org/x/tools v0.23.0

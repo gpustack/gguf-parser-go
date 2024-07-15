@@ -31,14 +31,13 @@ If you need one-shot command-line, try [gguf-parser](./cmd/gguf-parser) from [re
 flowchart
     parseGGUFFileRemote[/parseGGUFFileRemote/]
     parseGGUFFile[/parseGGUFFile/]
-    parseGGUFFileFromDistroMetadata[/parseGGUFFileFromDistroMetadata/]
     ParseGGUFFile -.-> parseGGUFFile
     ParseGGUFFileFromHuggingFace -.-> ParseGGUFFileRemote
     ParseGGUFFileFromModelScope -.-> ParseGGUFFileRemote
     ParseGGUFFileRemote -.-> parseGGUFFileRemote
     parseGGUFFileRemote -.-> parseGGUFFile
-    ParseGGUFFileFromOllama -.-> parseGGUFFileRemote
-    ParseGGUFFileFromOllama -..->|crawl| parseGGUFFileFromDistroMetadata
+    ParseGGUFFileFromOllama -.-> ParseGGUFFileFromOllamaModel
+    ParseGGUFFileFromOllamaModel -.-> parseGGUFFileRemote
 ```
 
 ## Examples

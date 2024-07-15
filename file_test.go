@@ -247,50 +247,13 @@ func TestParseGGUFFileFromOllama(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc, func(t *testing.T) {
 			start := time.Now()
-			cf, err := ParseGGUFFileFromOllama(ctx, tc, true, SkipLargeMetadata())
+			f, err := ParseGGUFFileFromOllama(ctx, tc, SkipLargeMetadata())
 			if err != nil {
 				t.Fatal(err)
 				return
 			}
 			t.Logf("cost: %v\n", time.Since(start))
-			t.Log("\n", spew.Sdump(cf), "\n")
-
-			start = time.Now()
-			sf, err := ParseGGUFFileFromOllama(ctx, tc, false, SkipLargeMetadata())
-			if err != nil {
-				t.Fatal(err)
-				return
-			}
-			t.Logf("cost: %v\n", time.Since(start))
-			t.Log("\n", spew.Sdump(sf), "\n")
+			t.Log("\n", spew.Sdump(f), "\n")
 		})
 	}
-}
-
-func BenchmarkParseGGUFFileOllamaCrawl(b *testing.B) {
-	ctx := context.Background()
-
-	b.ReportAllocs()
-
-	b.ResetTimer()
-	b.Run("Without Crawl", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			_, err := ParseGGUFFileFromOllama(ctx, "gemma2", false, SkipLargeMetadata())
-			if err != nil {
-				b.Fatal(err)
-				return
-			}
-		}
-	})
-
-	b.ResetTimer()
-	b.Run("With Crawl", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			_, err := ParseGGUFFileFromOllama(ctx, "gemma2", true, SkipLargeMetadata())
-			if err != nil {
-				b.Fatal(err)
-				return
-			}
-		}
-	})
 }

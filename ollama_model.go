@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"strings"
 
-	"golang.org/x/net/html"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/thxcode/gguf-parser-go/util/httpx"
@@ -410,80 +409,4 @@ func (ol *OllamaModelLayer) FetchBlobFunc(ctx context.Context, cli *http.Client,
 		return fmt.Errorf("do request %s: %w", u, err)
 	}
 	return nil
-}
-
-// WebPageURL returns the Ollama web page URL of the OllamaModelLayer.
-func (ol *OllamaModelLayer) WebPageURL() *url.URL {
-	if ol.Root == nil || len(ol.MediaType) < 12 {
-		return nil
-	}
-
-	dg := strings.TrimPrefix(ol.Digest, "sha256:")[:12]
-	u := &url.URL{
-		Scheme: ol.Root.Schema,
-		Host:   ol.Root.Registry,
-	}
-	return u.JoinPath(ol.Root.Namespace, ol.Root.Repository+":"+ol.Root.Tag, "blobs", dg)
-}
-
-// FetchWebPage fetches the web page of the OllamaModelLayer with the given context and http client,
-// and processes the response with the given function.
-func (ol *OllamaModelLayer) FetchWebPage(ctx context.Context, cli *http.Client) (string, error) {
-	if cli == nil {
-		cli = ol.Root.Client
-	}
-	if cli == nil {
-		return "", fmt.Errorf("no client")
-	}
-
-	u := ol.WebPageURL()
-	if u == nil {
-		return "", fmt.Errorf("no BlobURL")
-	}
-
-	req, err := httpx.NewGetRequestWithContext(ctx, u.String())
-	if err != nil {
-		return "", fmt.Errorf("new request: %w", err)
-	}
-	{
-		rus := ol.Root.WebPageURL().String()
-		req.Header.Add("Referer", rus)
-		req.Header.Add("Hx-Current-Url", rus)
-		req.Header.Add("Hx-Request", "true")
-		req.Header.Add("Hx-Target", "file-explorer")
-	}
-
-	var n *html.Node
-	err = httpx.Do(cli, req, func(resp *http.Response) error {
-		if resp.StatusCode != http.StatusOK {
-			return fmt.Errorf("status code %d", resp.StatusCode)
-		}
-		n, err = html.Parse(resp.Body)
-		if err != nil {
-			return fmt.Errorf("parse html: %w", err)
-		}
-		return nil
-	})
-	if err != nil {
-		return "", fmt.Errorf("do request %s: %w", u, err)
-	}
-
-	var wk func(*html.Node) string
-	wk = func(n *html.Node) string {
-		if n.Type == html.ElementNode && n.Data == "div" {
-			for i := range n.Attr {
-				if n.Attr[i].Key == "class" && n.Attr[i].Val == "whitespace-pre-wrap" {
-					return n.FirstChild.Data
-				}
-			}
-		}
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			if r := wk(c); r != "" {
-				return r
-			}
-		}
-		return ""
-	}
-
-	return wk(n), nil
 }

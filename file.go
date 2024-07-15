@@ -33,14 +33,10 @@ type GGUFFile struct {
 	TensorInfos GGUFTensorInfos `json:"tensorInfos"`
 	// Padding is the padding size of the GGUF file,
 	// which is used to split Header and TensorInfos from tensor data.
-	//
-	// This might be empty if parse from crawler.
 	Padding int64 `json:"padding"`
 	// TensorDataStartOffset is the offset in bytes of the tensor data in this file.
 	//
 	// The offset is the start of the file.
-	//
-	// This might be lossy if parse from crawler.
 	TensorDataStartOffset int64 `json:"tensorDataStartOffset"`
 
 	/* Appendix */
@@ -151,8 +147,6 @@ type (
 		// Len is the length of the array.
 		Len uint64 `json:"len"`
 		// Array holds all array items.
-		//
-		// This might be empty if skipping or parse from crawler.
 		Array []any `json:"array,omitempty"`
 
 		/* Appendix */
@@ -160,13 +154,9 @@ type (
 		// StartOffset is the offset in bytes of the GGUFMetadataKVArrayValue in the GGUFFile file.
 		//
 		// The offset is the start of the file.
-		//
-		// This might be empty if parse from crawler.
 		StartOffset int64 `json:"startOffset"`
 
 		// Size is the size of the array in bytes.
-		//
-		// This might be empty if parse from crawler.
 		Size int64 `json:"endOffset"`
 	}
 
@@ -200,8 +190,6 @@ type (
 		// StartOffset is the offset in bytes of the GGUFTensorInfo in the GGUFFile file.
 		//
 		// The offset is the start of the file.
-		//
-		// This might be empty if parse from crawler.
 		StartOffset int64 `json:"startOffset"`
 	}
 

@@ -101,7 +101,7 @@ func main() {
 		"gemma2.")
 	fs.BoolVar(&olCrawl, "ol-crawl", olCrawl, "Crawl the Ollama model instead of blobs fetching, "+
 		"works with --ol-model, "+
-		"which will be more efficient and faster, but lossy.")
+		"which will be more efficient and faster, but lossy. [Deprecated, as Ollama Model layer page has changed, will be removed in v0.4.0.]")
 	fs.BoolVar(&olUsage, "ol-usage", olUsage, "Specify respecting the extending layers introduced by Ollama, "+
 		"works with --ol-model, "+
 		"which affects the usage estimation.")
@@ -273,7 +273,7 @@ func main() {
 			gf, err = ParseGGUFFileFromModelScope(ctx, msRepo, msFile, ropts...)
 		case olModel != "":
 			om := ParseOllamaModel(olModel)
-			gf, err = ParseGGUFFileFromOllamaModel(ctx, om, olCrawl, ropts...)
+			gf, err = ParseGGUFFileFromOllamaModel(ctx, om, ropts...)
 			if om != nil && olUsage {
 				// Parameters override.
 				{

@@ -44,7 +44,7 @@ Usage of gguf-parser ...:
   -no-mmap
         Specify disabling Memory-Mapped using, which is used to estimate the usage. Memory-Mapped can avoid loading the entire model weights into RAM.
   -ol-crawl
-        Crawl the Ollama model instead of blobs fetching, works with --ol-model, which will be more efficient and faster, but lossy.
+        Crawl the Ollama model instead of blobs fetching, works with --ol-model, which will be more efficient and faster, but lossy. [Deprecated, as Ollama Model layer page has changed, will be removed in v0.4.0.]
   -ol-model string
         Model name of Ollama, e.g. gemma2.
   -ol-usage
@@ -234,31 +234,6 @@ $ gguf-parser --ol-model="gemma2"
 |      \       |  Arch  | Context Size | Flash Attention | MMap Support | Offload Layers | Full Offloaded |        UMA (RAM + VRAM)         | NonUMA RAM | NonUMA VRAM |
 +--------------+--------+--------------+-----------------+--------------+----------------+----------------+---------------------------------+------------+-------------+
 |   ESTIMATE   | gemma2 |     8192     |      false      |     true     |  43 (42 + 1)   |      Yes       | 65.97 MiB + 6.99 GiB = 7.05 GiB | 215.97 MiB |  8.43 GiB   |
-+--------------+--------+--------------+-----------------+--------------+----------------+----------------+---------------------------------+------------+-------------+
-
-$ gguf-parser --ol-model="gemma2" --ol-crawl
-+--------------+--------+--------+--------------+---------------+----------+------------+----------+
-|      \       |  Name  |  Arch  | Quantization | Little Endian |   Size   | Parameters |   BPW    |
-+--------------+--------+--------+--------------+---------------+----------+------------+----------+
-|    MODEL     | gemma2 | gemma2 |     Q4_0     |     true      | 5.06 GiB |   9.24 B   | 4.71 bpw |
-+--------------+--------+--------+--------------+---------------+----------+------------+----------+
-
-+--------------+-----------------+---------------+---------------+--------------------+--------+------------------+------------+----------------+
-|      \       | Max Context Len | Embedding Len | Embedding GQA | Attention Head Cnt | Layers | Feed Forward Len | Expert Cnt | Vocabulary Len |
-+--------------+-----------------+---------------+---------------+--------------------+--------+------------------+------------+----------------+
-| ARCHITECTURE |      8192       |     3584      |       2       |         16         |   42   |      14336       |     0      |     256000     |
-+--------------+-----------------+---------------+---------------+--------------------+--------+------------------+------------+----------------+
-
-+--------------+-------+-------------+------------+------------------+-----------+-----------+---------------+-----------------+---------------+
-|      \       | Model | Tokens Size | Tokens Len | Added Tokens Len | BOS Token | EOS Token | Unknown Token | Separator Token | Padding Token |
-+--------------+-------+-------------+------------+------------------+-----------+-----------+---------------+-----------------+---------------+
-|  TOKENIZER   | llama |     N/A     |   256000   |       N/A        |     2     |     1     |       3       |       N/A       |       0       |
-+--------------+-------+-------------+------------+------------------+-----------+-----------+---------------+-----------------+---------------+
-
-+--------------+--------+--------------+-----------------+--------------+----------------+----------------+---------------------------------+------------+-------------+
-|      \       |  Arch  | Context Size | Flash Attention | MMap Support | Offload Layers | Full Offloaded |        UMA (RAM + VRAM)         | NonUMA RAM | NonUMA VRAM |
-+--------------+--------+--------------+-----------------+--------------+----------------+----------------+---------------------------------+------------+-------------+
-|   ESTIMATE   | gemma2 |     8192     |      false      |     true     |  43 (42 + 1)   |      Yes       | 65.99 MiB + 6.99 GiB = 7.05 GiB | 215.99 MiB |  8.43 GiB   |
 +--------------+--------+--------------+-----------------+--------------+----------------+----------------+---------------------------------+------------+-------------+
 
 ```
