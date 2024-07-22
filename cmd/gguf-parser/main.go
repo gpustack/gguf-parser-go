@@ -27,18 +27,27 @@ func main() {
 
 	var (
 		// model options
-		path    string
-		url     string
-		token   string
-		hfRepo  string
-		hfFile  string
-		hfToken string
-		msRepo  string
-		msFile  string
-		msToken string
-		olModel string
-		olCrawl bool
-		olUsage bool
+		path         string
+		mmprojPath   string // for estimate
+		draftPath    string // for estimate
+		url          string
+		mmprojUrl    string // for estimate
+		draftUrl     string // for estimate
+		token        string
+		hfRepo       string
+		hfFile       string
+		hfMMProjFile string // for estimate
+		hfDraftRepo  string // for estimate
+		hfDraftFile  string // for estimate
+		hfToken      string
+		msRepo       string
+		msFile       string
+		msMMProjFile string // for estimate
+		msDraftRepo  string // for estimate
+		msDraftFile  string // for estimate
+		msToken      string
+		olModel      string
+		olUsage      bool
 		// read options
 		debug                  bool
 		skipProxy              bool
@@ -47,17 +56,18 @@ func main() {
 		skipRangDownloadDetect bool
 		skipCache              bool
 		// estimate options
-		ctxSize           = -1
-		inMaxCtxSize      bool
-		physicalBatchSize = 512
-		parallelSize      = 1
-		kvType            = "f16"
-		noKVOffload       bool
-		flashAttention    bool
-		platformFootprint = "150,250"
-		noMMap            bool
-		offloadLayers     = -1
-		offloadLayersStep uint64
+		ctxSize            = -1
+		inMaxCtxSize       bool
+		physicalBatchSize  = 512
+		parallelSize       = 1
+		kvType             = "f16"
+		noKVOffload        bool
+		flashAttention     bool
+		platformFootprint  = "150,250"
+		noMMap             bool
+		offloadLayers      = -1
+		offloadLayersDraft = -1
+		offloadLayersStep  uint64
 		// output options
 		version          bool
 		raw              bool
@@ -74,37 +84,52 @@ func main() {
 		_, _ = fmt.Fprintf(fs.Output(), "Usage of gguf-parser %v:\n", Version)
 		fs.PrintDefaults()
 	}
-	fs.StringVar(&path, "path", path, "Path where the GGUF file to load, e.g. ~/.cache"+
-		"/lm-studio/models/NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF/"+
-		"Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf.")
-	fs.StringVar(&url, "url", url, "Url where the GGUF file to load, e.g. "+
-		"https://huggingface.co/NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF"+
-		"/resolve/main/Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf. "+
+	fs.StringVar(&path, "path", path, "Path where the GGUF file to load for the main model, e.g. ~/.cache"+
+		"/lm-studio/models/QuantFactory/Qwen2-7B-Instruct-GGUF"+
+		"/Qwen2-7B-Instruct.Q5_K_M.gguf.")
+	fs.StringVar(&draftPath, "draft-path", draftPath, "Path where the GGUF file to load for the draft model, optional, e.g. ~/.cache"+
+		"/lm-studio/models/QuantFactory/Qwen2-1.5B-Instruct-GGUF"+
+		"/Qwen2-1.5B-Instruct.Q5_K_M.gguf")
+	fs.StringVar(&mmprojPath, "mmproj-path", mmprojPath, "Path where the GGUF file to load for the multimodal projector, optional.")
+	fs.StringVar(&url, "url", url, "Url where the GGUF file to load for the main model, e.g. "+
+		"https://huggingface.co/QuantFactory/Qwen2-7B-Instruct-GGUF"+
+		"/resolve/main/Qwen2-7B-Instruct.Q5_K_M.gguf. "+
 		"Note that gguf-parser does not need to download the entire GGUF file.")
+	fs.StringVar(&draftUrl, "draft-url", draftUrl, "Url where the GGUF file to load for the draft model, optional, e.g. "+
+		"https://huggingface.co/QuantFactory/Qwen2-1.5B-Instruct-GGUF"+
+		"/resolve/main/Qwen2-1.5B-Instruct.Q5_K_M.gguf. "+
+		"Note that gguf-parser does not need to download the entire GGUF file.")
+	fs.StringVar(&mmprojUrl, "mmproj-url", mmprojUrl, "Url where the GGUF file to load for the multimodal projector, optional.")
 	fs.StringVar(&token, "token", token, "Bearer auth token to load GGUF file, optional, "+
-		"works with --url.")
-	fs.StringVar(&hfRepo, "hf-repo", hfRepo, "Repository of HuggingFace which the GGUF file store, e.g. "+
-		"NousResearch/Hermes-2-Theta-Llama-3-8B-GGUF, works with --hf-file.")
+		"works with --url/--draft-url.")
+	fs.StringVar(&hfRepo, "hf-repo", hfRepo, "Repository of HuggingFace which the GGUF file store for the main model, e.g. "+
+		"QuantFactory/Qwen2-7B-Instruct-GGUF, works with --hf-file.")
 	fs.StringVar(&hfFile, "hf-file", hfFile, "Model file below the --hf-repo, e.g. "+
-		"Hermes-2-Pro-Llama-3-Instruct-Merged-DPO-Q4_K_M.gguf.")
+		"Qwen2-7B-Instruct.Q5_K_M.gguf.")
+	fs.StringVar(&hfMMProjFile, "hf-mmproj-file", hfMMProjFile, "Multimodal projector file below the --hf-repo.")
+	fs.StringVar(&hfDraftRepo, "hf-draft-repo", hfDraftRepo, "Repository of HuggingFace which the GGUF file store for the draft model, optional, e.g. "+
+		"QuantFactory/Qwen2-1.5B-Instruct-GGUF, works with --hf-draft-file.")
+	fs.StringVar(&hfDraftFile, "hf-draft-file", hfDraftFile, "Model file below the --hf-draft-repo, optional, e.g. "+
+		"Qwen2-1.5B-Instruct.Q5_K_M.gguf.")
 	fs.StringVar(&hfToken, "hf-token", hfToken, "User access token of HuggingFace, optional, "+
-		"works with --hf-repo/--hf-file. "+
+		"works with --hf-repo/--hf-file pair or --hf-draft-repo/--hf-draft-file pair. "+
 		"See https://huggingface.co/settings/tokens.")
-	fs.StringVar(&msRepo, "ms-repo", msRepo, "Repository of ModelScope which the GGUF file store, e.g. "+
-		"qwen/Qwen1.5-0.5B-Chat-GGUF, works with --ms-file.")
+	fs.StringVar(&msRepo, "ms-repo", msRepo, "Repository of ModelScope which the GGUF file store for the main model, e.g. "+
+		"qwen/Qwen1.5-7B-Chat-GGUF, works with --ms-file.")
 	fs.StringVar(&msFile, "ms-file", msFile, "Model file below the --ms-repo, e.g. "+
-		"qwen1.5-0.5b-chat.gguf.")
+		"qwen1_5-7b-chat-q5_k_m.gguf.")
+	fs.StringVar(&msMMProjFile, "ms-mmproj-file", msMMProjFile, "Multimodal projector file below the --ms-repo.")
+	fs.StringVar(&msDraftRepo, "ms-draft-repo", msDraftRepo, "Repository of ModelScope which the GGUF file store for the draft model, optional, e.g. "+
+		"qwen/Qwen1.5-1.8B-Chat-GGUF, works with --ms-draft-file.")
+	fs.StringVar(&msDraftFile, "ms-draft-file", msDraftFile, "Model file below the --ms-draft-repo, optional, e.g. "+
+		"qwen1_5-1_8b-chat-q5_k_m.gguf.")
 	fs.StringVar(&msToken, "ms-token", msToken, "Git access token of ModelScope, optional, "+
-		"works with --ms-repo/--ms-file. "+
+		"works with --ms-repo/--ms-file pair or --ms-draft-repo/--ms-draft-file pair. "+
 		"See https://modelscope.cn/my/myaccesstoken.")
 	fs.StringVar(&olModel, "ol-model", olModel, "Model name of Ollama, e.g. "+
 		"gemma2.")
-	fs.BoolVar(&olCrawl, "ol-crawl", olCrawl, "Crawl the Ollama model instead of blobs fetching, "+
-		"works with --ol-model, "+
-		"which will be more efficient and faster, but lossy. [Deprecated, as Ollama Model layer page has changed, will be removed in v0.4.0.]")
 	fs.BoolVar(&olUsage, "ol-usage", olUsage, "Specify respecting the extending layers introduced by Ollama, "+
-		"works with --ol-model, "+
-		"which affects the usage estimation.")
+		"works with --ol-model, which affects the usage estimation.")
 	fs.BoolVar(&debug, "debug", debug, "Enable debugging, verbosity.")
 	fs.BoolVar(&skipProxy, "skip-proxy", skipProxy, "Skip proxy settings, "+
 		"works with --url/--hf-*/--ms-*/--ol-*, "+
@@ -151,7 +176,10 @@ func main() {
 	fs.BoolVar(&noMMap, "no-mmap", noMMap, "Specify disabling Memory-Mapped using, "+
 		"which is used to estimate the usage. "+
 		"Memory-Mapped can avoid loading the entire model weights into RAM.")
-	fs.IntVar(&offloadLayers, "gpu-layers", offloadLayers, "Specify how many layers to offload, "+
+	fs.IntVar(&offloadLayers, "gpu-layers", offloadLayers, "Specify how many layers of the main model to offload, "+
+		"which is used to estimate the usage, "+
+		"default is full offloaded.")
+	fs.IntVar(&offloadLayersDraft, "gpu-layers-draft", offloadLayersDraft, "Specify how many layers of the draft model to offload, "+
 		"which is used to estimate the usage, "+
 		"default is full offloaded.")
 	fs.Uint64Var(&offloadLayersStep, "gpu-layers-step", offloadLayersStep, "Specify the step of layers to offload, "+
@@ -248,11 +276,13 @@ func main() {
 
 	// Parse GGUF file.
 
-	var gf *GGUFFile
+	var gf, mmpgf, dftgf *GGUFFile
 	{
+		var err error
+
 		ropts := ropts[:len(ropts):len(ropts)]
 
-		var err error
+		// Main model.
 		switch {
 		default:
 			_, _ = fmt.Fprintf(os.Stderr, "no model specified\n")
@@ -290,21 +320,49 @@ func main() {
 						offloadLayers = anyx.Number[int](v)
 					}
 				}
-				// Projector overlap,
-				// in here, we just assume the projector is overlapped with its size to VRAM.
+				// Multimodal projector overlap.
 				{
-					var sz uint64
 					mls := om.SearchLayers(regexp.MustCompile(`^application/vnd\.ollama\.image\.projector$`))
-					for i := range mls {
-						sz += mls[i].Size
+					if len(mls) > 0 {
+						mmpgf, err = ParseGGUFFileRemote(ctx, mls[len(mls)-1].BlobURL().String(), ropts...)
 					}
-					eopts = append(eopts, WithClipUsage(sz))
 				}
-
 			}
 		}
 		if err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "failed to parse GGUF file: %s\n", err.Error())
+			os.Exit(1)
+		}
+
+		// MultimodalProjector model.
+		switch {
+		case mmprojPath != "":
+			mmpgf, err = ParseGGUFFile(mmprojPath, ropts...)
+		case mmprojUrl != "":
+			mmpgf, err = ParseGGUFFileRemote(ctx, mmprojUrl, ropts...)
+		case hfRepo != "" && hfMMProjFile != "":
+			mmpgf, err = ParseGGUFFileFromHuggingFace(ctx, hfRepo, hfMMProjFile, ropts...)
+		case msRepo != "" && msMMProjFile != "":
+			mmpgf, err = ParseGGUFFileFromModelScope(ctx, msRepo, msMMProjFile, ropts...)
+		}
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "failed to parse multimodal projector GGUF file: %s\n", err.Error())
+			os.Exit(1)
+		}
+
+		// Drafter model.
+		switch {
+		case draftPath != "":
+			dftgf, err = ParseGGUFFile(draftPath, ropts...)
+		case draftUrl != "":
+			dftgf, err = ParseGGUFFileRemote(ctx, draftUrl, ropts...)
+		case hfDraftRepo != "" && hfDraftFile != "":
+			dftgf, err = ParseGGUFFileFromHuggingFace(ctx, hfDraftRepo, hfDraftFile, ropts...)
+		case msDraftRepo != "" && msDraftFile != "":
+			dftgf, err = ParseGGUFFileFromModelScope(ctx, msDraftRepo, msDraftFile, ropts...)
+		}
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "failed to parse draft GGUF file: %s\n", err.Error())
 			os.Exit(1)
 		}
 	}
@@ -341,12 +399,26 @@ func main() {
 		t = gf.Tokenizer()
 	}
 	if !skipEstimate {
-		eopts := eopts[:len(eopts):len(eopts)]
-
-		if offloadLayers >= 0 {
-			eopts = append(eopts, WithOffloadLayers(uint64(offloadLayers)))
+		if mmpgf != nil {
+			meopts := eopts[:len(eopts):len(eopts)]
+			me := mmpgf.EstimateLLaMACppUsage(meopts...)
+			eopts = append(eopts, WithMultimodalProjector(&me))
 		}
-		e = gf.EstimateLLaMACppUsage(eopts...)
+
+		if dftgf != nil {
+			deopts := eopts[:len(eopts):len(eopts)]
+			if offloadLayersDraft >= 0 {
+				deopts = append(deopts, WithOffloadLayers(uint64(offloadLayersDraft)))
+			}
+			de := dftgf.EstimateLLaMACppUsage(deopts...)
+			eopts = append(eopts, WithDrafter(&de))
+		}
+
+		deopts := eopts[:len(eopts):len(eopts)]
+		if offloadLayers >= 0 {
+			deopts = append(deopts, WithOffloadLayers(uint64(offloadLayers)))
+		}
+		e = gf.EstimateLLaMACppUsage(deopts...)
 	}
 
 	// Then, output as JSON or table.
@@ -461,7 +533,7 @@ func main() {
 				sprintf(a.VocabularyLength),
 			}
 		} else {
-			hd = []string{"Embedding Len", "Layers", "Feed Forward Len", "Encoder", "LLaVA Projector"}
+			hd = []string{"Embedding Len", "Layers", "Feed Forward Len", "Encoder", "LLaVA MultimodalProjector"}
 			bd = []string{
 				sprintf(a.EmbeddingLength),
 				sprintf(a.BlockCount),

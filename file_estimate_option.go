@@ -8,18 +8,19 @@ import (
 
 type (
 	_LLaMACppUsageEstimateOptions struct {
-		Architecture      *GGUFArchitectureMetadata
-		Tokenizer         *GGUFTokenizerMetadata
-		ContextSize       *int32
-		InMaxContextSize  bool
-		PhysicalBatchSize *int32
-		ParallelSize      *int32
-		CacheKeyType      *GGMLType
-		CacheValueType    *GGMLType
-		OffloadKVCache    *bool
-		OffloadLayers     *uint64
-		FlashAttention    bool
-		ClipUsage         *uint64
+		Architecture        *GGUFArchitectureMetadata
+		Tokenizer           *GGUFTokenizerMetadata
+		ContextSize         *int32
+		InMaxContextSize    bool
+		PhysicalBatchSize   *int32
+		ParallelSize        *int32
+		CacheKeyType        *GGMLType
+		CacheValueType      *GGMLType
+		OffloadKVCache      *bool
+		OffloadLayers       *uint64
+		FlashAttention      bool
+		MultimodalProjector *LLaMACppUsageEstimate
+		Drafter             *LLaMACppUsageEstimate
 	}
 	LLaMACppUsageEstimateOption func(*_LLaMACppUsageEstimateOptions)
 )
@@ -129,10 +130,16 @@ func WithFlashAttention() LLaMACppUsageEstimateOption {
 	}
 }
 
-// WithClipUsage sets the clip usage for the estimate,
-// which affects the usage of VRAM.
-func WithClipUsage(clip uint64) LLaMACppUsageEstimateOption {
+// WithMultimodalProjector sets the multimodal projector estimate usage.
+func WithMultimodalProjector(mmp *LLaMACppUsageEstimate) LLaMACppUsageEstimateOption {
 	return func(o *_LLaMACppUsageEstimateOptions) {
-		o.ClipUsage = &clip
+		o.MultimodalProjector = mmp
+	}
+}
+
+// WithDrafter sets the drafter estimate usage.
+func WithDrafter(dft *LLaMACppUsageEstimate) LLaMACppUsageEstimateOption {
+	return func(o *_LLaMACppUsageEstimateOptions) {
+		o.Drafter = dft
 	}
 }

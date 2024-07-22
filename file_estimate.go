@@ -30,6 +30,10 @@ type (
 		Load LLaMACppMemoryUsage `json:"load"`
 		// Offload is the memory usage for loading the GGUF file in VRAM.
 		Offload LLaMACppMemoryUsage `json:"offload"`
+		// MultimodalProjector is the memory usage of multimodal projector.
+		MultimodalProjector *LLaMACppUsageEstimate `json:"multimodalProjector,omitempty"`
+		// Drafter is the memory usage of drafter.
+		Drafter *LLaMACppUsageEstimate `json:"drafter,omitempty"`
 	}
 
 	// LLaMACppMemoryUsage represents the memory usage for expanding the GGUF file in llama.cpp.
@@ -42,8 +46,6 @@ type (
 		KVCache LLaMACppKVCacheUsage `json:"kvCache"`
 		// Computation is the memory usage of computation.
 		Computation LLaMACppComputationUsage `json:"computation"`
-		// Clipper is the memory usage of clipper.
-		Clipper GGUFBytesScalar `json:"clipper"`
 	}
 
 	// LLaMACppWeightUsage represents the memory usage of loading weights in llama.cpp.
@@ -435,12 +437,13 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 			outInc += uint64(e.Load.Weight.Output)
 			e.Offload.Computation.Output = GGUFBytesScalar(outInc)
 		}
-
-		// Clipper.
-		if o.ClipUsage != nil {
-			e.Offload.Clipper = GGUFBytesScalar(*o.ClipUsage)
-		}
 	}
+
+	// Multimodal projector.
+	e.MultimodalProjector = o.MultimodalProjector
+
+	// Drafter.
+	e.Drafter = o.Drafter
 
 	return e
 }
@@ -507,7 +510,7 @@ func (e LLaMACppUsageEstimate) SummarizeMemory(mmap bool, nonUMARamFootprint, no
 		kv := e.Load.KVCache.Sum()
 		cp := e.Load.Computation.Sum()
 		ems.UMA.RAM = fp + wg + kv + cp
-		if !e.NoMMap && mmap {
+		if !e.NoMMap && mmap && e.Architecture != "clip" {
 			ems.UMA.RAM -= wg
 		}
 		// VRAM.
@@ -515,8 +518,10 @@ func (e LLaMACppUsageEstimate) SummarizeMemory(mmap bool, nonUMARamFootprint, no
 		wg = e.Offload.Weight.Sum()
 		kv = e.Offload.KVCache.Sum()
 		cp = 0
-		cl := e.Offload.Clipper
-		ems.UMA.VRAM = fp + wg + kv + cp + cl
+		ems.UMA.VRAM = fp + wg + kv + cp
+		if !e.NoMMap && mmap && e.Architecture != "clip" {
+			ems.UMA.VRAM -= wg
+		}
 	}
 
 	// NonUMA.
@@ -538,8 +543,25 @@ func (e LLaMACppUsageEstimate) SummarizeMemory(mmap bool, nonUMARamFootprint, no
 		wg = e.Offload.Weight.Sum()
 		kv = e.Offload.KVCache.Sum()
 		cp = e.Offload.Computation.Sum()
-		cl := e.Offload.Clipper
-		ems.NonUMA.VRAM = fp + wg + kv + cp + cl
+		ems.NonUMA.VRAM = fp + wg + kv + cp
+	}
+
+	// MultimodalProjector.
+	if e.MultimodalProjector != nil {
+		cems := e.MultimodalProjector.SummarizeMemory(mmap, 0, 0)
+		ems.NonUMA.RAM += cems.NonUMA.RAM
+		ems.NonUMA.VRAM += cems.NonUMA.VRAM
+		ems.UMA.RAM += cems.UMA.RAM
+		ems.UMA.VRAM += cems.UMA.VRAM
+	}
+
+	// Drafter.
+	if e.Drafter != nil {
+		dmes := e.Drafter.SummarizeMemory(mmap, 0, 0)
+		ems.NonUMA.RAM += dmes.NonUMA.RAM
+		ems.NonUMA.VRAM += dmes.NonUMA.VRAM
+		ems.UMA.RAM += dmes.UMA.RAM
+		ems.UMA.VRAM += dmes.UMA.VRAM
 	}
 
 	return ems

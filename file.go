@@ -157,7 +157,7 @@ type (
 		StartOffset int64 `json:"startOffset"`
 
 		// Size is the size of the array in bytes.
-		Size int64 `json:"endOffset"`
+		Size int64 `json:"size"`
 	}
 
 	// GGUFMetadataKVs is a list of GGUFMetadataKV.
