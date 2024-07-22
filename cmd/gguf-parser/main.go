@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"os"
 	"fmt"
 	"context"
@@ -9,11 +8,15 @@ import (
 	"strings"
 	"sync"
 	"regexp"
+	"errors"
+	"path/filepath"
 
+	"github.com/urfave/cli/v2"
 	"github.com/olekukonko/tablewriter"
 
 	"github.com/thxcode/gguf-parser-go/util/anyx"
 	"github.com/thxcode/gguf-parser-go/util/json"
+	"github.com/thxcode/gguf-parser-go/util/signalx"
 
 	. "github.com/thxcode/gguf-parser-go"
 )
@@ -21,188 +24,506 @@ import (
 var Version = "v0.0.0"
 
 func main() {
-	ctx := context.Background()
-
-	// Parse arguments.
-
-	var (
-		// model options
-		path         string
-		mmprojPath   string // for estimate
-		draftPath    string // for estimate
-		url          string
-		mmprojUrl    string // for estimate
-		draftUrl     string // for estimate
-		token        string
-		hfRepo       string
-		hfFile       string
-		hfMMProjFile string // for estimate
-		hfDraftRepo  string // for estimate
-		hfDraftFile  string // for estimate
-		hfToken      string
-		msRepo       string
-		msFile       string
-		msMMProjFile string // for estimate
-		msDraftRepo  string // for estimate
-		msDraftFile  string // for estimate
-		msToken      string
-		olModel      string
-		olUsage      bool
-		// read options
-		debug                  bool
-		skipProxy              bool
-		skipTLSVerify          bool
-		skipDNSCache           bool
-		skipRangDownloadDetect bool
-		skipCache              bool
-		// estimate options
-		ctxSize            = -1
-		inMaxCtxSize       bool
-		physicalBatchSize  = 512
-		parallelSize       = 1
-		kvType             = "f16"
-		noKVOffload        bool
-		flashAttention     bool
-		platformFootprint  = "150,250"
-		noMMap             bool
-		offloadLayers      = -1
-		offloadLayersDraft = -1
-		offloadLayersStep  uint64
-		// output options
-		version          bool
-		raw              bool
-		skipModel        bool
-		skipArchitecture bool
-		skipTokenizer    bool
-		skipEstimate     bool
-		inMib            bool
-		inJson           bool
-		inPrettyJson     = true
-	)
-	fs := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
-	fs.Usage = func() {
-		_, _ = fmt.Fprintf(fs.Output(), "Usage of gguf-parser %v:\n", Version)
-		fs.PrintDefaults()
+	name := filepath.Base(os.Args[0])
+	app := &cli.App{
+		Name:                   name,
+		Usage:                  "Review/Check/Estimate the GGUF file.",
+		UsageText:              name + " [global options]",
+		Version:                Version,
+		UseShortOptionHandling: true,
+		HideVersion:            true,
+		HideHelp:               true,
+		Reader:                 os.Stdin,
+		Writer:                 os.Stdout,
+		ErrWriter:              os.Stderr,
+		OnUsageError: func(c *cli.Context, _ error, _ bool) error {
+			return cli.ShowAppHelp(c)
+		},
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:               "help",
+				Aliases:            []string{"h"},
+				Usage:              "Print the usage.",
+				DisableDefaultText: true,
+			},
+			&cli.BoolFlag{
+				Name:               "version",
+				Aliases:            []string{"v"},
+				Usage:              "Print the version.",
+				DisableDefaultText: true,
+			},
+			&cli.BoolFlag{
+				Destination: &debug,
+				Value:       debug,
+				Name:        "debug",
+				Usage:       "Enable debugging, verbosity.",
+			},
+			&cli.StringFlag{
+				Destination: &path,
+				Value:       path,
+				Category:    "Model/Local",
+				Name:        "path",
+				Aliases:     []string{"model", "m"},
+				Usage: "Path where the GGUF file to load for the main model, e.g. ~/.cache" +
+					"/lm-studio/models/QuantFactory/Qwen2-7B-Instruct-GGUF" +
+					"/Qwen2-7B-Instruct.Q5_K_M.gguf.",
+			},
+			&cli.StringFlag{
+				Destination: &draftPath,
+				Value:       draftPath,
+				Category:    "Model/Local",
+				Name:        "draft-path",
+				Aliases:     []string{"model-draft", "md"},
+				Usage: "Path where the GGUF file to load for the draft model, optional, e.g. ~/.cache" +
+					"/lm-studio/models/QuantFactory/Qwen2-1.5B-Instruct-GGUF" +
+					"/Qwen2-1.5B-Instruct.Q5_K_M.gguf",
+			},
+			&cli.StringFlag{
+				Destination: &mmprojPath,
+				Value:       mmprojPath,
+				Category:    "Model/Local",
+				Name:        "mmproj-path",
+				Aliases:     []string{"mmproj"},
+				Usage:       "Path where the GGUF file to load for the multimodal projector, optional.",
+			},
+			&cli.StringFlag{
+				Destination: &url,
+				Value:       url,
+				Category:    "Model/Remote",
+				Name:        "url",
+				Aliases:     []string{"model-url", "mu"},
+				Usage: "Url where the GGUF file to load for the main model, e.g. " +
+					"https://huggingface.co/QuantFactory/Qwen2-7B-Instruct-GGUF" +
+					"/resolve/main/Qwen2-7B-Instruct.Q5_K_M.gguf. " +
+					"Note that gguf-parser does not need to download the entire GGUF file.",
+			},
+			&cli.StringFlag{
+				Destination: &draftUrl,
+				Value:       draftUrl,
+				Category:    "Model/Remote",
+				Name:        "draft-url",
+				Usage: "Url where the GGUF file to load for the draft model, optional, e.g. " +
+					"https://huggingface.co/QuantFactory/Qwen2-1.5B-Instruct-GGUF" +
+					"/resolve/main/Qwen2-1.5B-Instruct.Q5_K_M.gguf. " +
+					"Note that gguf-parser does not need to download the entire GGUF file.",
+			},
+			&cli.StringFlag{
+				Destination: &mmprojUrl,
+				Value:       mmprojUrl,
+				Category:    "Model/Remote",
+				Name:        "mmproj-url",
+				Usage:       "Url where the GGUF file to load for the multimodal projector, optional.",
+			},
+			&cli.StringFlag{
+				Destination: &token,
+				Value:       token,
+				Category:    "Model/Remote",
+				Name:        "token",
+				Usage: "Bearer auth token to load GGUF file, optional, " +
+					"works with --url/--draft-url.",
+			},
+			&cli.StringFlag{
+				Destination: &hfRepo,
+				Value:       hfRepo,
+				Category:    "Model/Remote/HuggingFace",
+				Name:        "hf-repo",
+				Aliases:     []string{"hfr"},
+				Usage: "Repository of HuggingFace which the GGUF file store for the main model, e.g. " +
+					"QuantFactory/Qwen2-7B-Instruct-GGUF, works with --hf-file.",
+			},
+			&cli.StringFlag{
+				Destination: &hfFile,
+				Value:       hfFile,
+				Category:    "Model/Remote/HuggingFace",
+				Name:        "hf-file",
+				Aliases:     []string{"hff"},
+				Usage: "Model file below the --hf-repo, e.g. " +
+					"Qwen2-7B-Instruct.Q5_K_M.gguf.",
+			},
+			&cli.StringFlag{
+				Destination: &hfMMProjFile,
+				Value:       hfMMProjFile,
+				Category:    "Model/Remote/HuggingFace",
+				Name:        "hf-mmproj-file",
+				Usage:       "Multimodal projector file below the --hf-repo.",
+			},
+			&cli.StringFlag{
+				Destination: &hfDraftRepo,
+				Value:       hfDraftRepo,
+				Category:    "Model/Remote/HuggingFace",
+				Name:        "hf-draft-repo",
+				Usage: "Repository of HuggingFace which the GGUF file store for the draft model, optional, e.g. " +
+					"QuantFactory/Qwen2-1.5B-Instruct-GGUF, works with --hf-draft-file.",
+			},
+			&cli.StringFlag{
+				Destination: &hfDraftFile,
+				Value:       hfDraftFile,
+				Category:    "Model/Remote/HuggingFace",
+				Name:        "hf-draft-file",
+				Usage: "Model file below the --hf-draft-repo, optional, e.g. " +
+					"Qwen2-1.5B-Instruct.Q5_K_M.gguf.",
+			},
+			&cli.StringFlag{
+				Destination: &hfToken,
+				Value:       hfToken,
+				Category:    "Model/Remote/HuggingFace",
+				Name:        "hf-token",
+				Aliases:     []string{"hft"},
+				Usage: "User access token of HuggingFace, optional, " +
+					"works with --hf-repo/--hf-file pair or --hf-draft-repo/--hf-draft-file pair. " +
+					"See https://huggingface.co/settings/tokens.",
+			},
+			&cli.StringFlag{
+				Destination: &msRepo,
+				Value:       msRepo,
+				Category:    "Model/Remote/ModelScope",
+				Name:        "ms-repo",
+				Usage: "Repository of ModelScope which the GGUF file store for the main model, e.g. " +
+					"qwen/Qwen1.5-7B-Chat-GGUF, works with --ms-file.",
+			},
+			&cli.StringFlag{
+				Destination: &msFile,
+				Value:       msFile,
+				Category:    "Model/Remote/ModelScope",
+				Name:        "ms-file",
+				Usage: "Model file below the --ms-repo, e.g. " +
+					"qwen1_5-7b-chat-q5_k_m.gguf.",
+			},
+			&cli.StringFlag{
+				Destination: &msMMProjFile,
+				Value:       msMMProjFile,
+				Category:    "Model/Remote/ModelScope",
+				Name:        "ms-mmproj-file",
+				Usage:       "Multimodal projector file below the --ms-repo.",
+			},
+			&cli.StringFlag{
+				Destination: &msDraftRepo,
+				Value:       msDraftRepo,
+				Category:    "Model/Remote/ModelScope",
+				Name:        "ms-draft-repo",
+				Usage: "Repository of ModelScope which the GGUF file store for the draft model, optional, e.g. " +
+					"qwen/Qwen1.5-1.8B-Chat-GGUF, works with --ms-draft-file.",
+			},
+			&cli.StringFlag{
+				Destination: &msDraftFile,
+				Value:       msDraftFile,
+				Category:    "Model/Remote/ModelScope",
+				Name:        "ms-draft-file",
+				Usage: "Model file below the --ms-draft-repo, optional, e.g. " +
+					"qwen1_5-1_8b-chat-q5_k_m.gguf.",
+			},
+			&cli.StringFlag{
+				Destination: &msToken,
+				Value:       msToken,
+				Category:    "Model/Remote/ModelScope",
+				Name:        "ms-token",
+				Usage: "Git access token of ModelScope, optional, " +
+					"works with --ms-repo/--ms-file pair or --ms-draft-repo/--ms-draft-file pair. " +
+					"See https://modelscope.cn/my/myaccesstoken.",
+			},
+			&cli.StringFlag{
+				Destination: &olModel,
+				Value:       olModel,
+				Category:    "Model/Remote/Ollama",
+				Name:        "ol-model",
+				Usage: "Model name of Ollama, e.g. " +
+					"gemma2.",
+			},
+			&cli.BoolFlag{
+				Destination: &olUsage,
+				Value:       olUsage,
+				Category:    "Model/Remote/Ollama",
+				Name:        "ol-usage",
+				Usage: "Specify respecting the extending layers introduced by Ollama, " +
+					"works with --ol-model, which affects the usage estimation.",
+			},
+			&cli.BoolFlag{
+				Destination: &skipProxy,
+				Value:       skipProxy,
+				Category:    "Load",
+				Name:        "skip-proxy",
+				Usage: "Skip proxy settings, " +
+					"works with --url/--hf-*/--ms-*/--ol-*, " +
+					"default is respecting the environment variables HTTP_PROXY/HTTPS_PROXY/NO_PROXY.",
+			},
+			&cli.BoolFlag{
+				Destination: &skipTLSVerify,
+				Value:       skipTLSVerify,
+				Category:    "Load",
+				Name:        "skip-tls-verify",
+				Usage: "Skip TLS verification, " +
+					"works with --url/--hf-*/--ms-*/--ol-*, " +
+					"default is verifying the TLS certificate on HTTPs request.",
+			},
+			&cli.BoolFlag{
+				Destination: &skipDNSCache,
+				Value:       skipDNSCache,
+				Category:    "Load",
+				Name:        "skip-dns-cache",
+				Usage: "Skip DNS cache, " +
+					"works with --url/--hf-*/--ms-*/--ol-*, " +
+					"default is caching the DNS lookup result.",
+			},
+			&cli.BoolFlag{
+				Destination: &skipRangDownloadDetect,
+				Value:       skipRangDownloadDetect,
+				Category:    "Load",
+				Name:        "skip-rang-download-detect",
+				Usage: "Skip range download detect, " +
+					"works with --url/--hf-*/--ms-*/--ol-*, " +
+					"default is detecting the range download support.",
+			},
+			&cli.BoolFlag{
+				Destination: &skipCache,
+				Value:       skipCache,
+				Category:    "Load",
+				Name:        "skip-cache",
+				Usage: "Skip cache, " +
+					"works with --url/--hf-*/--ms-*/--ol-*, " +
+					"default is caching the read result.",
+			},
+			&cli.IntFlag{
+				Destination: &ctxSize,
+				Value:       ctxSize,
+				Category:    "Estimate",
+				Name:        "ctx-size",
+				Aliases:     []string{"c"},
+				Usage: "Specify the size of prompt context, " +
+					"which is used to estimate the usage, " +
+					"default is equal to the model's maximum context size.",
+			},
+			&cli.BoolFlag{
+				Destination: &inMaxCtxSize,
+				Value:       inMaxCtxSize,
+				Category:    "Estimate",
+				Name:        "in-max-ctx-size",
+				Usage: "Limit the context size to the maximum context size of the model, " +
+					"if the context size is larger than the maximum context size.",
+			},
+			&cli.IntFlag{
+				Destination: &physicalBatchSize,
+				Value:       physicalBatchSize,
+				Category:    "Estimate",
+				Name:        "ubatch-size",
+				Aliases:     []string{"ub"},
+				Usage: "Specify the physical maximum batch size, " +
+					"which is used to estimate the usage.",
+			},
+			&cli.IntFlag{
+				Destination: &parallelSize,
+				Value:       parallelSize,
+				Category:    "Estimate",
+				Name:        "parallel-size",
+				Aliases:     []string{"parallel", "np"},
+				Usage: "Specify the number of parallel sequences to decode, " +
+					"which is used to estimate the usage.",
+			},
+			&cli.StringFlag{
+				Destination: &kvType,
+				Value:       kvType,
+				Category:    "Estimate",
+				Name:        "kv-type",
+				Usage: "Specify the type of Key-Value cache, " +
+					"which is used to estimate the usage, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1]",
+			},
+			&cli.BoolFlag{
+				Destination: &noKVOffload,
+				Value:       noKVOffload,
+				Category:    "Estimate",
+				Name:        "no-kv-offload",
+				Aliases:     []string{"nkvo"},
+				Usage: "Specify disabling Key-Value offloading, " +
+					"which is used to estimate the usage. " +
+					"Disable Key-Value offloading can reduce the usage of VRAM.",
+			},
+			&cli.BoolFlag{
+				Destination: &flashAttention,
+				Value:       flashAttention,
+				Category:    "Estimate",
+				Name:        "flash-attention",
+				Aliases:     []string{"fa"},
+				Usage: "Specify enabling Flash Attention, " +
+					"which is used to estimate the usage. " +
+					"Flash Attention can reduce the usage of RAM/VRAM.",
+			},
+			&cli.StringFlag{
+				Destination: &platformFootprint,
+				Value:       platformFootprint,
+				Category:    "Estimate",
+				Name:        "platform-footprint",
+				Usage: "Specify the platform footprint(RAM,VRAM) in MiB, " +
+					"which is used to estimate the NonUMA usage, " +
+					"default is 150,250. " +
+					"Different platform always gets different RAM and VRAM footprints, " +
+					"for example, within CUDA, 'cudaMemGetInfo' would occupy some RAM and VRAM, " +
+					"see https://stackoverflow.com/questions/64854862/free-memory-occupied-by-cudamemgetinfo.",
+			},
+			&cli.BoolFlag{
+				Destination: &noMMap,
+				Value:       noMMap,
+				Category:    "Estimate",
+				Name:        "no-mmap",
+				Usage: "Specify disabling Memory-Mapped using, " +
+					"which is used to estimate the usage. " +
+					"Memory-Mapped can avoid loading the entire model weights into RAM.",
+			},
+			&cli.IntFlag{
+				Destination: &offloadLayers,
+				Value:       offloadLayers,
+				Category:    "Estimate",
+				Name:        "gpu-layers",
+				Aliases:     []string{"ngl"},
+				Usage: "Specify how many layers of the main model to offload, " +
+					"which is used to estimate the usage, " +
+					"default is full offloaded.",
+			},
+			&cli.IntFlag{
+				Destination: &offloadLayersDraft,
+				Value:       offloadLayersDraft,
+				Category:    "Estimate",
+				Name:        "gpu-layers-draft",
+				Aliases:     []string{"ngld"},
+				Usage: "Specify how many layers of the draft model to offload, " +
+					"which is used to estimate the usage, " +
+					"default is full offloaded.",
+			},
+			&cli.Uint64Flag{
+				Destination: &offloadLayersStep,
+				Value:       offloadLayersStep,
+				Category:    "Estimate",
+				Name:        "gpu-layers-step",
+				Usage: "Specify the step of layers to offload, " +
+					"works with --gpu-layers.",
+			},
+			&cli.BoolFlag{
+				Destination: &raw,
+				Value:       raw,
+				Category:    "Output",
+				Name:        "raw",
+				Usage:       "Output the file in JSON only, skip anything.",
+			},
+			&cli.BoolFlag{
+				Destination: &skipModel,
+				Value:       skipModel,
+				Category:    "Output",
+				Name:        "skip-model",
+				Usage:       "Skip to display model metadata.",
+			},
+			&cli.BoolFlag{
+				Destination: &skipArchitecture,
+				Value:       skipArchitecture,
+				Category:    "Output",
+				Name:        "skip-architecture",
+				Usage:       "Skip to display architecture metadata.",
+			},
+			&cli.BoolFlag{
+				Destination: &skipTokenizer,
+				Value:       skipTokenizer,
+				Category:    "Output",
+				Name:        "skip-tokenizer",
+				Usage:       "Skip to display tokenizer metadata.",
+			},
+			&cli.BoolFlag{
+				Destination: &skipEstimate,
+				Value:       skipEstimate,
+				Category:    "Output",
+				Name:        "skip-estimate",
+				Usage:       "Skip to estimate.",
+			},
+			&cli.BoolFlag{
+				Destination: &inMib,
+				Value:       inMib,
+				Category:    "Output",
+				Name:        "in-mib",
+				Usage:       "Display the estimated result in table with MiB.",
+			},
+			&cli.BoolFlag{
+				Destination: &inJson,
+				Value:       inJson,
+				Category:    "Output",
+				Name:        "json",
+			},
+			&cli.BoolFlag{
+				Destination: &inPrettyJson,
+				Value:       inPrettyJson,
+				Category:    "Output",
+				Name:        "json-pretty",
+				Usage:       "Output as pretty JSON.",
+			},
+		},
+		Action: func(c *cli.Context) error {
+			if c.Bool("help") {
+				return cli.ShowAppHelp(c)
+			}
+			if c.Bool("version") {
+				cli.ShowVersion(c)
+				return nil
+			}
+			return run(c.Context)
+		},
 	}
-	fs.StringVar(&path, "path", path, "Path where the GGUF file to load for the main model, e.g. ~/.cache"+
-		"/lm-studio/models/QuantFactory/Qwen2-7B-Instruct-GGUF"+
-		"/Qwen2-7B-Instruct.Q5_K_M.gguf.")
-	fs.StringVar(&draftPath, "draft-path", draftPath, "Path where the GGUF file to load for the draft model, optional, e.g. ~/.cache"+
-		"/lm-studio/models/QuantFactory/Qwen2-1.5B-Instruct-GGUF"+
-		"/Qwen2-1.5B-Instruct.Q5_K_M.gguf")
-	fs.StringVar(&mmprojPath, "mmproj-path", mmprojPath, "Path where the GGUF file to load for the multimodal projector, optional.")
-	fs.StringVar(&url, "url", url, "Url where the GGUF file to load for the main model, e.g. "+
-		"https://huggingface.co/QuantFactory/Qwen2-7B-Instruct-GGUF"+
-		"/resolve/main/Qwen2-7B-Instruct.Q5_K_M.gguf. "+
-		"Note that gguf-parser does not need to download the entire GGUF file.")
-	fs.StringVar(&draftUrl, "draft-url", draftUrl, "Url where the GGUF file to load for the draft model, optional, e.g. "+
-		"https://huggingface.co/QuantFactory/Qwen2-1.5B-Instruct-GGUF"+
-		"/resolve/main/Qwen2-1.5B-Instruct.Q5_K_M.gguf. "+
-		"Note that gguf-parser does not need to download the entire GGUF file.")
-	fs.StringVar(&mmprojUrl, "mmproj-url", mmprojUrl, "Url where the GGUF file to load for the multimodal projector, optional.")
-	fs.StringVar(&token, "token", token, "Bearer auth token to load GGUF file, optional, "+
-		"works with --url/--draft-url.")
-	fs.StringVar(&hfRepo, "hf-repo", hfRepo, "Repository of HuggingFace which the GGUF file store for the main model, e.g. "+
-		"QuantFactory/Qwen2-7B-Instruct-GGUF, works with --hf-file.")
-	fs.StringVar(&hfFile, "hf-file", hfFile, "Model file below the --hf-repo, e.g. "+
-		"Qwen2-7B-Instruct.Q5_K_M.gguf.")
-	fs.StringVar(&hfMMProjFile, "hf-mmproj-file", hfMMProjFile, "Multimodal projector file below the --hf-repo.")
-	fs.StringVar(&hfDraftRepo, "hf-draft-repo", hfDraftRepo, "Repository of HuggingFace which the GGUF file store for the draft model, optional, e.g. "+
-		"QuantFactory/Qwen2-1.5B-Instruct-GGUF, works with --hf-draft-file.")
-	fs.StringVar(&hfDraftFile, "hf-draft-file", hfDraftFile, "Model file below the --hf-draft-repo, optional, e.g. "+
-		"Qwen2-1.5B-Instruct.Q5_K_M.gguf.")
-	fs.StringVar(&hfToken, "hf-token", hfToken, "User access token of HuggingFace, optional, "+
-		"works with --hf-repo/--hf-file pair or --hf-draft-repo/--hf-draft-file pair. "+
-		"See https://huggingface.co/settings/tokens.")
-	fs.StringVar(&msRepo, "ms-repo", msRepo, "Repository of ModelScope which the GGUF file store for the main model, e.g. "+
-		"qwen/Qwen1.5-7B-Chat-GGUF, works with --ms-file.")
-	fs.StringVar(&msFile, "ms-file", msFile, "Model file below the --ms-repo, e.g. "+
-		"qwen1_5-7b-chat-q5_k_m.gguf.")
-	fs.StringVar(&msMMProjFile, "ms-mmproj-file", msMMProjFile, "Multimodal projector file below the --ms-repo.")
-	fs.StringVar(&msDraftRepo, "ms-draft-repo", msDraftRepo, "Repository of ModelScope which the GGUF file store for the draft model, optional, e.g. "+
-		"qwen/Qwen1.5-1.8B-Chat-GGUF, works with --ms-draft-file.")
-	fs.StringVar(&msDraftFile, "ms-draft-file", msDraftFile, "Model file below the --ms-draft-repo, optional, e.g. "+
-		"qwen1_5-1_8b-chat-q5_k_m.gguf.")
-	fs.StringVar(&msToken, "ms-token", msToken, "Git access token of ModelScope, optional, "+
-		"works with --ms-repo/--ms-file pair or --ms-draft-repo/--ms-draft-file pair. "+
-		"See https://modelscope.cn/my/myaccesstoken.")
-	fs.StringVar(&olModel, "ol-model", olModel, "Model name of Ollama, e.g. "+
-		"gemma2.")
-	fs.BoolVar(&olUsage, "ol-usage", olUsage, "Specify respecting the extending layers introduced by Ollama, "+
-		"works with --ol-model, which affects the usage estimation.")
-	fs.BoolVar(&debug, "debug", debug, "Enable debugging, verbosity.")
-	fs.BoolVar(&skipProxy, "skip-proxy", skipProxy, "Skip proxy settings, "+
-		"works with --url/--hf-*/--ms-*/--ol-*, "+
-		"default is respecting the environment variables HTTP_PROXY/HTTPS_PROXY/NO_PROXY.")
-	fs.BoolVar(&skipTLSVerify, "skip-tls-verify", skipTLSVerify, "Skip TLS verification, "+
-		"works with --url/--hf-*/--ms-*/--ol-*, "+
-		"default is verifying the TLS certificate on HTTPs request.")
-	fs.BoolVar(&skipDNSCache, "skip-dns-cache", skipDNSCache, "Skip DNS cache, "+
-		"works with --url/--hf-*/--ms-*/--ol-*, "+
-		"default is caching the DNS lookup result.")
-	fs.BoolVar(&skipRangDownloadDetect, "skip-rang-download-detect", skipRangDownloadDetect, "Skip range download detect, "+
-		"works with --url/--hf-*/--ms-*/--ol-*, "+
-		"default is detecting the range download support.")
-	fs.BoolVar(&skipCache, "skip-cache", skipCache, "Skip cache, "+
-		"works with --url/--hf-*/--ms-*/--ol-*, "+
-		"default is caching the read result.")
-	fs.IntVar(&ctxSize, "ctx-size", ctxSize, "Specify the size of prompt context, "+
-		"which is used to estimate the usage, "+
-		"default is equal to the model's maximum context size.")
-	fs.BoolVar(&inMaxCtxSize, "in-max-ctx-size", inMaxCtxSize, "Limit the context size to the maximum context size of the model, "+
-		"if the context size is larger than the maximum context size.")
-	fs.IntVar(&physicalBatchSize, "ubatch-size", physicalBatchSize, "Specify the physical maximum batch size, "+
-		"which is used to estimate the usage, "+
-		"default is 512.")
-	fs.IntVar(&parallelSize, "parallel-size", parallelSize, "Specify the number of parallel sequences to decode, "+
-		"which is used to estimate the usage, "+
-		"default is 1.")
-	fs.StringVar(&kvType, "kv-type", kvType, "Specify the type of Key-Value cache, "+
-		"which is used to estimate the usage, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1], "+
-		"default is f16. "+
-		"Use quantization type means enabling --flash-attention as well.")
-	fs.BoolVar(&noKVOffload, "no-kv-offload", noKVOffload, "Specify disabling Key-Value offloading, "+
-		"which is used to estimate the usage. "+
-		"Key-Value offloading can reduce the usage of VRAM.")
-	fs.BoolVar(&flashAttention, "flash-attention", flashAttention, "Specify enabling Flash Attention, "+
-		"which is used to estimate the usage. "+
-		"Flash Attention can reduce the usage of RAM/VRAM.")
-	fs.StringVar(&platformFootprint, "platform-footprint", platformFootprint, "Specify the platform footprint(RAM,VRAM) in MiB, "+
-		"which is used to estimate the NonUMA usage, "+
-		"default is 150,250. "+
-		"Different platform always gets different RAM and VRAM footprints, "+
-		"for example, within CUDA, `cudaMemGetInfo` would occupy some RAM and VRAM, "+
-		"see https://stackoverflow.com/questions/64854862/free-memory-occupied-by-cudamemgetinfo.")
-	fs.BoolVar(&noMMap, "no-mmap", noMMap, "Specify disabling Memory-Mapped using, "+
-		"which is used to estimate the usage. "+
-		"Memory-Mapped can avoid loading the entire model weights into RAM.")
-	fs.IntVar(&offloadLayers, "gpu-layers", offloadLayers, "Specify how many layers of the main model to offload, "+
-		"which is used to estimate the usage, "+
-		"default is full offloaded.")
-	fs.IntVar(&offloadLayersDraft, "gpu-layers-draft", offloadLayersDraft, "Specify how many layers of the draft model to offload, "+
-		"which is used to estimate the usage, "+
-		"default is full offloaded.")
-	fs.Uint64Var(&offloadLayersStep, "gpu-layers-step", offloadLayersStep, "Specify the step of layers to offload, "+
-		"works with --gpu-layers.")
-	fs.BoolVar(&version, "version", version, "Show gguf-parser version.")
-	fs.BoolVar(&raw, "raw", raw, "Output the file only, skip anything.")
-	fs.BoolVar(&skipModel, "skip-model", skipModel, "Skip to display model metadata.")
-	fs.BoolVar(&skipArchitecture, "skip-architecture", skipArchitecture, "Skip to display architecture metadata.")
-	fs.BoolVar(&skipTokenizer, "skip-tokenizer", skipTokenizer, "Skip to display tokenizer metadata")
-	fs.BoolVar(&skipEstimate, "skip-estimate", skipEstimate, "Skip to estimate.")
-	fs.BoolVar(&inMib, "in-mib", inMib, "Display the estimated result in table with MiB.")
-	fs.BoolVar(&inJson, "json", inJson, "Output as JSON.")
-	fs.BoolVar(&inPrettyJson, "json-pretty", inPrettyJson, "Output as pretty JSON.")
-	if err := fs.Parse(os.Args[1:]); err != nil {
-		fmt.Println(err.Error())
+
+	if err := app.RunContext(signalx.Handler(), os.Args); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
+}
 
-	if version {
-		fmt.Printf("gguf-parser %s\n", Version)
-		return
-	}
+var (
+	// model options
+	path         string
+	mmprojPath   string // for estimate
+	draftPath    string // for estimate
+	url          string
+	mmprojUrl    string // for estimate
+	draftUrl     string // for estimate
+	token        string
+	hfRepo       string
+	hfFile       string
+	hfMMProjFile string // for estimate
+	hfDraftRepo  string // for estimate
+	hfDraftFile  string // for estimate
+	hfToken      string
+	msRepo       string
+	msFile       string
+	msMMProjFile string // for estimate
+	msDraftRepo  string // for estimate
+	msDraftFile  string // for estimate
+	msToken      string
+	olModel      string
+	olUsage      bool
+	// load options
+	debug                  bool
+	skipProxy              bool
+	skipTLSVerify          bool
+	skipDNSCache           bool
+	skipRangDownloadDetect bool
+	skipCache              bool
+	// estimate options
+	ctxSize            = -1
+	inMaxCtxSize       bool
+	physicalBatchSize  = 512
+	parallelSize       = 1
+	kvType             = "f16"
+	noKVOffload        bool
+	flashAttention     bool
+	platformFootprint  = "150,250"
+	noMMap             bool
+	offloadLayers      = -1
+	offloadLayersDraft = -1
+	offloadLayersStep  uint64
+	// output options
+	raw              bool
+	skipModel        bool
+	skipArchitecture bool
+	skipTokenizer    bool
+	skipEstimate     bool
+	inMib            bool
+	inJson           bool
+	inPrettyJson     = true
+)
 
+func run(ctx context.Context) error {
 	// Prepare options.
 
 	ropts := []GGUFReadOption{
@@ -285,8 +606,7 @@ func main() {
 		// Main model.
 		switch {
 		default:
-			_, _ = fmt.Fprintf(os.Stderr, "no model specified\n")
-			os.Exit(1)
+			return errors.New("no model specified")
 		case path != "":
 			gf, err = ParseGGUFFile(path, ropts...)
 		case url != "":
@@ -330,8 +650,7 @@ func main() {
 			}
 		}
 		if err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "failed to parse GGUF file: %s\n", err.Error())
-			os.Exit(1)
+			return fmt.Errorf("failed to parse GGUF file: %w", err)
 		}
 
 		// MultimodalProjector model.
@@ -346,8 +665,7 @@ func main() {
 			mmpgf, err = ParseGGUFFileFromModelScope(ctx, msRepo, msMMProjFile, ropts...)
 		}
 		if err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "failed to parse multimodal projector GGUF file: %s\n", err.Error())
-			os.Exit(1)
+			return fmt.Errorf("failed to parse multimodal projector GGUF file: %w", err)
 		}
 
 		// Drafter model.
@@ -362,8 +680,7 @@ func main() {
 			dftgf, err = ParseGGUFFileFromModelScope(ctx, msDraftRepo, msDraftFile, ropts...)
 		}
 		if err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "failed to parse draft GGUF file: %s\n", err.Error())
-			os.Exit(1)
+			return fmt.Errorf("failed to parse draft GGUF file: %w", err)
 		}
 	}
 
@@ -375,10 +692,9 @@ func main() {
 			enc.SetIndent("", "  ")
 		}
 		if err := enc.Encode(gf); err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "failed to encode JSON: %s\n", err.Error())
-			os.Exit(1)
+			return fmt.Errorf("failed to encode JSON: %w", err)
 		}
-		return
+		return nil
 	}
 
 	// Otherwise, display the metadata and estimate the usage.
@@ -490,11 +806,10 @@ func main() {
 			enc.SetIndent("", "  ")
 		}
 		if err := enc.Encode(o); err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "failed to encode JSON: %s\n", err.Error())
-			os.Exit(1)
+			return fmt.Errorf("failed to encode JSON: %w", err)
 		}
 
-		return
+		return nil
 	}
 
 	InMiBytes = inMib
@@ -636,6 +951,8 @@ func main() {
 			mg,
 			bds...)
 	}
+
+	return nil
 }
 
 func sprintf(f any, a ...any) string {

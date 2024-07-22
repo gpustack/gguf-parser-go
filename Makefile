@@ -82,7 +82,7 @@ gguf-parser:
 			GOOS="$$os" GOARCH="$$arch" CGO_ENABLED=1 go build \
 				-trimpath \
 				-ldflags="-w -s -X main.Version=$(VERSION)" \
-				-tags="$$tags" \
+				-tags="urfave_cli_no_docs $$tags" \
 				-o $(SRCDIR)/.dist/gguf-parser-$$os-$$arch$$suffix; \
 		done; \
 		if [[ $$os == "darwin" ]]; then \

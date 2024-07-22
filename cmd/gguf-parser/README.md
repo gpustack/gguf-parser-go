@@ -6,103 +6,86 @@ Review/Check/Estimate [GGUF](https://github.com/ggerganov/ggml/blob/master/docs/
 
 ```shell
 $ gguf-parser --help
-Usage of gguf-parser ...:
-  -ctx-size int
-        Specify the size of prompt context, which is used to estimate the usage, default is equal to the model's maximum context size. (default -1)
-  -debug
-        Enable debugging, verbosity.
-  -draft-path string
-        Path where the GGUF file to load for the draft model, optional, e.g. ~/.cache/lm-studio/models/QuantFactory/Qwen2-1.5B-Instruct-GGUF/Qwen2-1.5B-Instruct.Q5_K_M.gguf
-  -draft-url string
-        Url where the GGUF file to load for the draft model, optional, e.g. https://huggingface.co/QuantFactory/Qwen2-1.5B-Instruct-GGUF/resolve/main/Qwen2-1.5B-Instruct.Q5_K_M.gguf. Note that gguf-parser does not need to download the entire GGUF file.
-  -flash-attention
-        Specify enabling Flash Attention, which is used to estimate the usage. Flash Attention can reduce the usage of RAM/VRAM.
-  -gpu-layers int
-        Specify how many layers of the main model to offload, which is used to estimate the usage, default is full offloaded. (default -1)
-  -gpu-layers-draft int
-        Specify how many layers of the draft model to offload, which is used to estimate the usage, default is full offloaded. (default -1)
-  -gpu-layers-step uint
-        Specify the step of layers to offload, works with --gpu-layers.
-  -hf-draft-file string
-        Model file below the --hf-draft-repo, optional, e.g. Qwen2-1.5B-Instruct.Q5_K_M.gguf.
-  -hf-draft-repo string
-        Repository of HuggingFace which the GGUF file store for the draft model, optional, e.g. QuantFactory/Qwen2-1.5B-Instruct-GGUF, works with --hf-draft-file.
-  -hf-file string
-        Model file below the --hf-repo, e.g. Qwen2-7B-Instruct.Q5_K_M.gguf.
-  -hf-mmproj-file string
-        Multimodal projector file below the --hf-repo.
-  -hf-repo string
-        Repository of HuggingFace which the GGUF file store for the main model, e.g. QuantFactory/Qwen2-7B-Instruct-GGUF, works with --hf-file.
-  -hf-token string
-        User access token of HuggingFace, optional, works with --hf-repo/--hf-file pair or --hf-draft-repo/--hf-draft-file pair. See https://huggingface.co/settings/tokens.
-  -in-max-ctx-size
-        Limit the context size to the maximum context size of the model, if the context size is larger than the maximum context size.
-  -in-mib
-        Display the estimated result in table with MiB.
-  -json
-        Output as JSON.
-  -json-pretty
-        Output as pretty JSON. (default true)
-  -kv-type string
-        Specify the type of Key-Value cache, which is used to estimate the usage, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1], default is f16. Use quantization type means enabling --flash-attention as well. (default "f16")
-  -mmproj-path string
-        Path where the GGUF file to load for the multimodal projector, optional.
-  -mmproj-url string
-        Url where the GGUF file to load for the multimodal projector, optional.
-  -ms-draft-file string
-        Model file below the --ms-draft-repo, optional, e.g. qwen1_5-1_8b-chat-q5_k_m.gguf.
-  -ms-draft-repo string
-        Repository of ModelScope which the GGUF file store for the draft model, optional, e.g. qwen/Qwen1.5-1.8B-Chat-GGUF, works with --ms-draft-file.
-  -ms-file string
-        Model file below the --ms-repo, e.g. qwen1_5-7b-chat-q5_k_m.gguf.
-  -ms-mmproj-file string
-        Multimodal projector file below the --ms-repo.
-  -ms-repo string
-        Repository of ModelScope which the GGUF file store for the main model, e.g. qwen/Qwen1.5-7B-Chat-GGUF, works with --ms-file.
-  -ms-token string
-        Git access token of ModelScope, optional, works with --ms-repo/--ms-file pair or --ms-draft-repo/--ms-draft-file pair. See https://modelscope.cn/my/myaccesstoken.
-  -no-kv-offload
-        Specify disabling Key-Value offloading, which is used to estimate the usage. Key-Value offloading can reduce the usage of VRAM.
-  -no-mmap
-        Specify disabling Memory-Mapped using, which is used to estimate the usage. Memory-Mapped can avoid loading the entire model weights into RAM.
-  -ol-model string
-        Model name of Ollama, e.g. gemma2.
-  -ol-usage
-        Specify respecting the extending layers introduced by Ollama, works with --ol-model, which affects the usage estimation.
-  -parallel-size int
-        Specify the number of parallel sequences to decode, which is used to estimate the usage, default is 1. (default 1)
-  -path string
-        Path where the GGUF file to load for the main model, e.g. ~/.cache/lm-studio/models/QuantFactory/Qwen2-7B-Instruct-GGUF/Qwen2-7B-Instruct.Q5_K_M.gguf.
-  -platform-footprint cudaMemGetInfo
-        Specify the platform footprint(RAM,VRAM) in MiB, which is used to estimate the NonUMA usage, default is 150,250. Different platform always gets different RAM and VRAM footprints, for example, within CUDA, cudaMemGetInfo would occupy some RAM and VRAM, see https://stackoverflow.com/questions/64854862/free-memory-occupied-by-cudamemgetinfo. (default "150,250")
-  -raw
-        Output the file only, skip anything.
-  -skip-architecture
-        Skip to display architecture metadata.
-  -skip-cache
-        Skip cache, works with --url/--hf-*/--ms-*/--ol-*, default is caching the read result.
-  -skip-dns-cache
-        Skip DNS cache, works with --url/--hf-*/--ms-*/--ol-*, default is caching the DNS lookup result.
-  -skip-estimate
-        Skip to estimate.
-  -skip-model
-        Skip to display model metadata.
-  -skip-proxy
-        Skip proxy settings, works with --url/--hf-*/--ms-*/--ol-*, default is respecting the environment variables HTTP_PROXY/HTTPS_PROXY/NO_PROXY.
-  -skip-rang-download-detect
-        Skip range download detect, works with --url/--hf-*/--ms-*/--ol-*, default is detecting the range download support.
-  -skip-tls-verify
-        Skip TLS verification, works with --url/--hf-*/--ms-*/--ol-*, default is verifying the TLS certificate on HTTPs request.
-  -skip-tokenizer
-        Skip to display tokenizer metadata
-  -token string
-        Bearer auth token to load GGUF file, optional, works with --url/--draft-url.
-  -ubatch-size int
-        Specify the physical maximum batch size, which is used to estimate the usage, default is 512. (default 512)
-  -url string
-        Url where the GGUF file to load for the main model, e.g. https://huggingface.co/QuantFactory/Qwen2-7B-Instruct-GGUF/resolve/main/Qwen2-7B-Instruct.Q5_K_M.gguf. Note that gguf-parser does not need to download the entire GGUF file.
-  -version
-        Show gguf-parser version.
+NAME:
+   gguf-parser - Review/Check/Estimate the GGUF file.
+
+USAGE:
+   gguf-parser [global options]
+
+GLOBAL OPTIONS:
+   --debug        Enable debugging, verbosity. (default: false)
+   --help, -h     Print the usage.
+   --version, -v  Print the version.
+
+   Estimate
+
+   --ctx-size value, -c value                           Specify the size of prompt context, which is used to estimate the usage, default is equal to the model's maximum context size. (default: -1)
+   --flash-attention, --fa                              Specify enabling Flash Attention, which is used to estimate the usage. Flash Attention can reduce the usage of RAM/VRAM. (default: false)
+   --gpu-layers value, --ngl value                      Specify how many layers of the main model to offload, which is used to estimate the usage, default is full offloaded. (default: -1)
+   --gpu-layers-draft value, --ngld value               Specify how many layers of the draft model to offload, which is used to estimate the usage, default is full offloaded. (default: -1)
+   --gpu-layers-step value                              Specify the step of layers to offload, works with --gpu-layers. (default: 0)
+   --in-max-ctx-size                                    Limit the context size to the maximum context size of the model, if the context size is larger than the maximum context size. (default: false)
+   --kv-type value                                      Specify the type of Key-Value cache, which is used to estimate the usage, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1] (default: "f16")
+   --no-kv-offload, --nkvo                              Specify disabling Key-Value offloading, which is used to estimate the usage. Disable Key-Value offloading can reduce the usage of VRAM. (default: false)
+   --no-mmap                                            Specify disabling Memory-Mapped using, which is used to estimate the usage. Memory-Mapped can avoid loading the entire model weights into RAM. (default: false)
+   --parallel-size value, --parallel value, --np value  Specify the number of parallel sequences to decode, which is used to estimate the usage. (default: 1)
+   --platform-footprint value                           Specify the platform footprint(RAM,VRAM) in MiB, which is used to estimate the NonUMA usage, default is 150,250. Different platform always gets different RAM and VRAM footprints, for example, within CUDA, 'cudaMemGetInfo' would occupy some RAM and VRAM, see https://stackoverflow.com/questions/64854862/free-memory-occupied-by-cudamemgetinfo. (default: "150,250")
+   --ubatch-size value, --ub value                      Specify the physical maximum batch size, which is used to estimate the usage. (default: 512)
+
+   Load
+
+   --skip-cache                 Skip cache, works with --url/--hf-*/--ms-*/--ol-*, default is caching the read result. (default: false)
+   --skip-dns-cache             Skip DNS cache, works with --url/--hf-*/--ms-*/--ol-*, default is caching the DNS lookup result. (default: false)
+   --skip-proxy                 Skip proxy settings, works with --url/--hf-*/--ms-*/--ol-*, default is respecting the environment variables HTTP_PROXY/HTTPS_PROXY/NO_PROXY. (default: false)
+   --skip-rang-download-detect  Skip range download detect, works with --url/--hf-*/--ms-*/--ol-*, default is detecting the range download support. (default: false)
+   --skip-tls-verify            Skip TLS verification, works with --url/--hf-*/--ms-*/--ol-*, default is verifying the TLS certificate on HTTPs request. (default: false)
+
+   Model/Local
+
+   --draft-path value, --model-draft value, --md value  Path where the GGUF file to load for the draft model, optional, e.g. ~/.cache/lm-studio/models/QuantFactory/Qwen2-1.5B-Instruct-GGUF/Qwen2-1.5B-Instruct.Q5_K_M.gguf
+   --mmproj-path value, --mmproj value                  Path where the GGUF file to load for the multimodal projector, optional.
+   --path value, --model value, -m value                Path where the GGUF file to load for the main model, e.g. ~/.cache/lm-studio/models/QuantFactory/Qwen2-7B-Instruct-GGUF/Qwen2-7B-Instruct.Q5_K_M.gguf.
+
+   Model/Remote
+
+   --draft-url value                           Url where the GGUF file to load for the draft model, optional, e.g. https://huggingface.co/QuantFactory/Qwen2-1.5B-Instruct-GGUF/resolve/main/Qwen2-1.5B-Instruct.Q5_K_M.gguf. Note that gguf-parser does not need to download the entire GGUF file.
+   --mmproj-url value                          Url where the GGUF file to load for the multimodal projector, optional.
+   --token value                               Bearer auth token to load GGUF file, optional, works with --url/--draft-url.
+   --url value, --model-url value, --mu value  Url where the GGUF file to load for the main model, e.g. https://huggingface.co/QuantFactory/Qwen2-7B-Instruct-GGUF/resolve/main/Qwen2-7B-Instruct.Q5_K_M.gguf. Note that gguf-parser does not need to download the entire GGUF file.
+
+   Model/Remote/HuggingFace
+
+   --hf-draft-file value          Model file below the --hf-draft-repo, optional, e.g. Qwen2-1.5B-Instruct.Q5_K_M.gguf.
+   --hf-draft-repo value          Repository of HuggingFace which the GGUF file store for the draft model, optional, e.g. QuantFactory/Qwen2-1.5B-Instruct-GGUF, works with --hf-draft-file.
+   --hf-file value, --hff value   Model file below the --hf-repo, e.g. Qwen2-7B-Instruct.Q5_K_M.gguf.
+   --hf-mmproj-file value         Multimodal projector file below the --hf-repo.
+   --hf-repo value, --hfr value   Repository of HuggingFace which the GGUF file store for the main model, e.g. QuantFactory/Qwen2-7B-Instruct-GGUF, works with --hf-file.
+   --hf-token value, --hft value  User access token of HuggingFace, optional, works with --hf-repo/--hf-file pair or --hf-draft-repo/--hf-draft-file pair. See https://huggingface.co/settings/tokens.
+
+   Model/Remote/ModelScope
+
+   --ms-draft-file value   Model file below the --ms-draft-repo, optional, e.g. qwen1_5-1_8b-chat-q5_k_m.gguf.
+   --ms-draft-repo value   Repository of ModelScope which the GGUF file store for the draft model, optional, e.g. qwen/Qwen1.5-1.8B-Chat-GGUF, works with --ms-draft-file.
+   --ms-file value         Model file below the --ms-repo, e.g. qwen1_5-7b-chat-q5_k_m.gguf.
+   --ms-mmproj-file value  Multimodal projector file below the --ms-repo.
+   --ms-repo value         Repository of ModelScope which the GGUF file store for the main model, e.g. qwen/Qwen1.5-7B-Chat-GGUF, works with --ms-file.
+   --ms-token value        Git access token of ModelScope, optional, works with --ms-repo/--ms-file pair or --ms-draft-repo/--ms-draft-file pair. See https://modelscope.cn/my/myaccesstoken.
+
+   Model/Remote/Ollama
+
+   --ol-model value  Model name of Ollama, e.g. gemma2.
+   --ol-usage        Specify respecting the extending layers introduced by Ollama, works with --ol-model, which affects the usage estimation. (default: false)
+
+   Output
+
+   --in-mib             Display the estimated result in table with MiB. (default: false)
+   --json               (default: false)
+   --json-pretty        Output as pretty JSON. (default: true)
+   --raw                Output the file in JSON only, skip anything. (default: false)
+   --skip-architecture  Skip to display architecture metadata. (default: false)
+   --skip-estimate      Skip to estimate. (default: false)
+   --skip-model         Skip to display model metadata. (default: false)
+   --skip-tokenizer     Skip to display tokenizer metadata. (default: false)
 
 ```
 
