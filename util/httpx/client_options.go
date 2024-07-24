@@ -68,8 +68,7 @@ func (o *ClientOption) WithRetryIf(retryIf func(resp *http.Response, err error) 
 	return o
 }
 
-// WithRetryBackoff specifies the retry-backoff mechanism for request,
-// default retry 5 times within 1s, 2s, 4s, 8s, 15s waiting.
+// WithRetryBackoff specifies the retry-backoff mechanism for request.
 func (o *ClientOption) WithRetryBackoff(waitMin, waitMax time.Duration, attemptMax int) *ClientOption {
 	if o == nil || waitMin < 0 || waitMax < 0 || waitMax < waitMin || attemptMax <= 0 {
 		return o

@@ -63,12 +63,12 @@ func ParseGGUFFileFromOllamaModel(ctx context.Context, model *OllamaModel, opts 
 				return x.WithDebug()
 			}).
 			WithTimeout(0).
+			WithRetryBackoff(1*time.Second, 5*time.Second, 10).
 			WithTransport(
 				httpx.TransportOptions().
 					WithoutKeepalive().
-					TimeoutForDial(5*time.Second).
+					TimeoutForDial(10*time.Second).
 					TimeoutForTLSHandshake(5*time.Second).
-					TimeoutForResponseHeader(5*time.Second).
 					If(o.SkipProxy, func(x *httpx.TransportOption) *httpx.TransportOption {
 						return x.WithoutProxy()
 					}).
