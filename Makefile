@@ -10,24 +10,23 @@ LINT_DIRTY ?= false
 VERSION ?= $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null | tr '[:upper:]' '[:lower:]' || echo "unknown")
 
 deps:
-	@echo "+++ deps +++"
+	@echo "+++ $@ +++"
 
-	go mod tidy
-	go mod download
+	cd $(SRCDIR) && go mod tidy && go mod download
+	cd $(SRCDIR)/cmd/gguf-parser && go mod tidy && go mod download
 
-	cd "$(SRCDIR)/cmd/gguf-parser" && go mod tidy && go mod download
-
-	@echo "--- deps ---"
+	@echo "--- $@ ---"
 
 generate:
-	@echo "+++ generate +++"
+	@echo "+++ $@ +++"
 
-	go generate $(SRCDIR)/...
+	cd $(SRCDIR) && go generate ./...
+	cd $(SRCDIR)/cmd/gguf-parser && go generate ./...
 
-	@echo "--- generate ---"
+	@echo "--- $@ ---"
 
 lint:
-	@echo "+++ lint +++"
+	@echo "+++ $@ +++"
 
 	if [[ "$(LINT_DIRTY)" == "true" ]]; then \
   		if [[ -n $$(git status --porcelain) ]]; then \
@@ -41,32 +40,38 @@ lint:
 	[[ -f "$(SRCDIR)/.sbin/goimports-reviser" ]] || \
 		curl --retry 3 --retry-all-errors --retry-delay 3 -sSfL "https://github.com/incu6us/goimports-reviser/releases/download/v3.6.5/goimports-reviser_3.6.5_$(GOOS)_$(GOARCH).tar.gz" \
 		| tar -zxvf - --directory "$(SRCDIR)/.sbin" --no-same-owner --exclude ./LICENSE --exclude ./README.md && chmod +x "$(SRCDIR)/.sbin/goimports-reviser"
-	go list -f "{{.Dir}}" $(SRCDIR)/... | xargs -I {} find {} -maxdepth 1 -type f -name '*.go' ! -name 'gen.*' ! -name 'zz_generated.*' \
+	cd $(SRCDIR) && \
+		go list -f "{{.Dir}}" ./... | xargs -I {} find {} -maxdepth 1 -type f -name '*.go' ! -name 'gen.*' ! -name 'zz_generated.*' \
+		| xargs -I {} "$(SRCDIR)/.sbin/goimports-reviser" -use-cache -imports-order=std,general,company,project,blanked,dotted -output=file {}
+	cd $(SRCDIR)/cmd/gguf-parser && \
+		go list -f "{{.Dir}}" ./... | xargs -I {} find {} -maxdepth 1 -type f -name '*.go' ! -name 'gen.*' ! -name 'zz_generated.*' \
 		| xargs -I {} "$(SRCDIR)/.sbin/goimports-reviser" -use-cache -imports-order=std,general,company,project,blanked,dotted -output=file {}
 
 	[[ -f "$(SRCDIR)/.sbin/golangci-lint" ]] || \
 		curl --retry 3 --retry-all-errors --retry-delay 3 -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
 		| sh -s -- -b "$(SRCDIR)/.sbin" "v1.59.0"
-	"$(SRCDIR)/.sbin/golangci-lint" run --fix $(SRCDIR)/...
+	cd $(SRCDIR) && \
+		"$(SRCDIR)/.sbin/golangci-lint" run --fix ./...
+	cd $(SRCDIR)/cmd/gguf-parser && \
+		"$(SRCDIR)/.sbin/golangci-lint" run --fix ./...
 
-	@echo "--- lint ---"
+	@echo "--- $@ ---"
 
 test:
-	@echo "+++ test +++"
+	@echo "+++ $@ +++"
 
 	go test -v -failfast -race -cover -timeout=30m $(SRCDIR)/...
 
-	@echo "--- test ---"
+	@echo "--- $@ ---"
 
 benchmark:
-	@echo "+++ benchmark +++"
+	@echo "+++ $@ +++"
 
 	go test -v -failfast -run="^Benchmark[A-Z]+" -bench=. -benchmem -timeout=30m $(SRCDIR)/...
 
-	@echo "--- benchmark ---"
+	@echo "--- $@ ---"
 
 gguf-parser:
-	@echo "+++ gguf-parser +++"
 	[[ -d "$(SRCDIR)/.dist" ]] || mkdir -p "$(SRCDIR)/.dist"
 
 	cd "$(SRCDIR)/cmd/gguf-parser" && for os in darwin linux windows; do \

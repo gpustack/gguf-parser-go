@@ -1,24 +1,23 @@
 package main
 
 import (
-	"os"
-	"fmt"
 	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
-	"regexp"
-	"errors"
-	"path/filepath"
 
-	"github.com/urfave/cli/v2"
 	"github.com/olekukonko/tablewriter"
-
 	"github.com/thxcode/gguf-parser-go/util/anyx"
 	"github.com/thxcode/gguf-parser-go/util/json"
 	"github.com/thxcode/gguf-parser-go/util/signalx"
+	"github.com/urfave/cli/v2"
 
-	. "github.com/thxcode/gguf-parser-go"
+	. "github.com/thxcode/gguf-parser-go" // nolint: stylecheck
 )
 
 var Version = "v0.0.0"
@@ -817,7 +816,15 @@ func run(ctx context.Context) error {
 	if !skipModel {
 		tprint(
 			"MODEL",
-			[]string{"Name", "Arch", "Quantization", "Little Endian", "Size", "Parameters", "BPW"},
+			[]string{
+				"Name",
+				"Arch",
+				"Quantization",
+				"Little Endian",
+				"Size",
+				"Parameters",
+				"BPW",
+			},
 			nil,
 			[]string{
 				m.Name,
@@ -836,7 +843,16 @@ func run(ctx context.Context) error {
 			bd []string
 		)
 		if a.Architecture != "clip" {
-			hd = []string{"Max Context Len", "Embedding Len", "Embedding GQA", "Attention Head Cnt", "Layers", "Feed Forward Len", "Expert Cnt", "Vocabulary Len"}
+			hd = []string{
+				"Max Context Len",
+				"Embedding Len",
+				"Embedding GQA",
+				"Attention Head Cnt",
+				"Layers",
+				"Feed Forward Len",
+				"Expert Cnt",
+				"Vocabulary Len",
+			}
 			bd = []string{
 				sprintf(a.MaximumContextLength),
 				sprintf(a.EmbeddingLength),
@@ -848,7 +864,13 @@ func run(ctx context.Context) error {
 				sprintf(a.VocabularyLength),
 			}
 		} else {
-			hd = []string{"Embedding Len", "Layers", "Feed Forward Len", "Encoder", "LLaVA MultimodalProjector"}
+			hd = []string{
+				"Embedding Len",
+				"Layers",
+				"Feed Forward Len",
+				"Encoder",
+				"LLaVA MultimodalProjector",
+			}
 			bd = []string{
 				sprintf(a.EmbeddingLength),
 				sprintf(a.BlockCount),
@@ -867,7 +889,17 @@ func run(ctx context.Context) error {
 	if !skipTokenizer && t.Model != "" {
 		tprint(
 			"TOKENIZER",
-			[]string{"Model", "Tokens Size", "Tokens Len", "Added Tokens Len", "BOS Token", "EOS Token", "Unknown Token", "Separator Token", "Padding Token"},
+			[]string{
+				"Model",
+				"Tokens Size",
+				"Tokens Len",
+				"Added Tokens Len",
+				"BOS Token",
+				"EOS Token",
+				"Unknown Token",
+				"Separator Token",
+				"Padding Token",
+			},
 			nil,
 			[]string{
 				t.Model,
@@ -890,7 +922,17 @@ func run(ctx context.Context) error {
 		)
 		es := e.Summarize(mmap, platformRAM, platformVRAM)
 		if e.Architecture != "clip" {
-			hd = []string{"Arch", "Context Size", "Flash Attention", "MMap Support", "Offload Layers", "Full Offloaded", "UMA (RAM + VRAM)", "NonUMA RAM", "NonUMA VRAM"}
+			hd = []string{
+				"Arch",
+				"Context Size",
+				"Flash Attention",
+				"MMap Support",
+				"Offload Layers",
+				"Full Offloaded",
+				"UMA (RAM + VRAM)",
+				"NonUMA RAM",
+				"NonUMA VRAM",
+			}
 			mg = []int{0, 1, 2, 3, 5}
 
 			switch {
@@ -927,7 +969,8 @@ func run(ctx context.Context) error {
 					sprintf(es.ContextSize),
 					sprintf(es.FlashAttention),
 					sprintf(!es.NoMMap),
-					sprintf(tenary(es.Memory[i].FullOffloaded, sprintf("%d (%d + 1)", es.Memory[i].OffloadLayers, es.Memory[i].OffloadLayers-1), es.Memory[i].OffloadLayers)),
+					sprintf(tenary(es.Memory[i].FullOffloaded, sprintf("%d (%d + 1)",
+						es.Memory[i].OffloadLayers, es.Memory[i].OffloadLayers-1), es.Memory[i].OffloadLayers)),
 					sprintf(tenary(es.Memory[i].FullOffloaded, "Yes", "No")),
 					sprintf("%s + %s = %s", es.Memory[i].UMA.RAM, es.Memory[i].UMA.VRAM, es.Memory[i].UMA.RAM+es.Memory[i].UMA.VRAM),
 					sprintf(es.Memory[i].NonUMA.RAM),
@@ -935,7 +978,12 @@ func run(ctx context.Context) error {
 				}
 			}
 		} else {
-			hd = []string{"Arch", "Offload Layers", "Full Offloaded", "(V)RAM"}
+			hd = []string{
+				"Arch",
+				"Offload Layers",
+				"Full Offloaded",
+				"(V)RAM",
+			}
 			bds = [][]string{
 				{
 					sprintf(es.Architecture),
@@ -986,7 +1034,7 @@ func tprint(title string, header []string, merges []int, body ...[]string) {
 			return []int{0}
 		}
 		r = make([]int, len(merges)+1)
-		r = append(r, 0)
+		r[0] = 0
 		for i := range merges {
 			r[i] = merges[i] + 1
 		}
