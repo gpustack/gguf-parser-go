@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/thxcode/gguf-parser-go/util/httpx"
-	"github.com/thxcode/gguf-parser-go/util/osx"
+	"github.com/gpustack/gguf-parser-go/util/httpx"
+	"github.com/gpustack/gguf-parser-go/util/osx"
 )
 
 // ParseGGUFFileFromHuggingFace parses a GGUF file from Hugging Face(https://huggingface.co/),

@@ -9,7 +9,7 @@ import (
 
 	"github.com/henvic/httpretty"
 
-	"github.com/thxcode/gguf-parser-go/util/bytex"
+	"github.com/gpustack/gguf-parser-go/util/bytex"
 )
 
 // DefaultClient is similar to the default http.Client used by the package.

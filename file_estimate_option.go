@@ -3,7 +3,7 @@ package gguf_parser
 import (
 	"slices"
 
-	"github.com/thxcode/gguf-parser-go/util/ptr"
+	"github.com/gpustack/gguf-parser-go/util/ptr"
 )
 
 type (

@@ -1,4 +1,4 @@
-module github.com/thxcode/gguf-parser-go
+module github.com/gpustack/gguf-parser-go
 
 go 1.22
 

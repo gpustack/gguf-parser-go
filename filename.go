@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/thxcode/gguf-parser-go/util/funcx"
-	"github.com/thxcode/gguf-parser-go/util/ptr"
+	"github.com/gpustack/gguf-parser-go/util/funcx"
+	"github.com/gpustack/gguf-parser-go/util/ptr"
 )
 
 // GGUFFilename represents a GGUF filename,

@@ -10,9 +10,9 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/thxcode/gguf-parser-go/util/httpx"
-	"github.com/thxcode/gguf-parser-go/util/json"
-	"github.com/thxcode/gguf-parser-go/util/stringx"
+	"github.com/gpustack/gguf-parser-go/util/httpx"
+	"github.com/gpustack/gguf-parser-go/util/json"
+	"github.com/gpustack/gguf-parser-go/util/stringx"
 )
 
 // Inspired by https://github.com/ollama/ollama/blob/380e06e5bea06ae8ded37f47c37bd5d604194d3e/types/model/name.go,

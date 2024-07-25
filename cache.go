@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/thxcode/gguf-parser-go/util/json"
-	"github.com/thxcode/gguf-parser-go/util/osx"
-	"github.com/thxcode/gguf-parser-go/util/stringx"
+	"github.com/gpustack/gguf-parser-go/util/json"
+	"github.com/gpustack/gguf-parser-go/util/osx"
+	"github.com/gpustack/gguf-parser-go/util/stringx"
 )
 
 var (

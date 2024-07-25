@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/thxcode/gguf-parser-go/util/ptr"
+	"github.com/gpustack/gguf-parser-go/util/ptr"
 )
 
 // Types for LLaMACpp estimation.

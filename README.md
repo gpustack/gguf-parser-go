@@ -2,10 +2,10 @@
 
 > tl;dr, Go parser for the [GGUF](https://github.com/ggerganov/ggml/blob/master/docs/gguf.md).
 
-[![](https://goreportcard.com/badge/github.com/thxcode/gguf-parser-go)](https://goreportcard.com/report/github.com/thxcode/gguf-parser-go)
-[![](https://img.shields.io/github/actions/workflow/status/thxcode/gguf-parser-go/cmd.yml?label=ci)](https://github.com/thxcode/gguf-parser-go/actions)
-[![](https://img.shields.io/github/license/thxcode/gguf-parser-go?label=license)](https://github.com/thxcode/gguf-parser-go#license)
-[![](https://img.shields.io/github/downloads/thxcode/gguf-parser-go/total)](https://github.com/thxcode/gguf-parser-go/releases)
+[![](https://goreportcard.com/badge/github.com/gpustack/gguf-parser-go)](https://goreportcard.com/report/github.com/gpustack/gguf-parser-go)
+[![](https://img.shields.io/github/actions/workflow/status/gpustack/gguf-parser-go/cmd.yml?label=ci)](https://github.com/gpustack/gguf-parser-go/actions)
+[![](https://img.shields.io/github/license/gpustack/gguf-parser-go?label=license)](https://github.com/gpustack/gguf-parser-go#license)
+[![](https://img.shields.io/github/downloads/gpustack/gguf-parser-go/total)](https://github.com/gpustack/gguf-parser-go/releases)
 
 [GGUF](https://github.com/ggerganov/ggml/blob/master/docs/gguf.md) is a file format for storing models for inference
 with GGML and executors based on GGML. GGUF is a binary format that is designed for fast loading and saving of models,
@@ -20,10 +20,10 @@ GGUF Parser provides some functions to parse the GGUF file in Go for the followi
 Import the package as below.
 
 ```shell
-go get github.com/thxcode/gguf-parser-go
+go get github.com/gpustack/gguf-parser-go
 ```
 
-If you need one-shot command-line, try [gguf-parser](./cmd/gguf-parser) from [releases](https://github.com/thxCode/gguf-parser-go/releases) or `go install github.com/thxcode/gguf-parser-go/cmd/gguf-parser` from HEAD.
+If you need one-shot command-line, try [gguf-parser](./cmd/gguf-parser) from [releases](https://github.com/gpustack/gguf-parser-go/releases) or `go install github.com/gpustack/gguf-parser-go/cmd/gguf-parser` from HEAD.
 
 ## Calls
 
@@ -47,7 +47,7 @@ flowchart
 ```go
 import (
     "github.com/davecgh/go-spew/spew"
-    . "github.com/thxcode/gguf-parser-go"
+    . "github.com/gpustack/gguf-parser-go"
 )
 
 f, err := ParseGGUFFile("path/to/model.gguf")
@@ -85,7 +85,7 @@ if err != nil {
 import (
     "context"
     "github.com/davecgh/go-spew/spew"
-    . "github.com/thxcode/gguf-parser-go"
+    . "github.com/gpustack/gguf-parser-go"
 )
 
 f, err := ParseGGUFFileRemote(context.Background(), "https://example.com/model.gguf")

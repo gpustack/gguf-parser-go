@@ -10,7 +10,7 @@ import (
 
 	"github.com/smallnest/ringbuffer"
 
-	"github.com/thxcode/gguf-parser-go/util/bytex"
+	"github.com/gpustack/gguf-parser-go/util/bytex"
 )
 
 type SeekerFile struct {

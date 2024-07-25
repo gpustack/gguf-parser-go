@@ -1,12 +1,12 @@
-module github.com/thxcode/gguf-parser-go/cmd/gguf-parser
+module github.com/gpustack/gguf-parser-go/cmd/gguf-parser
 
 go 1.22
 
-replace github.com/thxcode/gguf-parser-go => ../../
+replace github.com/gpustack/gguf-parser-go => ../../
 
 require (
+	github.com/gpustack/gguf-parser-go v0.0.0-00010101000000-000000000000
 	github.com/olekukonko/tablewriter v0.0.5
-	github.com/thxcode/gguf-parser-go v0.0.0-00010101000000-000000000000
 	github.com/urfave/cli/v2 v2.27.2
 )
 

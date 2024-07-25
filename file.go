@@ -12,10 +12,10 @@ import (
 
 	"golang.org/x/exp/constraints"
 
-	"github.com/thxcode/gguf-parser-go/util/anyx"
-	"github.com/thxcode/gguf-parser-go/util/bytex"
-	"github.com/thxcode/gguf-parser-go/util/funcx"
-	"github.com/thxcode/gguf-parser-go/util/osx"
+	"github.com/gpustack/gguf-parser-go/util/anyx"
+	"github.com/gpustack/gguf-parser-go/util/bytex"
+	"github.com/gpustack/gguf-parser-go/util/funcx"
+	"github.com/gpustack/gguf-parser-go/util/osx"
 )
 
 // GGUFFile represents a GGUF file,

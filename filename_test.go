@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/thxcode/gguf-parser-go/util/ptr"
+	"github.com/gpustack/gguf-parser-go/util/ptr"
 )
 
 func TestParseGGUFFilename(t *testing.T) {

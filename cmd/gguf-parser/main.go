@@ -11,13 +11,13 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/gpustack/gguf-parser-go/util/anyx"
+	"github.com/gpustack/gguf-parser-go/util/json"
+	"github.com/gpustack/gguf-parser-go/util/signalx"
 	"github.com/olekukonko/tablewriter"
-	"github.com/thxcode/gguf-parser-go/util/anyx"
-	"github.com/thxcode/gguf-parser-go/util/json"
-	"github.com/thxcode/gguf-parser-go/util/signalx"
 	"github.com/urfave/cli/v2"
 
-	. "github.com/thxcode/gguf-parser-go" // nolint: stylecheck
+	. "github.com/gpustack/gguf-parser-go" // nolint: stylecheck
 )
 
 var Version = "v0.0.0"

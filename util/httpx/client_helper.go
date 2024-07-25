@@ -9,7 +9,7 @@ import (
 
 	"github.com/henvic/httpretty"
 
-	"github.com/thxcode/gguf-parser-go/util/json"
+	"github.com/gpustack/gguf-parser-go/util/json"
 )
 
 var _ httpretty.Formatter = (*JSONFormatter)(nil)
