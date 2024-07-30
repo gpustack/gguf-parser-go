@@ -26,6 +26,9 @@ type (
 		// NoMMap is the flag to indicate whether the file must be loaded without mmap,
 		// true for total loaded.
 		NoMMap bool `json:"noMMap"`
+		// EmbeddingOnly is the flag to indicate whether the model is used for embedding only,
+		// true for embedding only.
+		EmbeddingOnly bool `json:"embeddingOnly"`
 		// Load is the memory usage for running the GGUF file in RAM.
 		Load LLaMACppMemoryUsage `json:"load"`
 		// Offload is the memory usage for loading the GGUF file in VRAM.
@@ -237,6 +240,13 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 		"token_embd.weight",
 	})
 
+	// Embedding.
+	if !a.AttentionCausal {
+		if _, ok := opLs.Get("output.weight"); !ok {
+			e.EmbeddingOnly = true
+		}
+	}
+
 	// Weight.
 	{
 		// Compute.
@@ -259,7 +269,7 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 		e.Load.Weight.Input = GGUFBytesScalar(ipLs.Bytes())
 		if _, ok := opLs.Get("output.weight"); ok {
 			e.Load.Weight.Output = GGUFBytesScalar(opLs.Bytes())
-		} else {
+		} else if a.AttentionCausal {
 			e.Load.Weight.Output = GGUFBytesScalar(opLs.Bytes()) + e.Load.Weight.Input /* duplicate the input layer */
 		}
 	}
@@ -468,6 +478,9 @@ type (
 		// NoMMap is the flag to indicate whether the file must be loaded without mmap,
 		// true for total loaded.
 		NoMMap bool `json:"noMMap"`
+		// EmbeddingOnly is the flag to indicate whether the model is used for embedding only,
+		// true for embedding only.
+		EmbeddingOnly bool `json:"embeddingOnly"`
 	}
 
 	// LLaMACppUsageEstimateMemorySummary represents the memory summary of the usage for loading the GGUF file in llama.cpp.
@@ -580,6 +593,7 @@ func (e LLaMACppUsageEstimate) Summarize(mmap bool, nonUMARamFootprint, nonUMAVr
 	es.ContextSize = e.ContextSize
 	es.FlashAttention = e.FlashAttention
 	es.NoMMap = e.NoMMap
+	es.EmbeddingOnly = e.EmbeddingOnly
 
 	return es
 }

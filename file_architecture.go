@@ -56,6 +56,8 @@ type GGUFArchitectureMetadata struct {
 	//
 	// Defaults to `EmbeddingLength / AttentionHeadCount`.
 	AttentionValueLength uint32 `json:"attentionValueLength"`
+	// AttentionCausal is true if the attention is causal.
+	AttentionCausal bool `json:"attentionCausal,omitempty"`
 	// RoPEDimensionCount is the number of dimensions in the RoPE(Rotary Positional Encoding).
 	RoPEDimensionCount uint64 `json:"ropeDimensionCount,omitempty"`
 	// RoPEFrequencyBase is the base frequency of the RoPE.
@@ -248,6 +250,7 @@ func (gf *GGUFFile) transformArchitecture(arch string) (ga GGUFArchitectureMetad
 		attentionLayerNormRMSEpsilonKey = arch + ".attention.layer_norm_rms_epsilon"
 		attentionKeyLengthKey           = arch + ".attention.key_length"
 		attentionValueLengthKey         = arch + ".attention.value_length"
+		attentionCausalKey              = arch + ".attention.causal"
 
 		ropeDimensionCountKey         = arch + ".rope.dimension_count"
 		ropeFrequencyBaseKey          = arch + ".rope.freq_base"
@@ -285,6 +288,7 @@ func (gf *GGUFFile) transformArchitecture(arch string) (ga GGUFArchitectureMetad
 		attentionLayerNormRMSEpsilonKey,
 		attentionKeyLengthKey,
 		attentionValueLengthKey,
+		attentionCausalKey,
 		ropeDimensionCountKey,
 		ropeFrequencyBaseKey,
 		ropeScaleLinearKey,
@@ -359,6 +363,11 @@ func (gf *GGUFFile) transformArchitecture(arch string) (ga GGUFArchitectureMetad
 		ga.AttentionValueLength = ValueNumeric[uint32](v)
 	} else if ga.AttentionHeadCount != 0 {
 		ga.AttentionValueLength = uint32(ga.EmbeddingLength / ga.AttentionHeadCount)
+	}
+	if v, ok := m[attentionCausalKey]; ok {
+		ga.AttentionCausal = v.ValueBool()
+	} else {
+		ga.AttentionCausal = true
 	}
 
 	if v, ok := m[ropeDimensionCountKey]; ok {

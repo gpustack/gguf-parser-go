@@ -847,6 +847,7 @@ func run(ctx context.Context) error {
 				"Max Context Len",
 				"Embedding Len",
 				"Embedding GQA",
+				"Attention Causal",
 				"Attention Head Cnt",
 				"Layers",
 				"Feed Forward Len",
@@ -857,6 +858,7 @@ func run(ctx context.Context) error {
 				sprintf(a.MaximumContextLength),
 				sprintf(a.EmbeddingLength),
 				sprintf(a.EmbeddingGQA),
+				sprintf(a.AttentionCausal),
 				sprintf(tenary(a.AttentionHeadCountKV == 0 || a.AttentionHeadCountKV == a.AttentionHeadCount, "N/A", a.AttentionHeadCount)),
 				sprintf(a.BlockCount),
 				sprintf(a.FeedForwardLength),
@@ -927,13 +929,14 @@ func run(ctx context.Context) error {
 				"Context Size",
 				"Flash Attention",
 				"MMap Support",
+				"Embedding Only",
 				"Offload Layers",
 				"Full Offloaded",
 				"UMA (RAM + VRAM)",
 				"NonUMA RAM",
 				"NonUMA VRAM",
 			}
-			mg = []int{0, 1, 2, 3, 5}
+			mg = []int{0, 1, 2, 3, 6}
 
 			switch {
 			case offloadLayersStep > e.OffloadLayers:
@@ -969,6 +972,7 @@ func run(ctx context.Context) error {
 					sprintf(es.ContextSize),
 					sprintf(es.FlashAttention),
 					sprintf(!es.NoMMap),
+					sprintf(es.EmbeddingOnly),
 					sprintf(tenary(es.Memory[i].FullOffloaded, sprintf("%d (%d + 1)",
 						es.Memory[i].OffloadLayers, es.Memory[i].OffloadLayers-1), es.Memory[i].OffloadLayers)),
 					sprintf(tenary(es.Memory[i].FullOffloaded, "Yes", "No")),
