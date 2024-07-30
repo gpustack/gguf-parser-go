@@ -101,3 +101,31 @@ gguf-parser:
 ci: deps generate test lint
 
 build: gguf-parser
+
+PACKAGE_PUBLISH ?= false
+PACKAGE_REGISTRY ?= "gpustack"
+PACKAGE_IMAGE ?= "gguf-parser"
+package: build
+	@echo "+++ $@ +++"
+
+	if [[ -z $$(command -v docker) ]]; then \
+  		echo "Docker is not installed."; \
+		exit 1; \
+	fi; \
+	platform="linux/amd64,linux/arm64"; \
+	image="$(PACKAGE_IMAGE):$(VERSION)"; \
+	if [[ -n "$(PACKAGE_REGISTRY)" ]]; then \
+		image="$(PACKAGE_REGISTRY)/$$image"; \
+	fi; \
+	if [[ "$(PACKAGE_PUBLISH)" == "true" ]]; then \
+	  	if [[ -z $$(docker buildx inspect --builder "gguf-parser") ]]; then \
+      		docker run --rm --privileged tonistiigi/binfmt:qemu-v7.0.0 --install $$platform; \
+      		docker buildx create --name "gguf-parser" --driver "docker-container" --buildkitd-flags "--allow-insecure-entitlement security.insecure --allow-insecure-entitlement network.host" --use --bootstrap; \
+      	fi; \
+		docker buildx build --progress=plain --platform=$$platform --builder="gguf-parser" --output="type=image,name=$$image,push=true" "$(SRCDIR)"; \
+	else \
+	  	platform="linux/$(GOARCH)"; \
+  		docker buildx build --progress=plain --platform=$$platform --output="type=docker,name=$$image" "$(SRCDIR)"; \
+	fi
+
+	@echo "--- $@ ---"
