@@ -242,9 +242,7 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 
 	// Embedding.
 	if !a.AttentionCausal {
-		if _, ok := opLs.Get("output.weight"); !ok {
-			e.EmbeddingOnly = true
-		}
+		e.EmbeddingOnly = true
 	}
 
 	// Weight.
