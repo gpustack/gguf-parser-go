@@ -18,6 +18,7 @@ import (
 	"github.com/urfave/cli/v2"
 
 	. "github.com/gpustack/gguf-parser-go" // nolint: stylecheck
+	"github.com/gpustack/gguf-parser-go/util/osx"
 )
 
 var Version = "v0.0.0"
@@ -399,7 +400,14 @@ func main() {
 				Value:       raw,
 				Category:    "Output",
 				Name:        "raw",
-				Usage:       "Output the file in JSON only, skip anything.",
+				Usage:       "Output the GGUF file information as JSON only, skip anything.",
+			},
+			&cli.StringFlag{
+				Destination: &rawOutput,
+				Value:       rawOutput,
+				Category:    "Output",
+				Name:        "raw-output",
+				Usage:       "Works with --raw, to save the result to the file",
 			},
 			&cli.BoolFlag{
 				Destination: &skipModel,
@@ -441,13 +449,14 @@ func main() {
 				Value:       inJson,
 				Category:    "Output",
 				Name:        "json",
+				Usage:       "Output as JSON.",
 			},
 			&cli.BoolFlag{
 				Destination: &inPrettyJson,
 				Value:       inPrettyJson,
 				Category:    "Output",
 				Name:        "json-pretty",
-				Usage:       "Output as pretty JSON.",
+				Usage:       "Works with --json, to output pretty format JSON.",
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -513,6 +522,7 @@ var (
 	offloadLayersStep  uint64
 	// output options
 	raw              bool
+	rawOutput        string
 	skipModel        bool
 	skipArchitecture bool
 	skipTokenizer    bool
@@ -686,11 +696,16 @@ func run(ctx context.Context) error {
 	// Output raw.
 
 	if raw {
-		enc := json.NewEncoder(os.Stdout)
-		if inPrettyJson {
-			enc.SetIndent("", "  ")
+		w := os.Stdout
+		if rawOutput != "" {
+			f, err := osx.CreateFile(rawOutput, 0666)
+			if err != nil {
+				return fmt.Errorf("failed to create file: %w", err)
+			}
+			defer osx.Close(f)
+			w = f
 		}
-		if err := enc.Encode(gf); err != nil {
+		if err := json.NewEncoder(w).Encode(gf); err != nil {
 			return fmt.Errorf("failed to encode JSON: %w", err)
 		}
 		return nil

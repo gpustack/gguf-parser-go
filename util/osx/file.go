@@ -101,3 +101,41 @@ func WriteFile(name string, data []byte, perm os.FileMode) error {
 
 	return os.WriteFile(p, data, perm)
 }
+
+// CreateFile is similar to os.Create but supports ~ as the home directory,
+// and also supports the parent directory creation.
+func CreateFile(name string, perm os.FileMode) (*os.File, error) {
+	p := filepath.Clean(name)
+	if strings.HasPrefix(p, "~"+string(filepath.Separator)) {
+		hd, err := os.UserHomeDir()
+		if err != nil {
+			return nil, err
+		}
+		p = filepath.Join(hd, p[2:])
+	}
+
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		return nil, err
+	}
+
+	return os.OpenFile(p, os.O_RDWR|os.O_CREATE|os.O_TRUNC, perm)
+}
+
+// OpenFile is similar to os.OpenFile but supports ~ as the home directory,
+// and also supports the parent directory creation.
+func OpenFile(name string, flag int, perm os.FileMode) (*os.File, error) {
+	p := filepath.Clean(name)
+	if strings.HasPrefix(p, "~"+string(filepath.Separator)) {
+		hd, err := os.UserHomeDir()
+		if err != nil {
+			return nil, err
+		}
+		p = filepath.Join(hd, p[2:])
+	}
+
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		return nil, err
+	}
+
+	return os.OpenFile(p, flag, perm)
+}

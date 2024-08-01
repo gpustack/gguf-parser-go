@@ -79,9 +79,10 @@ GLOBAL OPTIONS:
    Output
 
    --in-mib             Display the estimated result in table with MiB. (default: false)
-   --json               (default: false)
-   --json-pretty        Output as pretty JSON. (default: true)
-   --raw                Output the file in JSON only, skip anything. (default: false)
+   --json               Output as JSON. (default: false)
+   --json-pretty        Works with --json, to output pretty format JSON. (default: true)
+   --raw                Output the GGUF file information as JSON only, skip anything. (default: false)
+   --raw-output value   Works with --raw, to save the result to the file
    --skip-architecture  Skip to display architecture metadata. (default: false)
    --skip-estimate      Skip to estimate. (default: false)
    --skip-model         Skip to display model metadata. (default: false)
