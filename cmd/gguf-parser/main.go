@@ -13,12 +13,12 @@ import (
 
 	"github.com/gpustack/gguf-parser-go/util/anyx"
 	"github.com/gpustack/gguf-parser-go/util/json"
+	"github.com/gpustack/gguf-parser-go/util/osx"
 	"github.com/gpustack/gguf-parser-go/util/signalx"
 	"github.com/olekukonko/tablewriter"
 	"github.com/urfave/cli/v2"
 
 	. "github.com/gpustack/gguf-parser-go" // nolint: stylecheck
-	"github.com/gpustack/gguf-parser-go/util/osx"
 )
 
 var Version = "v0.0.0"
@@ -698,7 +698,7 @@ func run(ctx context.Context) error {
 	if raw {
 		w := os.Stdout
 		if rawOutput != "" {
-			f, err := osx.CreateFile(rawOutput, 0666)
+			f, err := osx.CreateFile(rawOutput, 0o666)
 			if err != nil {
 				return fmt.Errorf("failed to create file: %w", err)
 			}
