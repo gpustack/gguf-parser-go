@@ -10,7 +10,7 @@ NAME:
    gguf-parser - Review/Check/Estimate the GGUF file.
 
 USAGE:
-   gguf-parser [global options]
+   gguf-parser [GLOBAL OPTIONS]
 
 GLOBAL OPTIONS:
    --debug        Enable debugging, verbosity. (default: false)

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -23,35 +22,36 @@ import (
 
 var Version = "v0.0.0"
 
+func init() {
+	cli.VersionFlag = &cli.BoolFlag{
+		Name:               "version",
+		Aliases:            []string{"v"},
+		Usage:              "Print the version.",
+		DisableDefaultText: true,
+	}
+	cli.HelpFlag = &cli.BoolFlag{
+		Name:               "help",
+		Aliases:            []string{"h"},
+		Usage:              "Print the usage.",
+		DisableDefaultText: true,
+	}
+}
+
 func main() {
 	name := filepath.Base(os.Args[0])
 	app := &cli.App{
-		Name:                   name,
-		Usage:                  "Review/Check/Estimate the GGUF file.",
-		UsageText:              name + " [global options]",
-		Version:                Version,
-		UseShortOptionHandling: true,
-		HideVersion:            true,
-		HideHelp:               true,
-		Reader:                 os.Stdin,
-		Writer:                 os.Stdout,
-		ErrWriter:              os.Stderr,
+		Name:            name,
+		Usage:           "Review/Check/Estimate the GGUF file.",
+		UsageText:       name + " [GLOBAL OPTIONS]",
+		Version:         Version,
+		Reader:          os.Stdin,
+		Writer:          os.Stdout,
+		ErrWriter:       os.Stderr,
+		HideHelpCommand: true,
 		OnUsageError: func(c *cli.Context, _ error, _ bool) error {
 			return cli.ShowAppHelp(c)
 		},
 		Flags: []cli.Flag{
-			&cli.BoolFlag{
-				Name:               "help",
-				Aliases:            []string{"h"},
-				Usage:              "Print the usage.",
-				DisableDefaultText: true,
-			},
-			&cli.BoolFlag{
-				Name:               "version",
-				Aliases:            []string{"v"},
-				Usage:              "Print the version.",
-				DisableDefaultText: true,
-			},
 			&cli.BoolFlag{
 				Destination: &debug,
 				Value:       debug,
@@ -459,16 +459,7 @@ func main() {
 				Usage:       "Works with --json, to output pretty format JSON.",
 			},
 		},
-		Action: func(c *cli.Context) error {
-			if c.Bool("help") {
-				return cli.ShowAppHelp(c)
-			}
-			if c.Bool("version") {
-				cli.ShowVersion(c)
-				return nil
-			}
-			return run(c.Context)
-		},
+		Action: mainAction,
 	}
 
 	if err := app.RunContext(signalx.Handler(), os.Args); err != nil {
@@ -532,7 +523,9 @@ var (
 	inPrettyJson     = true
 )
 
-func run(ctx context.Context) error {
+func mainAction(c *cli.Context) error {
+	ctx := c.Context
+
 	// Prepare options.
 
 	ropts := []GGUFReadOption{
