@@ -120,7 +120,7 @@ package: build
 	if [[ "$(PACKAGE_PUBLISH)" == "true" ]]; then \
 	  	if [[ -z $$(docker buildx inspect --builder "gguf-parser") ]]; then \
       		docker run --rm --privileged tonistiigi/binfmt:qemu-v7.0.0 --install $$platform; \
-      		docker buildx create --name "gguf-parser" --driver "docker-container" --buildkitd-flags "--allow-insecure-entitlement security.insecure --allow-insecure-entitlement network.host" --use --bootstrap; \
+      		docker buildx create --name "gguf-parser" --driver "docker-container" --buildkitd-flags "--allow-insecure-entitlement security.insecure --allow-insecure-entitlement network.host" --bootstrap; \
       	fi; \
 		docker buildx build --progress=plain --platform=$$platform --builder="gguf-parser" --output="type=image,name=$$image,push=true" "$(SRCDIR)"; \
 	else \
