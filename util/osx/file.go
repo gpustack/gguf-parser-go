@@ -7,22 +7,33 @@ import (
 	"strings"
 )
 
+// InlineTilde replaces the leading ~ with the home directory.
+func InlineTilde(path string) string {
+	if path == "" {
+		return path
+	}
+	if strings.HasPrefix(path, "~"+string(filepath.Separator)) {
+		hd, err := os.UserHomeDir()
+		if err == nil {
+			path = filepath.Join(hd, path[2:])
+		}
+	}
+	return path
+}
+
 // Open is similar to os.Open but supports ~ as the home directory.
 func Open(path string) (*os.File, error) {
 	p := filepath.Clean(path)
-	if strings.HasPrefix(p, "~"+string(filepath.Separator)) {
-		hd, err := os.UserHomeDir()
-		if err != nil {
-			return nil, err
-		}
-		p = filepath.Join(hd, p[2:])
-	}
+	p = InlineTilde(p)
 	return os.Open(p)
 }
 
 // Exists checks if the given path exists.
 func Exists(path string, checks ...func(os.FileInfo) bool) bool {
-	stat, err := os.Lstat(path)
+	p := filepath.Clean(path)
+	p = InlineTilde(p)
+
+	stat, err := os.Lstat(p)
 	if err != nil {
 		return false
 	}
@@ -87,13 +98,7 @@ func Close(c io.Closer) {
 // and also supports the parent directory creation.
 func WriteFile(name string, data []byte, perm os.FileMode) error {
 	p := filepath.Clean(name)
-	if strings.HasPrefix(p, "~"+string(filepath.Separator)) {
-		hd, err := os.UserHomeDir()
-		if err != nil {
-			return err
-		}
-		p = filepath.Join(hd, p[2:])
-	}
+	p = InlineTilde(p)
 
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		return err
@@ -106,13 +111,7 @@ func WriteFile(name string, data []byte, perm os.FileMode) error {
 // and also supports the parent directory creation.
 func CreateFile(name string, perm os.FileMode) (*os.File, error) {
 	p := filepath.Clean(name)
-	if strings.HasPrefix(p, "~"+string(filepath.Separator)) {
-		hd, err := os.UserHomeDir()
-		if err != nil {
-			return nil, err
-		}
-		p = filepath.Join(hd, p[2:])
-	}
+	p = InlineTilde(p)
 
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		return nil, err
@@ -125,13 +124,7 @@ func CreateFile(name string, perm os.FileMode) (*os.File, error) {
 // and also supports the parent directory creation.
 func OpenFile(name string, flag int, perm os.FileMode) (*os.File, error) {
 	p := filepath.Clean(name)
-	if strings.HasPrefix(p, "~"+string(filepath.Separator)) {
-		hd, err := os.UserHomeDir()
-		if err != nil {
-			return nil, err
-		}
-		p = filepath.Join(hd, p[2:])
-	}
+	p = InlineTilde(p)
 
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		return nil, err
