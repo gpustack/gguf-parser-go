@@ -20,6 +20,14 @@ type GGUFTokenizerMetadata struct {
 	//
 	// Use -1 if the token is not found.
 	EOSTokenID int64 `json:"eosTokenID"`
+	// EOTTokenID is the ID of the end of text token.
+	//
+	// Use -1 if the token is not found.
+	EOTTokenID int64 `json:"eotTokenID"`
+	// EOMTokenID is the ID of the end of message token.
+	//
+	// Use -1 if the token is not found.
+	EOMTokenID int64 `json:"eomTokenID"`
 	// UnknownTokenID is the ID of the unknown token.
 	//
 	// Use -1 if the token is not found.
@@ -50,6 +58,8 @@ func (gf *GGUFFile) Tokenizer() (gt GGUFTokenizerMetadata) {
 		addedTokensKey      = "tokenizer.ggml.added_tokens"
 		bosTokenIDKey       = "tokenizer.ggml.bos_token_id"
 		eosTokenIDKey       = "tokenizer.ggml.eos_token_id"
+		eotTokenIDKey       = "tokenizer.ggml.eot_token_id"
+		eomTokenIDKey       = "tokenizer.ggml.eom_token_id"
 		unknownTokenIDKey   = "tokenizer.ggml.unknown_token_id"
 		separatorTokenIDKey = "tokenizer.ggml.separator_token_id"
 		paddingTokenIDKey   = "tokenizer.ggml.padding_token_id"
@@ -62,6 +72,8 @@ func (gf *GGUFFile) Tokenizer() (gt GGUFTokenizerMetadata) {
 		addedTokensKey,
 		bosTokenIDKey,
 		eosTokenIDKey,
+		eotTokenIDKey,
+		eomTokenIDKey,
 		unknownTokenIDKey,
 		separatorTokenIDKey,
 		paddingTokenIDKey,
@@ -69,6 +81,8 @@ func (gf *GGUFFile) Tokenizer() (gt GGUFTokenizerMetadata) {
 
 	gt.BOSTokenID = -1
 	gt.EOSTokenID = -1
+	gt.EOTTokenID = -1
+	gt.EOMTokenID = -1
 	gt.UnknownTokenID = -1
 	gt.SeparatorTokenID = -1
 	gt.PaddingTokenID = -1
@@ -94,6 +108,12 @@ func (gf *GGUFFile) Tokenizer() (gt GGUFTokenizerMetadata) {
 	}
 	if v, ok := m[eosTokenIDKey]; ok {
 		gt.EOSTokenID = ValueNumeric[int64](v)
+	}
+	if v, ok := m[eotTokenIDKey]; ok {
+		gt.EOTTokenID = ValueNumeric[int64](v)
+	}
+	if v, ok := m[eomTokenIDKey]; ok {
+		gt.EOMTokenID = ValueNumeric[int64](v)
 	}
 	if v, ok := m[unknownTokenIDKey]; ok {
 		gt.UnknownTokenID = ValueNumeric[int64](v)
