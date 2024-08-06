@@ -7,7 +7,7 @@ replace github.com/gpustack/gguf-parser-go => ../../
 require (
 	github.com/gpustack/gguf-parser-go v0.0.0-00010101000000-000000000000
 	github.com/olekukonko/tablewriter v0.0.5
-	github.com/urfave/cli/v2 v2.27.2
+	github.com/urfave/cli/v2 v2.27.3
 )
 
 require (
@@ -20,11 +20,11 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rs/dnscache v0.0.0-20230804202142-fc85eb664529 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
-	github.com/smallnest/ringbuffer v0.0.0-20240423223918-bab516b2000b // indirect
+	github.com/smallnest/ringbuffer v0.0.0-20240802023544-f37d4ed3648b // indirect
 	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
-	golang.org/x/mod v0.19.0 // indirect
-	golang.org/x/sync v0.7.0 // indirect
-	golang.org/x/sys v0.22.0 // indirect
-	golang.org/x/tools v0.23.0 // indirect
+	golang.org/x/mod v0.20.0 // indirect
+	golang.org/x/sync v0.8.0 // indirect
+	golang.org/x/sys v0.23.0 // indirect
+	golang.org/x/tools v0.24.0 // indirect
 )
