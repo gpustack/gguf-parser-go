@@ -952,7 +952,7 @@ func mainAction(c *cli.Context) error {
 			hd = []string{
 				"Arch",
 				"Context Size",
-				"Batch Size (Logic / Physical)",
+				"Batch Size (L / P)",
 				"Flash Attention",
 				"MMap Support",
 				"Embedding Only",
@@ -962,7 +962,7 @@ func mainAction(c *cli.Context) error {
 				"NonUMA RAM",
 				"NonUMA VRAM",
 			}
-			mg = []int{0, 1, 3, 4, 7}
+			mg = []int{0, 1, 2, 3, 4, 7}
 
 			switch {
 			case offloadLayersStep > e.OffloadLayers:
@@ -996,6 +996,7 @@ func mainAction(c *cli.Context) error {
 				bds[i] = []string{
 					sprintf(es.Architecture),
 					sprintf(es.ContextSize),
+					sprintf("%d / %d", es.LogicalBatchSize, es.PhysicalBatchSize),
 					sprintf(es.FlashAttention),
 					sprintf(!es.NoMMap),
 					sprintf(es.EmbeddingOnly),

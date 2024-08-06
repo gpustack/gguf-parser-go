@@ -29,6 +29,10 @@ type (
 		// EmbeddingOnly is the flag to indicate whether the model is used for embedding only,
 		// true for embedding only.
 		EmbeddingOnly bool `json:"embeddingOnly"`
+		// LogicalBatchSize is the logical batch size.
+		LogicalBatchSize int32 `json:"logicalBatchSize"`
+		// PhysicalBatchSize is the physical batch size.
+		PhysicalBatchSize int32 `json:"physicalBatchSize"`
 		// Load is the memory usage for running the GGUF file in RAM.
 		Load LLaMACppMemoryUsage `json:"load"`
 		// Offload is the memory usage for loading the GGUF file in VRAM.
@@ -142,6 +146,10 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 		e.EmbeddingOnly = true
 		o.PhysicalBatchSize = o.LogicalBatchSize
 	}
+
+	// Batch size.
+	e.LogicalBatchSize = *o.LogicalBatchSize
+	e.PhysicalBatchSize = *o.PhysicalBatchSize
 
 	// Init hyperparameters,
 	// https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L6957-L7000.
@@ -483,6 +491,10 @@ type (
 		// EmbeddingOnly is the flag to indicate whether the model is used for embedding only,
 		// true for embedding only.
 		EmbeddingOnly bool `json:"embeddingOnly"`
+		// LogicalBatchSize is the logical batch size.
+		LogicalBatchSize int32 `json:"logicalBatchSize"`
+		// PhysicalBatchSize is the physical batch size.
+		PhysicalBatchSize int32 `json:"physicalBatchSize"`
 	}
 
 	// LLaMACppUsageEstimateMemorySummary represents the memory summary of the usage for loading the GGUF file in llama.cpp.
@@ -596,6 +608,8 @@ func (e LLaMACppUsageEstimate) Summarize(mmap bool, nonUMARamFootprint, nonUMAVr
 	es.FlashAttention = e.FlashAttention
 	es.NoMMap = e.NoMMap
 	es.EmbeddingOnly = e.EmbeddingOnly
+	es.LogicalBatchSize = e.LogicalBatchSize
+	es.PhysicalBatchSize = e.PhysicalBatchSize
 
 	return es
 }
