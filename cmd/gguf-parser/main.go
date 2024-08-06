@@ -301,6 +301,15 @@ func main() {
 					"if the context size is larger than the maximum context size.",
 			},
 			&cli.IntFlag{
+				Destination: &logicalBatchSize,
+				Value:       logicalBatchSize,
+				Category:    "Estimate",
+				Name:        "batch-size",
+				Aliases:     []string{"b"},
+				Usage: "Specify the logical batch size, " +
+					"which is used to estimate the usage.",
+			},
+			&cli.IntFlag{
 				Destination: &physicalBatchSize,
 				Value:       physicalBatchSize,
 				Category:    "Estimate",
@@ -501,6 +510,7 @@ var (
 	// estimate options
 	ctxSize            = -1
 	inMaxCtxSize       bool
+	logicalBatchSize   = 2048
 	physicalBatchSize  = 512
 	parallelSize       = 1
 	kvType             = "f16"
@@ -561,6 +571,9 @@ func mainAction(c *cli.Context) error {
 	}
 	if inMaxCtxSize {
 		eopts = append(eopts, WithinMaxContextSize())
+	}
+	if logicalBatchSize > 0 {
+		eopts = append(eopts, WithLogicalBatchSize(int32(logicalBatchSize)))
 	}
 	if physicalBatchSize > 0 {
 		eopts = append(eopts, WithPhysicalBatchSize(int32(physicalBatchSize)))
@@ -939,6 +952,7 @@ func mainAction(c *cli.Context) error {
 			hd = []string{
 				"Arch",
 				"Context Size",
+				"Batch Size (Logic / Physical)",
 				"Flash Attention",
 				"MMap Support",
 				"Embedding Only",
@@ -948,7 +962,7 @@ func mainAction(c *cli.Context) error {
 				"NonUMA RAM",
 				"NonUMA VRAM",
 			}
-			mg = []int{0, 1, 2, 3, 6}
+			mg = []int{0, 1, 3, 4, 7}
 
 			switch {
 			case offloadLayersStep > e.OffloadLayers:

@@ -19,6 +19,7 @@ GLOBAL OPTIONS:
 
    Estimate
 
+   --batch-size value, -b value                         Specify the logical batch size, which is used to estimate the usage. (default: 2048)
    --ctx-size value, -c value                           Specify the size of prompt context, which is used to estimate the usage, default is equal to the model's maximum context size. (default: -1)
    --flash-attention, --fa                              Specify enabling Flash Attention, which is used to estimate the usage. Flash Attention can reduce the usage of RAM/VRAM. (default: false)
    --gpu-layers value, --ngl value                      Specify how many layers of the main model to offload, which is used to estimate the usage, default is full offloaded. (default: -1)

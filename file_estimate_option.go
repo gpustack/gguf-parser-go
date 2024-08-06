@@ -12,6 +12,7 @@ type (
 		Tokenizer           *GGUFTokenizerMetadata
 		ContextSize         *int32
 		InMaxContextSize    bool
+		LogicalBatchSize    *int32
 		PhysicalBatchSize   *int32
 		ParallelSize        *int32
 		CacheKeyType        *GGMLType
@@ -58,6 +59,16 @@ func WithContextSize(size int32) LLaMACppUsageEstimateOption {
 func WithinMaxContextSize() LLaMACppUsageEstimateOption {
 	return func(o *_LLaMACppUsageEstimateOptions) {
 		o.InMaxContextSize = true
+	}
+}
+
+// WithLogicalBatchSize sets the logical batch size for the estimate.
+func WithLogicalBatchSize(size int32) LLaMACppUsageEstimateOption {
+	return func(o *_LLaMACppUsageEstimateOptions) {
+		if size <= 0 {
+			return
+		}
+		o.LogicalBatchSize = &size
 	}
 }
 

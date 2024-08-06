@@ -97,6 +97,9 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 	if o.OffloadKVCache == nil {
 		o.OffloadKVCache = ptr.To(true)
 	}
+	if o.LogicalBatchSize == nil {
+		o.LogicalBatchSize = ptr.To(int32(2048))
+	}
 	if o.PhysicalBatchSize == nil {
 		o.PhysicalBatchSize = ptr.To(int32(512))
 	}
@@ -132,6 +135,12 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 		}
 
 		e.FlashAttention = o.FlashAttention
+	}
+
+	// Embedding.
+	if !a.AttentionCausal {
+		e.EmbeddingOnly = true
+		o.PhysicalBatchSize = o.LogicalBatchSize
 	}
 
 	// Init hyperparameters,
@@ -239,11 +248,6 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 	ipLs, opLs, _ := ioLs.Cut([]string{
 		"token_embd.weight",
 	})
-
-	// Embedding.
-	if !a.AttentionCausal {
-		e.EmbeddingOnly = true
-	}
 
 	// Weight.
 	{
