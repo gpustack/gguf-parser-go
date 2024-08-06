@@ -573,9 +573,12 @@ func mainAction(c *cli.Context) error {
 		eopts = append(eopts, WithinMaxContextSize())
 	}
 	if logicalBatchSize > 0 {
-		eopts = append(eopts, WithLogicalBatchSize(int32(logicalBatchSize)))
+		eopts = append(eopts, WithLogicalBatchSize(int32(max(32, logicalBatchSize))))
 	}
 	if physicalBatchSize > 0 {
+		if physicalBatchSize > logicalBatchSize {
+			return errors.New("--ubatch-size must be less than or equal to --batch-size")
+		}
 		eopts = append(eopts, WithPhysicalBatchSize(int32(physicalBatchSize)))
 	}
 	if parallelSize > 0 {

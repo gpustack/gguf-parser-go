@@ -103,9 +103,15 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 	}
 	if o.LogicalBatchSize == nil {
 		o.LogicalBatchSize = ptr.To(int32(2048))
+	} else {
+		// See https://github.com/ggerganov/llama.cpp/blob/0bf16de07b0692e7df26b9a633e232bbd66e0360/src/llama.cpp#L16519-L16525.
+		o.LogicalBatchSize = ptr.To(max(32, *o.LogicalBatchSize))
 	}
 	if o.PhysicalBatchSize == nil {
 		o.PhysicalBatchSize = ptr.To(int32(512))
+	}
+	if *o.PhysicalBatchSize > *o.LogicalBatchSize {
+		panic("physical batch size must be less than or equal to logical batch size")
 	}
 
 	// Architecture and tokenizer metadata.
