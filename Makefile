@@ -9,11 +9,17 @@ GOARCH := $(shell go env GOARCH)
 LINT_DIRTY ?= false
 VERSION ?= $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null | tr '[:upper:]' '[:lower:]' || echo "unknown")
 
+DEPS_UPDATE ?= false
 deps:
 	@echo "+++ $@ +++"
 
 	cd $(SRCDIR) && go mod tidy && go mod download
 	cd $(SRCDIR)/cmd/gguf-parser && go mod tidy && go mod download
+
+	if [[ "$(DEPS_UPDATE)" == "true" ]]; then \
+		cd $(SRCDIR) && go get -u -v ./...; \
+		cd $(SRCDIR)/cmd/gguf-parser && go get -u -v ./...; \
+	fi
 
 	@echo "--- $@ ---"
 
