@@ -20,13 +20,15 @@ GLOBAL OPTIONS:
    Estimate
 
    --batch-size value, -b value                         Specify the logical batch size, which is used to estimate the usage. (default: 2048)
+   --cache-type-k value, --ctk value                    Specify the type of Key cache, which is used to estimate the usage, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1]. (default: "f16")
+   --cache-type-v value, --ctv value                    Specify the type of Value cache, which is used to estimate the usage, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1]. (default: "f16")
    --ctx-size value, -c value                           Specify the size of prompt context, which is used to estimate the usage, default is equal to the model's maximum context size. (default: -1)
    --flash-attention, --fa                              Specify enabling Flash Attention, which is used to estimate the usage. Flash Attention can reduce the usage of RAM/VRAM. (default: false)
    --gpu-layers value, --ngl value                      Specify how many layers of the main model to offload, which is used to estimate the usage, default is full offloaded. (default: -1)
    --gpu-layers-draft value, --ngld value               Specify how many layers of the draft model to offload, which is used to estimate the usage, default is full offloaded. (default: -1)
    --gpu-layers-step value                              Specify the step of layers to offload, works with --gpu-layers. (default: 0)
    --in-max-ctx-size                                    Limit the context size to the maximum context size of the model, if the context size is larger than the maximum context size. (default: false)
-   --kv-type value                                      Specify the type of Key-Value cache, which is used to estimate the usage, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1] (default: "f16")
+   --kv-type value                                      Specify the type of Key-Value cache, which is used to estimate the usage, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1]. (Deprecated, use --cache-type-k/--cache-type-v instead, will be removed after v0.7.0) (default: "f16")
    --no-kv-offload, --nkvo                              Specify disabling Key-Value offloading, which is used to estimate the usage. Disable Key-Value offloading can reduce the usage of VRAM. (default: false)
    --no-mmap                                            Specify disabling Memory-Mapped using, which is used to estimate the usage. Memory-Mapped can avoid loading the entire model weights into RAM. (default: false)
    --parallel-size value, --parallel value, --np value  Specify the number of parallel sequences to decode, which is used to estimate the usage. (default: 1)

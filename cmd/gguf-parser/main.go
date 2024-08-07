@@ -333,7 +333,26 @@ func main() {
 				Category:    "Estimate",
 				Name:        "kv-type",
 				Usage: "Specify the type of Key-Value cache, " +
-					"which is used to estimate the usage, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1]",
+					"which is used to estimate the usage, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1]. " +
+					"(Deprecated, use --cache-type-k/--cache-type-v instead, will be removed after v0.7.0)",
+			},
+			&cli.StringFlag{
+				Destination: &cacheKeyType,
+				Value:       cacheKeyType,
+				Category:    "Estimate",
+				Name:        "cache-type-k",
+				Aliases:     []string{"ctk"},
+				Usage: "Specify the type of Key cache, " +
+					"which is used to estimate the usage, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1].",
+			},
+			&cli.StringFlag{
+				Destination: &cacheValueType,
+				Value:       cacheValueType,
+				Category:    "Estimate",
+				Name:        "cache-type-v",
+				Aliases:     []string{"ctv"},
+				Usage: "Specify the type of Value cache, " +
+					"which is used to estimate the usage, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1].",
 			},
 			&cli.BoolFlag{
 				Destination: &noKVOffload,
@@ -514,6 +533,8 @@ var (
 	physicalBatchSize  = 512
 	parallelSize       = 1
 	kvType             = "f16"
+	cacheKeyType       = "f16"
+	cacheValueType     = "f16"
 	noKVOffload        bool
 	flashAttention     bool
 	platformFootprint  = "150,250"
@@ -585,26 +606,14 @@ func mainAction(c *cli.Context) error {
 		eopts = append(eopts, WithParallelSize(int32(parallelSize)))
 	}
 	if kvType != "" {
-		kv := GGMLTypeF16
-		switch kvType {
-		case "f32":
-			kv = GGMLTypeF32
-		case "f16":
-			kv = GGMLTypeF16
-		case "q8_0":
-			kv = GGMLTypeQ8_0
-		case "q4_0":
-			kv = GGMLTypeQ4_0
-		case "q4_1":
-			kv = GGMLTypeQ4_1
-		case "iq4_nl":
-			kv = GGMLTypeIQ4_NL
-		case "q5_0":
-			kv = GGMLTypeQ5_0
-		case "q5_1":
-			kv = GGMLTypeQ5_1
-		}
+		kv := toGGMLType(kvType)
 		eopts = append(eopts, WithCacheKeyType(kv), WithCacheValueType(kv))
+	}
+	if cacheKeyType != "" {
+		eopts = append(eopts, WithCacheKeyType(toGGMLType(cacheKeyType)))
+	}
+	if cacheValueType != "" {
+		eopts = append(eopts, WithCacheValueType(toGGMLType(cacheValueType)))
 	}
 	if noKVOffload {
 		eopts = append(eopts, WithoutOffloadKVCache())
@@ -1087,4 +1096,27 @@ func tenary(c bool, t, f any) any {
 		return t
 	}
 	return f
+}
+
+func toGGMLType(s string) GGMLType {
+	t := GGMLTypeF16
+	switch s {
+	case "f32":
+		t = GGMLTypeF32
+	case "f16":
+		t = GGMLTypeF16
+	case "q8_0":
+		t = GGMLTypeQ8_0
+	case "q4_0":
+		t = GGMLTypeQ4_0
+	case "q4_1":
+		t = GGMLTypeQ4_1
+	case "iq4_nl":
+		t = GGMLTypeIQ4_NL
+	case "q5_0":
+		t = GGMLTypeQ5_0
+	case "q5_1":
+		t = GGMLTypeQ5_1
+	}
+	return t
 }
