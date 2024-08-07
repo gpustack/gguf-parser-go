@@ -20,7 +20,7 @@ import (
 
 const (
 	OllamaDefaultScheme    = "https"
-	OllamaDefaultRegistry  = "ollama.com"
+	OllamaDefaultRegistry  = "registry.ollama.ai"
 	OllamaDefaultNamespace = "library"
 	OllamaDefaultTag       = "latest"
 )
@@ -190,6 +190,7 @@ func (om *OllamaModel) Complete(ctx context.Context, cli *http.Client) error {
 	if err != nil {
 		return fmt.Errorf("new request: %w", err)
 	}
+	req.Header.Set("Accept", "application/vnd.docker.distribution.manifest.v2+json")
 
 	err = httpx.Do(om.Client, req, func(resp *http.Response) error {
 		if resp.StatusCode != http.StatusOK {

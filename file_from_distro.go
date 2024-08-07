@@ -56,14 +56,18 @@ func ParseGGUFFileFromOllamaModel(ctx context.Context, model *OllamaModel, opts 
 		}()
 	}
 
-	cli := httpx.Client(
+	var cli *http.Client
+	cli = httpx.Client(
 		httpx.ClientOptions().
-			WithUserAgent("gguf-parser-go").
+			WithUserAgent(OllamaUserAgent()).
 			If(o.Debug, func(x *httpx.ClientOption) *httpx.ClientOption {
 				return x.WithDebug()
 			}).
 			WithTimeout(0).
 			WithRetryBackoff(1*time.Second, 5*time.Second, 10).
+			WithRetryIf(func(resp *http.Response, err error) bool {
+				return OllamaRegistryAuthorizeRetry(cli, resp) || httpx.DefaultRetry(resp, err)
+			}).
 			WithTransport(
 				httpx.TransportOptions().
 					WithoutKeepalive().

@@ -9,6 +9,7 @@ require (
 	github.com/rs/dnscache v0.0.0-20230804202142-fc85eb664529
 	github.com/smallnest/ringbuffer v0.0.0-20240802023544-f37d4ed3648b
 	github.com/stretchr/testify v1.9.0
+	golang.org/x/crypto v0.26.0
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56
 	golang.org/x/sync v0.8.0
 	golang.org/x/sys v0.23.0

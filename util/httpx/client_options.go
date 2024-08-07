@@ -13,7 +13,7 @@ type ClientOption struct {
 
 	timeout       time.Duration
 	debug         bool
-	retryIf       func(resp *http.Response, err error) (retry bool)
+	retryIf       RetryFunc
 	retryBackoff  func(attemptNum int, resp *http.Response) (wait time.Duration, ok bool)
 	roundTrippers []func(req *http.Request) error
 }
@@ -22,7 +22,7 @@ func ClientOptions() *ClientOption {
 	return &ClientOption{
 		TransportOption: TransportOptions().WithoutKeepalive(),
 		timeout:         30 * time.Second,
-		retryIf:         defaultRetryIf,
+		retryIf:         DefaultRetry,
 		retryBackoff:    createRetryBackoff(100*time.Millisecond, 5*time.Second, 5),
 	}
 }
@@ -58,9 +58,11 @@ func (o *ClientOption) WithDebug() *ClientOption {
 	return o
 }
 
+type RetryFunc func(resp *http.Response, err error) (retry bool)
+
 // WithRetryIf specifies the if-condition of retry operation for request,
 // or stops retrying if setting with `nil`.
-func (o *ClientOption) WithRetryIf(retryIf func(resp *http.Response, err error) (retry bool)) *ClientOption {
+func (o *ClientOption) WithRetryIf(retryIf RetryFunc) *ClientOption {
 	if o == nil {
 		return o
 	}
@@ -137,9 +139,9 @@ func (o *ClientOption) If(condition bool, then func(*ClientOption) *ClientOption
 	return o
 }
 
-// defaultRetryIf is the default retry condition,
+// DefaultRetry is the default retry condition,
 // inspired by https://github.com/hashicorp/go-retryablehttp/blob/40b0cad1633fd521cee5884724fcf03d039aaf3f/client.go#L68-L86.
-func defaultRetryIf(resp *http.Response, respErr error) bool {
+func DefaultRetry(resp *http.Response, respErr error) bool {
 	if respErr != nil {
 		switch errMsg := respErr.Error(); {
 		case strings.Contains(errMsg, `redirects`):
