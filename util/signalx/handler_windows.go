@@ -5,4 +5,4 @@ import (
 	"syscall"
 )
 
-var sigs = []os.Signal{syscall.SIGINT, syscall.SIGTERM}
+var sigs = []os.Signal{syscall.SIGINT}
