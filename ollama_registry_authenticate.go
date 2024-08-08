@@ -21,6 +21,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
+	"github.com/gpustack/gguf-parser-go/util/funcx"
 	"github.com/gpustack/gguf-parser-go/util/httpx"
 	"github.com/gpustack/gguf-parser-go/util/osx"
 	"github.com/gpustack/gguf-parser-go/util/stringx"
@@ -42,7 +43,11 @@ func OllamaUserAgent() string {
 //
 // OllamaRegistryAuthorizeRetry leverages OllamaRegistryAuthorize to obtain an authorization token,
 // and configures the request with the token.
-func OllamaRegistryAuthorizeRetry(cli *http.Client, resp *http.Response) bool {
+func OllamaRegistryAuthorizeRetry(resp *http.Response, cli *http.Client) bool {
+	if resp == nil || cli == nil {
+		return false
+	}
+
 	if resp.StatusCode != http.StatusUnauthorized && resp.Request == nil {
 		// Not unauthorized, return.
 		return false
@@ -60,11 +65,7 @@ func OllamaRegistryAuthorizeRetry(cli *http.Client, resp *http.Response) bool {
 		// No authentication token, return.
 		return false
 	}
-	authzToken, err := OllamaRegistryAuthorize(req.Context(), cli, authnToken)
-	if err != nil {
-		// Failed to authorize, return.
-		return false
-	}
+	authzToken := funcx.MustNoError(OllamaRegistryAuthorize(req.Context(), cli, authnToken))
 	req.Header.Set(httpHeaderAuthorization, tokenPrefix+authzToken)
 	return true
 }
@@ -170,11 +171,7 @@ func OllamaRegistryAuthorize(ctx context.Context, cli *http.Client, authnToken s
 // OllamaSingKeyLoad loads the signing key for Ollama,
 // and generates a new key if not exists.
 func OllamaSingKeyLoad() (ssh.Signer, error) {
-	hd, err := os.UserHomeDir()
-	if err != nil {
-		return nil, err
-	}
-	hd = filepath.Join(hd, ".ollama")
+	hd := filepath.Join(osx.UserHomeDir(), ".ollama")
 
 	priKeyPath := filepath.Join(hd, "id_ed25519")
 	if !osx.ExistsFile(priKeyPath) {

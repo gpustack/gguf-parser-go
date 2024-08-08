@@ -2,7 +2,6 @@ package gguf_parser
 
 import (
 	"net/url"
-	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -110,16 +109,9 @@ func SkipRangeDownloadDetection() GGUFReadOption {
 
 // UseCache caches the remote reading result.
 func UseCache() GGUFReadOption {
-	var cd string
-	{
-		hd, err := os.UserHomeDir()
-		if err != nil {
-			hd = filepath.Join(os.TempDir(), time.Now().Format(time.DateOnly))
-		}
-		cd = filepath.Join(hd, ".cache")
-		if runtime.GOOS == "windows" {
-			cd = osx.Getenv("APPDATA", cd)
-		}
+	cd := filepath.Join(osx.UserHomeDir(), ".cache")
+	if runtime.GOOS == "windows" {
+		cd = osx.Getenv("APPDATA", cd)
 	}
 	return func(o *_GGUFReadOptions) {
 		o.CachePath = filepath.Join(cd, "gguf-parser")
@@ -137,7 +129,7 @@ func SkipCache() GGUFReadOption {
 
 // UseCachePath uses the given path to cache the remote reading result.
 func UseCachePath(path string) GGUFReadOption {
-	path = strings.TrimSpace(filepath.Clean(path))
+	path = strings.TrimSpace(filepath.Clean(osx.InlineTilde(path)))
 	return func(o *_GGUFReadOptions) {
 		if path == "" {
 			return

@@ -66,7 +66,7 @@ func ParseGGUFFileFromOllamaModel(ctx context.Context, model *OllamaModel, opts 
 			WithTimeout(0).
 			WithRetryBackoff(1*time.Second, 5*time.Second, 10).
 			WithRetryIf(func(resp *http.Response, err error) bool {
-				return OllamaRegistryAuthorizeRetry(cli, resp) || httpx.DefaultRetry(resp, err)
+				return httpx.DefaultRetry(resp, err) || OllamaRegistryAuthorizeRetry(resp, cli)
 			}).
 			WithTransport(
 				httpx.TransportOptions().

@@ -20,7 +20,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
-	"strings"
 	"syscall"
 )
 
@@ -35,13 +34,7 @@ func OpenMmapFile(path string) (*MmapFile, error) {
 
 func OpenMmapFileWithSize(path string, size int) (*MmapFile, error) {
 	p := filepath.Clean(path)
-	if strings.HasPrefix(p, "~"+string(filepath.Separator)) {
-		hd, err := os.UserHomeDir()
-		if err != nil {
-			return nil, err
-		}
-		p = filepath.Join(hd, p[2:])
-	}
+	p = InlineTilde(p)
 
 	f, err := os.Open(p)
 	if err != nil {
