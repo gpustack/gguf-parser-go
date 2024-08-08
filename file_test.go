@@ -241,7 +241,7 @@ func TestParseGGUFFileFromOllama(t *testing.T) {
 
 	cases := []string{
 		"gemma2",
-		"llama3:8b",
+		"llama3.1",
 		"qwen2:72b-instruct-q3_K_M",
 	}
 	for _, tc := range cases {
