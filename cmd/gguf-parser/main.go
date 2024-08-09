@@ -369,7 +369,7 @@ func main() {
 				Value:       flashAttention,
 				Category:    "Estimate",
 				Name:        "flash-attention",
-				Aliases:     []string{"fa"},
+				Aliases:     []string{"flash-attn", "fa"},
 				Usage: "Specify enabling Flash Attention, " +
 					"which is used to estimate the usage. " +
 					"Flash Attention can reduce the usage of RAM/VRAM.",
