@@ -104,8 +104,6 @@ gguf-parser:
 		fi;\
 	done
 
-ci: deps generate test lint
-
 build: gguf-parser
 
 PACKAGE_PUBLISH ?= false
@@ -135,3 +133,5 @@ package: build
 	fi
 
 	@echo "--- $@ ---"
+
+ci: deps generate test lint build
