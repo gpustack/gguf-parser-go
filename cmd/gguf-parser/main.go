@@ -14,7 +14,8 @@ import (
 	"github.com/gpustack/gguf-parser-go/util/json"
 	"github.com/gpustack/gguf-parser-go/util/osx"
 	"github.com/gpustack/gguf-parser-go/util/signalx"
-	"github.com/olekukonko/tablewriter"
+	"github.com/jedib0t/go-pretty/v6/table"
+	"github.com/jedib0t/go-pretty/v6/text"
 	"github.com/urfave/cli/v2"
 
 	. "github.com/gpustack/gguf-parser-go" // nolint: stylecheck
@@ -328,15 +329,6 @@ func main() {
 					"which is used to estimate the usage.",
 			},
 			&cli.StringFlag{
-				Destination: &kvType,
-				Value:       kvType,
-				Category:    "Estimate",
-				Name:        "kv-type",
-				Usage: "Specify the type of Key-Value cache, " +
-					"which is used to estimate the usage, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1]. " +
-					"(Deprecated, use --cache-type-k/--cache-type-v instead, will be removed after v0.7.0)",
-			},
-			&cli.StringFlag{
 				Destination: &cacheKeyType,
 				Value:       cacheKeyType,
 				Category:    "Estimate",
@@ -375,11 +367,46 @@ func main() {
 					"Flash Attention can reduce the usage of RAM/VRAM.",
 			},
 			&cli.StringFlag{
+				Destination: &splitMode,
+				Value:       splitMode,
+				Category:    "Estimate",
+				Name:        "split-mode",
+				Aliases:     []string{"sm"},
+				Usage: "Specify how to split the model across multiple devices, " +
+					"which is used to estimate the usage, select from [layer, row, none]. " +
+					"Since gguf-parser always estimates the usage of VRAM, " +
+					"\"none\" is meaningless here, keep for compatibility.",
+			},
+			&cli.StringFlag{
+				Destination: &tensorSplit,
+				Value:       tensorSplit,
+				Category:    "Estimate",
+				Name:        "tensor-split",
+				Aliases:     []string{"tp"},
+				Usage: "Specify the fraction of the model to offload to each device, " +
+					"which is used to estimate the usage, " +
+					"it is a comma-separated list of integer. " +
+					"Since gguf-parser cannot recognize the host GPU devices or RPC servers, " +
+					"must explicitly set --tensor-split to indicate how many devices are used.",
+			},
+			&cli.UintFlag{
+				Destination: &mainGPU,
+				Value:       mainGPU,
+				Category:    "Estimate",
+				Name:        "main-gpu",
+				Aliases:     []string{"mg"},
+				Usage: "Specify the GPU to use for the model (with --split-mode = none) " +
+					"or for intermediate results and KV (with --split-mode = row), " +
+					"which is used to estimate the usage. " +
+					"Since gguf-parser cannot recognize the host GPU devices or RPC servers, " +
+					"--main-gpu only works when --tensor-split is set.",
+			},
+			&cli.StringFlag{
 				Destination: &platformFootprint,
 				Value:       platformFootprint,
 				Category:    "Estimate",
 				Name:        "platform-footprint",
-				Usage: "Specify the platform footprint(RAM,VRAM) in MiB, " +
+				Usage: "Specify the platform footprint(RAM,VRAM) of running host in MiB, " +
 					"which is used to estimate the NonUMA usage, " +
 					"default is 150,250. " +
 					"Different platform always gets different RAM and VRAM footprints, " +
@@ -532,11 +559,13 @@ var (
 	logicalBatchSize   = 2048
 	physicalBatchSize  = 512
 	parallelSize       = 1
-	kvType             = "f16"
 	cacheKeyType       = "f16"
 	cacheValueType     = "f16"
 	noKVOffload        bool
 	flashAttention     bool
+	splitMode          = "layer"
+	tensorSplit        string
+	mainGPU            uint
 	platformFootprint  = "150,250"
 	noMMap             bool
 	offloadLayers      = -1
@@ -605,10 +634,6 @@ func mainAction(c *cli.Context) error {
 	if parallelSize > 0 {
 		eopts = append(eopts, WithParallelSize(int32(parallelSize)))
 	}
-	if kvType != "" {
-		kv := toGGMLType(kvType)
-		eopts = append(eopts, WithCacheKeyType(kv), WithCacheValueType(kv))
-	}
 	if cacheKeyType != "" {
 		eopts = append(eopts, WithCacheKeyType(toGGMLType(cacheKeyType)))
 	}
@@ -620,6 +645,37 @@ func mainAction(c *cli.Context) error {
 	}
 	if flashAttention {
 		eopts = append(eopts, WithFlashAttention())
+	}
+	switch splitMode {
+	case "row":
+		eopts = append(eopts, WithSplitMode(LLaMACppSplitModeRow))
+	case "none":
+		eopts = append(eopts, WithSplitMode(LLaMACppSplitModeNone))
+	default:
+		eopts = append(eopts, WithSplitMode(LLaMACppSplitModeLayer))
+	}
+	if tensorSplit != "" {
+		ss := strings.Split(tensorSplit, ",")
+		var vs float64
+		vv := make([]float64, len(ss))
+		vf := make([]float64, len(ss))
+		for i, s := range ss {
+			v, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+			if err != nil {
+				return errors.New("--tensor-split has invalid integer")
+			}
+			vs += v
+			vv[i] = vs
+		}
+		for i, v := range vv {
+			vf[i] = v / vs
+		}
+		eopts = append(eopts, WithTensorSplitFraction(vf))
+		if mainGPU < uint(len(vv)) {
+			eopts = append(eopts, WithMainGPUIndex(int(mainGPU)))
+		} else {
+			return errors.New("--main-gpu must be less than item size of --tensor-split")
+		}
 	}
 
 	// Parse GGUF file.
@@ -849,34 +905,37 @@ func mainAction(c *cli.Context) error {
 	if !skipModel {
 		tprint(
 			"MODEL",
-			[]string{
-				"Name",
-				"Arch",
-				"Quantization",
-				"Little Endian",
-				"Size",
-				"Parameters",
-				"BPW",
+			[][]any{
+				{
+					"Name",
+					"Arch",
+					"Quantization",
+					"Little Endian",
+					"Size",
+					"Parameters",
+					"BPW",
+				},
 			},
-			nil,
-			[]string{
-				m.Name,
-				m.Architecture,
-				sprintf(m.FileType),
-				sprintf(m.LittleEndian),
-				sprintf(m.Size),
-				sprintf(m.Parameters),
-				sprintf(m.BitsPerWeight),
+			[][]any{
+				{
+					m.Name,
+					m.Architecture,
+					sprintf(m.FileType),
+					sprintf(m.LittleEndian),
+					sprintf(m.Size),
+					sprintf(m.Parameters),
+					sprintf(m.BitsPerWeight),
+				},
 			})
 	}
 
 	if !skipArchitecture {
 		var (
-			hd []string
-			bd []string
+			hd []any
+			bd []any
 		)
 		if a.Architecture != "clip" {
-			hd = []string{
+			hd = []any{
 				"Max Context Len",
 				"Embedding Len",
 				"Embedding GQA",
@@ -887,7 +946,7 @@ func mainAction(c *cli.Context) error {
 				"Expert Cnt",
 				"Vocabulary Len",
 			}
-			bd = []string{
+			bd = []any{
 				sprintf(a.MaximumContextLength),
 				sprintf(a.EmbeddingLength),
 				sprintf(a.EmbeddingGQA),
@@ -899,14 +958,14 @@ func mainAction(c *cli.Context) error {
 				sprintf(a.VocabularyLength),
 			}
 		} else {
-			hd = []string{
+			hd = []any{
 				"Embedding Len",
 				"Layers",
 				"Feed Forward Len",
 				"Encoder",
 				"LLaVA MultimodalProjector",
 			}
-			bd = []string{
+			bd = []any{
 				sprintf(a.EmbeddingLength),
 				sprintf(a.BlockCount),
 				sprintf(a.FeedForwardLength),
@@ -916,65 +975,82 @@ func mainAction(c *cli.Context) error {
 		}
 		tprint(
 			"ARCHITECTURE",
-			hd,
-			nil,
-			bd)
+			[][]any{hd},
+			[][]any{bd})
 	}
 
 	if !skipTokenizer && t.Model != "" {
 		tprint(
 			"TOKENIZER",
-			[]string{
-				"Model",
-				"Tokens Size",
-				"Tokens Len",
-				"Added Tokens Len",
-				"BOS Token",
-				"EOS Token",
-				"EOT Token",
-				"EOM Token",
-				"Unknown Token",
-				"Separator Token",
-				"Padding Token",
+			[][]any{
+				{
+					"Model",
+					"Tokens Size",
+					"Tokens Len",
+					"Added Tokens Len",
+					"BOS Token",
+					"EOS Token",
+					"EOT Token",
+					"EOM Token",
+					"Unknown Token",
+					"Separator Token",
+					"Padding Token",
+				},
 			},
-			nil,
-			[]string{
-				t.Model,
-				sprintf(tenary(t.TokensSize <= 0, "N/A", GGUFBytesScalar(t.TokensSize))),
-				sprintf(tenary(t.TokensLength <= 0, "N/A", t.TokensLength)),
-				sprintf(tenary(t.AddedTokensLength <= 0, "N/A", t.AddedTokensLength)),
-				sprintf(tenary(t.BOSTokenID < 0, "N/A", t.BOSTokenID)),
-				sprintf(tenary(t.EOSTokenID < 0, "N/A", t.EOSTokenID)),
-				sprintf(tenary(t.EOTTokenID < 0, "N/A", t.EOTTokenID)),
-				sprintf(tenary(t.EOMTokenID < 0, "N/A", t.EOMTokenID)),
-				sprintf(tenary(t.UnknownTokenID < 0, "N/A", t.UnknownTokenID)),
-				sprintf(tenary(t.SeparatorTokenID < 0, "N/A", t.SeparatorTokenID)),
-				sprintf(tenary(t.PaddingTokenID < 0, "N/A", t.PaddingTokenID)),
+			[][]any{
+				{
+					t.Model,
+					sprintf(tenary(t.TokensSize <= 0, "N/A", GGUFBytesScalar(t.TokensSize))),
+					sprintf(tenary(t.TokensLength <= 0, "N/A", t.TokensLength)),
+					sprintf(tenary(t.AddedTokensLength <= 0, "N/A", t.AddedTokensLength)),
+					sprintf(tenary(t.BOSTokenID < 0, "N/A", t.BOSTokenID)),
+					sprintf(tenary(t.EOSTokenID < 0, "N/A", t.EOSTokenID)),
+					sprintf(tenary(t.EOTTokenID < 0, "N/A", t.EOTTokenID)),
+					sprintf(tenary(t.EOMTokenID < 0, "N/A", t.EOMTokenID)),
+					sprintf(tenary(t.UnknownTokenID < 0, "N/A", t.UnknownTokenID)),
+					sprintf(tenary(t.SeparatorTokenID < 0, "N/A", t.SeparatorTokenID)),
+					sprintf(tenary(t.PaddingTokenID < 0, "N/A", t.PaddingTokenID)),
+				},
 			})
 	}
 
 	if !skipEstimate {
 		var (
-			hd  []string
-			mg  []int
-			bds [][]string
+			hds [][]any
+			bds [][]any
 		)
 		es := e.Summarize(mmap, platformRAM, platformVRAM)
 		if e.Architecture != "clip" {
-			hd = []string{
-				"Arch",
-				"Context Size",
-				"Batch Size (L / P)",
-				"Flash Attention",
-				"MMap Support",
-				"Embedding Only",
-				"Offload Layers",
-				"Full Offloaded",
-				"UMA (RAM + VRAM)",
-				"NonUMA RAM",
-				"NonUMA VRAM",
+			hds = [][]any{
+				{
+					"Arch",
+					"Context Size",
+					"Batch Size (L / P)",
+					"Flash Attention",
+					"MMap Load",
+					"Embedding Only",
+					"Offload Layers",
+					"Full Offloaded",
+					"RAM",
+					"RAM",
+				},
+				{
+					"Arch",
+					"Context Size",
+					"Batch Size (L / P)",
+					"Flash Attention",
+					"MMap Load",
+					"Embedding Only",
+					"Offload Layers",
+					"Full Offloaded",
+					"UMA",
+					"NonUMA",
+				},
 			}
-			mg = []int{0, 1, 2, 3, 4, 7}
+			for i := range es.Memory[0].VRAMs {
+				hds[0] = append(hds[0], fmt.Sprintf("VRAM %d", i), fmt.Sprintf("VRAM %d", i))
+				hds[1] = append(hds[1], "UMA", "NonUMA")
+			}
 
 			switch {
 			case offloadLayersStep > e.OffloadLayers:
@@ -1003,44 +1079,68 @@ func mainAction(c *cli.Context) error {
 				es.Memory = ess
 			}
 
-			bds = make([][]string, len(es.Memory))
+			bds = make([][]any, len(es.Memory))
 			for i := range es.Memory {
-				bds[i] = []string{
+				bds[i] = []any{
 					sprintf(es.Architecture),
 					sprintf(es.ContextSize),
 					sprintf("%d / %d", es.LogicalBatchSize, es.PhysicalBatchSize),
-					sprintf(es.FlashAttention),
-					sprintf(!es.NoMMap),
-					sprintf(es.EmbeddingOnly),
+					sprintf(tenary(es.FlashAttention, "Enabled", "Disabled")),
+					sprintf(tenary(!es.NoMMap, "Supported", "Not Supported")),
+					sprintf(tenary(es.EmbeddingOnly, "Yes", "No")),
 					sprintf(tenary(es.Memory[i].FullOffloaded, sprintf("%d (%d + 1)",
 						es.Memory[i].OffloadLayers, es.Memory[i].OffloadLayers-1), es.Memory[i].OffloadLayers)),
 					sprintf(tenary(es.Memory[i].FullOffloaded, "Yes", "No")),
-					sprintf("%s + %s = %s", es.Memory[i].UMA.RAM, es.Memory[i].UMA.VRAM, es.Memory[i].UMA.RAM+es.Memory[i].UMA.VRAM),
-					sprintf(es.Memory[i].NonUMA.RAM),
-					sprintf(es.Memory[i].NonUMA.VRAM),
+					sprintf(es.Memory[i].RAM.UMA),
+					sprintf(es.Memory[i].RAM.NonUMA),
+				}
+				for _, v := range es.Memory[i].VRAMs {
+					bds[i] = append(bds[i],
+						sprintf(v.UMA),
+						sprintf(v.NonUMA))
 				}
 			}
 		} else {
-			hd = []string{
-				"Arch",
-				"Offload Layers",
-				"Full Offloaded",
-				"(V)RAM",
+			hds = [][]any{
+				{
+					"Arch",
+					"Offload Layers",
+					"Full Offloaded",
+					"RAM",
+					"RAM",
+				},
+				{
+					"Arch",
+					"Offload Layers",
+					"Full Offloaded",
+					"UMA",
+					"NonUMA",
+				},
 			}
-			bds = [][]string{
+			for i := range es.Memory[0].VRAMs {
+				hds[0] = append(hds[0], fmt.Sprintf("VRAM %d", i), fmt.Sprintf("VRAM %d", i))
+				hds[1] = append(hds[1], "UMA", "NonUMA")
+			}
+
+			bds = [][]any{
 				{
 					sprintf(es.Architecture),
 					sprintf(es.Memory[0].OffloadLayers),
 					sprintf(tenary(es.Memory[0].FullOffloaded, "Yes", "No")),
-					sprintf(max(es.Memory[0].UMA.RAM, es.Memory[0].UMA.VRAM)),
+					sprintf(es.Memory[0].RAM.UMA),
+					sprintf(es.Memory[0].RAM.NonUMA),
 				},
+			}
+			for _, v := range es.Memory[0].VRAMs {
+				bds[0] = append(bds[0],
+					sprintf(v.UMA),
+					sprintf(v.NonUMA))
 			}
 		}
 		tprint(
 			"ESTIMATE",
-			hd,
-			mg,
-			bds...)
+			hds,
+			bds)
 	}
 
 	return nil
@@ -1056,38 +1156,28 @@ func sprintf(f any, a ...any) string {
 	return anyx.String(f)
 }
 
-func tprint(title string, header []string, merges []int, body ...[]string) {
-	title = strings.ToUpper(title)
-
-	tb := tablewriter.NewWriter(os.Stdout)
-
-	tb.SetTablePadding("\t")
-	tb.SetAlignment(tablewriter.ALIGN_CENTER)
-	tb.SetHeaderLine(true)
-	tb.SetRowLine(true)
-
-	tb.SetHeaderAlignment(tablewriter.ALIGN_CENTER)
-	tb.SetAutoFormatHeaders(false)
-	tb.SetHeader(append([]string{"\\"}, header...))
-
-	tb.SetAutoWrapText(false)
-	tb.SetColMinWidth(0, 12)
-	tb.SetAutoMergeCellsByColumnIndex(func() (r []int) {
-		if len(merges) == 0 {
-			return []int{0}
-		}
-		r = make([]int, len(merges)+1)
-		r[0] = 0
-		for i := range merges {
-			r[i] = merges[i] + 1
+func tprint(title string, headers, bodies [][]any) {
+	tw := table.NewWriter()
+	tw.SetOutputMirror(os.Stdout)
+	tw.SetTitle(strings.ToUpper(title))
+	for i := range headers {
+		tw.AppendHeader(headers[i], table.RowConfig{AutoMerge: true, AutoMergeAlign: text.AlignCenter})
+	}
+	for i := range bodies {
+		tw.AppendRow(bodies[i])
+	}
+	tw.SetColumnConfigs(func() (r []table.ColumnConfig) {
+		r = make([]table.ColumnConfig, len(headers[0]))
+		for i := range r {
+			r[i].Number = i + 1
+			r[i].AutoMerge = true
+			r[i].Align = text.AlignCenter
+			r[i].AlignHeader = text.AlignCenter
 		}
 		return r
 	}())
-	for i := range body {
-		tb.Append(append([]string{title}, body[i]...))
-	}
-
-	tb.Render()
+	tw.Style().Options.SeparateRows = true
+	tw.Render()
 	fmt.Println()
 }
 

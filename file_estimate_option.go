@@ -20,6 +20,9 @@ type (
 		OffloadKVCache      *bool
 		OffloadLayers       *uint64
 		FlashAttention      bool
+		SplitMode           LLaMACppSplitMode
+		TensorSplitFraction []float64
+		MainGPUIndex        int
 		MultimodalProjector *LLaMACppUsageEstimate
 		Drafter             *LLaMACppUsageEstimate
 	}
@@ -138,6 +141,61 @@ func WithOffloadLayers(layers uint64) LLaMACppUsageEstimateOption {
 func WithFlashAttention() LLaMACppUsageEstimateOption {
 	return func(o *_LLaMACppUsageEstimateOptions) {
 		o.FlashAttention = true
+	}
+}
+
+// LLaMACppSplitMode is the split mode for LLaMACpp.
+type LLaMACppSplitMode uint
+
+const (
+	LLaMACppSplitModeLayer LLaMACppSplitMode = iota
+	LLaMACppSplitModeRow
+	LLaMACppSplitModeNone
+	_LLAMACppSplitModeMax
+)
+
+// WithSplitMode sets the split mode for the estimate.
+func WithSplitMode(mode LLaMACppSplitMode) LLaMACppUsageEstimateOption {
+	return func(o *_LLaMACppUsageEstimateOptions) {
+		if mode < _LLAMACppSplitModeMax {
+			o.SplitMode = mode
+		}
+	}
+}
+
+// WithTensorSplitFraction sets the tensor split cumulative fractions for the estimate.
+//
+// WithTensorSplitFraction accepts a variadic number of fractions,
+// all fraction values must be in the range of [0, 1],
+// and the last fraction must be 1.
+//
+// For example, WithTensorSplitFraction(0.2, 0.4, 0.6, 0.8, 1) will split the tensor into five parts with 20% each.
+func WithTensorSplitFraction(fractions []float64) LLaMACppUsageEstimateOption {
+	return func(o *_LLaMACppUsageEstimateOptions) {
+		if len(fractions) == 0 {
+			return
+		}
+		for _, f := range fractions {
+			if f < 0 || f > 1 {
+				return
+			}
+		}
+		if fractions[len(fractions)-1] != 1 {
+			return
+		}
+		o.TensorSplitFraction = fractions
+	}
+}
+
+// WithMainGPUIndex sets the main device for the estimate.
+//
+// When split mode is LLaMACppSplitModeNone, the main device is the only device.
+// When split mode is LLaMACppSplitModeRow, the main device handles the intermediate results and KV.
+//
+// WithMainGPUIndex only works when TensorSplitFraction is set.
+func WithMainGPUIndex(di int) LLaMACppUsageEstimateOption {
+	return func(o *_LLaMACppUsageEstimateOptions) {
+		o.MainGPUIndex = di
 	}
 }
 

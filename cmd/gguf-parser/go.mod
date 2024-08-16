@@ -6,7 +6,7 @@ replace github.com/gpustack/gguf-parser-go => ../../
 
 require (
 	github.com/gpustack/gguf-parser-go v0.6.0
-	github.com/olekukonko/tablewriter v0.0.5
+	github.com/jedib0t/go-pretty/v6 v6.5.9
 	github.com/urfave/cli/v2 v2.27.3
 )
 

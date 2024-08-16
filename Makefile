@@ -102,6 +102,9 @@ gguf-parser:
 			GOBIN="$(SRCDIR)/.sbin" go install github.com/konoui/lipo@v0.9.1; \
 		  	"$(SRCDIR)/.sbin/lipo" -create -output $(SRCDIR)/.dist/gguf-parser-darwin-universal $(SRCDIR)/.dist/gguf-parser-darwin-amd64 $(SRCDIR)/.dist/gguf-parser-darwin-arm64; \
 		fi;\
+		if [[ $$os == "$(GOOS)" ]] && [[ $$arch == "$(GOARCH)" ]]; then \
+			cp -rf $(SRCDIR)/.dist/gguf-parser-$$os-$$arch$$suffix $(SRCDIR)/.dist/gguf-parser$$suffix; \
+		fi; \
 	done
 
 build: gguf-parser

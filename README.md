@@ -1,6 +1,7 @@
 # GGUF Parser
 
-> tl;dr, Go parser for the [GGUF](https://github.com/ggerganov/ggml/blob/master/docs/gguf.md).
+> tl;dr, Review/Check [GGUF](https://github.com/ggerganov/ggml/blob/master/docs/gguf.md) files and estimate the memory
+> usage.
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/gpustack/gguf-parser-go)](https://goreportcard.com/report/github.com/gpustack/gguf-parser-go)
 [![CI](https://img.shields.io/github/actions/workflow/status/gpustack/gguf-parser-go/cmd.yml?label=ci)](https://github.com/gpustack/gguf-parser-go/actions)
@@ -14,153 +15,441 @@ with GGML and executors based on GGML. GGUF is a binary format that is designed 
 and for ease of reading. Models are traditionally developed using PyTorch or another framework, and then converted to
 GGUF for use in GGML.
 
-GGUF Parser provides some functions to parse the GGUF file in Go for the following purposes:
+GGUF Parser helps in reviewing and estimating the usage of a GGUF format model without download it.
 
-- Read metadata from the GGUF file without downloading the whole model remotely.
-- Estimate the model usage.
+## Key Features
 
-Import the package as below.
+- **No File Required**: GGUF Parser uses chunking reading to parse the metadata of remote GGUF file, which means you
+  don't need to download the entire file and load it.
+- **Accurate Prediction**: The evaluation results of GGUF Parser usually deviate from the actual usage by about 100MiB.
+- **Fast**: GGUF Parser is written in Go, which is fast and efficient.
+
+## Agenda
+
+- [Notes](#notes)
+- [Installation](#installation)
+- [Overview](#overview)
+    + [Parse](#parse)
+        * [Local File](#parse-local-file)
+        * [Remote File](#parse-remote-file)
+        * [From HuggingFace](#parse-from-huggingface)
+        * [From ModelScope](#parse-from-modelscope)
+        * [From Ollama Library](#parse-from-ollama-library)
+    + [Estimate](#estimate)
+        * [Full Layers Offload (default)](#full-layers-offload-default)
+        * [Zero Layers Offload](#zero-layers-offload)
+        * [Specific Layers Offload](#specific-layers-offload)
+        * [Specific Context Size](#specific-context-size)
+        * [Enable Flash Attention](#enable-flash-attention)
+        * [Disable MMap](#disable-mmap)
+        * [Get Proper Offload Layers](#get-proper-offload-layers)
+
+## Notes
+
+- The table result `UMA` indicates the memory usage of Apple MacOS only.
+- Since v0.7.0, GGUF Parser is going to support estimating the usage of multiple GPUs.
+    + The table result `RAM` means the system memory usage when
+      running [LLaMA.Cpp](https://github.com/ggerganov/llama.cpp) or LLaMA.Cpp like application.
+    + The table result `VRAM 0` means the first visible GPU memory usage when serving the model.
+    + For example, `--tensor-split=1,1,1` means the model will be split into 3 parts with 33% each,
+      and results in `VRAM 0`, `VRAM 1` and `VRAM 2` cells.
+
+## Installation
+
+Install from [releases](https://github.com/gpustack/gguf-parser-go/releases)
+or `go install github.com/gpustack/gguf-parser-go/cmd/gguf-parser@latest`.
+
+## Overview
+
+### Parse
+
+#### Parse Local File
 
 ```shell
-go get github.com/gpustack/gguf-parser-go
-```
+$ gguf-parser --path="~/.cache/lm-studio/models/NousResearch/Hermes-2-Pro-Mistral-7B-GGUF/Hermes-2-Pro-Mistral-7B.Q5_K_M.gguf"
++-----------------------------------------------------------------------------------+
+| MODEL                                                                             |
++-------+-------+----------------+---------------+----------+------------+----------+
+|  NAME |  ARCH |  QUANTIZATION  | LITTLE ENDIAN |   SIZE   | PARAMETERS |    BPW   |
++-------+-------+----------------+---------------+----------+------------+----------+
+| jeffq | llama | IQ3_XXS/Q5_K_M |      true     | 4.78 GiB |   7.24 B   | 5.67 bpw |
++-------+-------+----------------+---------------+----------+------------+----------+
 
-If you need one-shot command-line, try [gguf-parser](./cmd/gguf-parser) from [releases](https://github.com/gpustack/gguf-parser-go/releases) or `go install github.com/gpustack/gguf-parser-go/cmd/gguf-parser` from HEAD.
++---------------------------------------------------------------------------------------------------------------------------------------------------+
+| ARCHITECTURE                                                                                                                                      |
++-----------------+---------------+---------------+------------------+--------------------+--------+------------------+------------+----------------+
+| MAX CONTEXT LEN | EMBEDDING LEN | EMBEDDING GQA | ATTENTION CAUSAL | ATTENTION HEAD CNT | LAYERS | FEED FORWARD LEN | EXPERT CNT | VOCABULARY LEN |
++-----------------+---------------+---------------+------------------+--------------------+--------+------------------+------------+----------------+
+|      32768      |      4096     |       4       |       true       |         32         |   32   |       14336      |      0     |      32032     |
++-----------------+---------------+---------------+------------------+--------------------+--------+------------------+------------+----------------+
 
-## Calls
++-------------------------------------------------------------------------------------------------------------------------------------------------------+
+| TOKENIZER                                                                                                                                             |
++-------+-------------+------------+------------------+-----------+-----------+-----------+-----------+---------------+-----------------+---------------+
+| MODEL | TOKENS SIZE | TOKENS LEN | ADDED TOKENS LEN | BOS TOKEN | EOS TOKEN | EOT TOKEN | EOM TOKEN | UNKNOWN TOKEN | SEPARATOR TOKEN | PADDING TOKEN |
++-------+-------------+------------+------------------+-----------+-----------+-----------+-----------+---------------+-----------------+---------------+
+| llama |  450.50 KiB |    32032   |        N/A       |     1     |   32000   |    N/A    |    N/A    |      N/A      |       N/A       |      N/A      |
++-------+-------------+------------+------------------+-----------+-----------+-----------+-----------+---------------+-----------------+---------------+
 
-```mermaid
-flowchart
-    parseGGUFFileRemote[/parseGGUFFileRemote/]
-    parseGGUFFile[/parseGGUFFile/]
-    ParseGGUFFile -.-> parseGGUFFile
-    ParseGGUFFileFromHuggingFace -.-> ParseGGUFFileRemote
-    ParseGGUFFileFromModelScope -.-> ParseGGUFFileRemote
-    ParseGGUFFileRemote -.-> parseGGUFFileRemote
-    parseGGUFFileRemote -.-> parseGGUFFile
-    ParseGGUFFileFromOllama -.-> ParseGGUFFileFromOllamaModel
-    ParseGGUFFileFromOllamaModel -.-> parseGGUFFileRemote
-```
-
-## Examples
-
-### Load model
-
-```go
-import (
-    "github.com/davecgh/go-spew/spew"
-    . "github.com/gpustack/gguf-parser-go"
-)
-
-f, err := ParseGGUFFile("path/to/model.gguf")
-if err != nil {
-    panic(err)
-}
-
-spew.Dump(f)
++--------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ESTIMATE                                                                                                                                                                 |
++-------+--------------+--------------------+-----------------+-----------+----------------+----------------+----------------+------------------------+--------------------+
+|  ARCH | CONTEXT SIZE | BATCH SIZE (L / P) | FLASH ATTENTION | MMAP LOAD | EMBEDDING ONLY | OFFLOAD LAYERS | FULL OFFLOADED |           RAM          |       VRAM 0       |
+|       |              |                    |                 |           |                |                |                +-----------+------------+--------+-----------+
+|       |              |                    |                 |           |                |                |                |    UMA    |   NONUMA   |   UMA  |   NONUMA  |
++-------+--------------+--------------------+-----------------+-----------+----------------+----------------+----------------+-----------+------------+--------+-----------+
+| llama |     32768    |     2048 / 512     |     Disabled    | Supported |       No       |   33 (32 + 1)  |       Yes      | 88.25 MiB | 238.25 MiB |  4 GiB | 11.06 GiB |
++-------+--------------+--------------------+-----------------+-----------+----------------+----------------+----------------+-----------+------------+--------+-----------+
 
 ```
 
-#### Use MMap
+#### Parse Remote File
 
-```go
-f, err := ParseGGUFFile("path/to/model.gguf", UseMMap())
-if err != nil {
-    panic(err)
-}
+```shell
+$ gguf-parser --url="https://huggingface.co/NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO-GGUF/resolve/main/Nous-Hermes-2-Mixtral-8x7B-DPO.Q3_K_M.gguf"
++----------------------------------------------------------------------------------+
+| MODEL                                                                            |
++----------+-------+--------------+---------------+--------+------------+----------+
+|   NAME   |  ARCH | QUANTIZATION | LITTLE ENDIAN |  SIZE  | PARAMETERS |    BPW   |
++----------+-------+--------------+---------------+--------+------------+----------+
+| emozilla | llama |  Q4_K/Q3_K_M |      true     | 21 GiB |   46.70 B  | 3.86 bpw |
++----------+-------+--------------+---------------+--------+------------+----------+
 
-```
++---------------------------------------------------------------------------------------------------------------------------------------------------+
+| ARCHITECTURE                                                                                                                                      |
++-----------------+---------------+---------------+------------------+--------------------+--------+------------------+------------+----------------+
+| MAX CONTEXT LEN | EMBEDDING LEN | EMBEDDING GQA | ATTENTION CAUSAL | ATTENTION HEAD CNT | LAYERS | FEED FORWARD LEN | EXPERT CNT | VOCABULARY LEN |
++-----------------+---------------+---------------+------------------+--------------------+--------+------------------+------------+----------------+
+|      32768      |      4096     |       4       |       true       |         32         |   32   |       14336      |      8     |      32002     |
++-----------------+---------------+---------------+------------------+--------------------+--------+------------------+------------+----------------+
 
-#### Skip large metadata
++-------------------------------------------------------------------------------------------------------------------------------------------------------+
+| TOKENIZER                                                                                                                                             |
++-------+-------------+------------+------------------+-----------+-----------+-----------+-----------+---------------+-----------------+---------------+
+| MODEL | TOKENS SIZE | TOKENS LEN | ADDED TOKENS LEN | BOS TOKEN | EOS TOKEN | EOT TOKEN | EOM TOKEN | UNKNOWN TOKEN | SEPARATOR TOKEN | PADDING TOKEN |
++-------+-------------+------------+------------------+-----------+-----------+-----------+-----------+---------------+-----------------+---------------+
+| llama |  449.91 KiB |    32002   |        N/A       |     1     |   32000   |    N/A    |    N/A    |       0       |       N/A       |       2       |
++-------+-------------+------------+------------------+-----------+-----------+-----------+-----------+---------------+-----------------+---------------+
 
-```go
-f, err := ParseGGUFFile("path/to/model.gguf", SkipLargeMetadata())
-if err != nil {
-    panic(err)
-}
++----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ESTIMATE                                                                                                                                                                         |
++-------+--------------+--------------------+-----------------+---------------+----------------+----------------+----------------+-------------------------+-----------------------+
+|  ARCH | CONTEXT SIZE | BATCH SIZE (L / P) | FLASH ATTENTION |   MMAP LOAD   | EMBEDDING ONLY | OFFLOAD LAYERS | FULL OFFLOADED |           RAM           |         VRAM 0        |
+|       |              |                    |                 |               |                |                |                +------------+------------+-----------+-----------+
+|       |              |                    |                 |               |                |                |                |     UMA    |   NONUMA   |    UMA    |   NONUMA  |
++-------+--------------+--------------------+-----------------+---------------+----------------+----------------+----------------+------------+------------+-----------+-----------+
+| llama |     32768    |     2048 / 512     |     Disabled    | Not Supported |       No       |   33 (32 + 1)  |       Yes      | 245.10 MiB | 395.10 MiB | 24.84 GiB | 27.31 GiB |
++-------+--------------+--------------------+-----------------+---------------+----------------+----------------+----------------+------------+------------+-----------+-----------+
 
-```
-
-### Load model from remote
-
-```go
-import (
-    "context"
-    "github.com/davecgh/go-spew/spew"
-    . "github.com/gpustack/gguf-parser-go"
-)
-
-f, err := ParseGGUFFileRemote(context.Background(), "https://example.com/model.gguf")
-if err != nil {
-    panic(err)
-}
-
-spew.Dump(f)
-
-```
-
-#### Adjust requesting buffer size
-
-```go
-f, err := ParseGGUFFileRemote(context.Background(), "https://example.com/model.gguf", UseBufferSize(1 * 1024 * 1024) /* 1M */)
-if err != nil {
-    panic(err)
-}
 
 ```
 
-### View information
+#### Parse From HuggingFace
 
-```go
-// Model
-spew.Dump(f.Model())
+```shell
+$ gguf-parser --hf-repo="openbmb/MiniCPM-Llama3-V-2_5-gguf" --hf-file="ggml-model-Q5_K_M.gguf" --hf-mmproj-file="mmproj-model-f16.gguf"
++-----------------------------------------------------------------------------------+
+| MODEL                                                                             |
++-------+-------+----------------+---------------+----------+------------+----------+
+|  NAME |  ARCH |  QUANTIZATION  | LITTLE ENDIAN |   SIZE   | PARAMETERS |    BPW   |
++-------+-------+----------------+---------------+----------+------------+----------+
+| model | llama | IQ3_XXS/Q5_K_M |      true     | 5.33 GiB |   8.03 B   | 5.70 bpw |
++-------+-------+----------------+---------------+----------+------------+----------+
 
-// Architecture
-spew.Dump(f.Architecture())
++---------------------------------------------------------------------------------------------------------------------------------------------------+
+| ARCHITECTURE                                                                                                                                      |
++-----------------+---------------+---------------+------------------+--------------------+--------+------------------+------------+----------------+
+| MAX CONTEXT LEN | EMBEDDING LEN | EMBEDDING GQA | ATTENTION CAUSAL | ATTENTION HEAD CNT | LAYERS | FEED FORWARD LEN | EXPERT CNT | VOCABULARY LEN |
++-----------------+---------------+---------------+------------------+--------------------+--------+------------------+------------+----------------+
+|       8192      |      4096     |       4       |       true       |         32         |   32   |       14336      |      0     |     128256     |
++-----------------+---------------+---------------+------------------+--------------------+--------+------------------+------------+----------------+
 
-// Tokenizer
-spew.Dump(f.Tokenizer())
++-------------------------------------------------------------------------------------------------------------------------------------------------------+
+| TOKENIZER                                                                                                                                             |
++-------+-------------+------------+------------------+-----------+-----------+-----------+-----------+---------------+-----------------+---------------+
+| MODEL | TOKENS SIZE | TOKENS LEN | ADDED TOKENS LEN | BOS TOKEN | EOS TOKEN | EOT TOKEN | EOM TOKEN | UNKNOWN TOKEN | SEPARATOR TOKEN | PADDING TOKEN |
++-------+-------------+------------+------------------+-----------+-----------+-----------+-----------+---------------+-----------------+---------------+
+|  gpt2 |    2 MiB    |   128256   |        N/A       |   128000  |   128001  |    N/A    |    N/A    |     128002    |       N/A       |       0       |
++-------+-------------+------------+------------------+-----------+-----------+-----------+-----------+---------------+-----------------+---------------+
 
-```
-
-### Estimate usage in [llama.cpp](https://github.com/ggerganov/llama.cpp)
-
-> The evaluation result is close to those run with `llama-cli`([examples/main/main.cpp](https://github.com/ggerganov/llama.cpp/blob/master/examples/main/main.cpp)).
-
-```go
-es := f.EstimateLLaMACppUsage()
-spew.Dump(es)
-
-// Since the estimated result is detail and lack of context,
-// you can summarize the result as below.
-s := es.Summarize(true /* load via mmap */, 0, 0 /* no unified memory RAM, VRAM footprint */)
-spew.Dump(s)
-
-```
-
-#### Estimate with larger prompt
-
-```go
-es := f.EstimateLLaMACppUsage(WithContextSize(4096) /* Use 4k context */))
-spew.Dump(es)
-
-// Since the estimated result is detail and lack of context,
-// you can summarize the result as below.
-s := es.Summarize(true /* load via mmap */, 0, 0 /* no unified memory RAM, VRAM footprint */)
-spew.Dump(s)
++-------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ESTIMATE                                                                                                                                                                |
++-------+--------------+--------------------+-----------------+-----------+----------------+----------------+----------------+------------------------+-------------------+
+|  ARCH | CONTEXT SIZE | BATCH SIZE (L / P) | FLASH ATTENTION | MMAP LOAD | EMBEDDING ONLY | OFFLOAD LAYERS | FULL OFFLOADED |           RAM          |       VRAM 0      |
+|       |              |                    |                 |           |                |                |                +-----------+------------+--------+----------+
+|       |              |                    |                 |           |                |                |                |    UMA    |   NONUMA   |   UMA  |  NONUMA  |
++-------+--------------+--------------------+-----------------+-----------+----------------+----------------+----------------+-----------+------------+--------+----------+
+| llama |     8192     |     2048 / 512     |     Disabled    | Supported |       No       |   33 (32 + 1)  |       Yes      | 96.85 MiB | 246.85 MiB |  1 GiB | 7.45 GiB |
++-------+--------------+--------------------+-----------------+-----------+----------------+----------------+----------------+-----------+------------+--------+----------+
 
 ```
 
-#### Estimate with specific offload layers
+#### Parse From ModelScope
 
-```go
-es := f.EstimateLLaMACppUsage(WithOffloadLayers(10) /* Offload last 10 layers to GPU */))
-spew.Dump(es)
+```shell
+$ gguf-parser --ms-repo="shaowenchen/chinese-alpaca-2-13b-16k-gguf" --ms-file="chinese-alpaca-2-13b-16k.Q5_K.gguf"
++----------------------------------------------------------------------------------+
+| MODEL                                                                            |
++------+-------+----------------+---------------+----------+------------+----------+
+| NAME |  ARCH |  QUANTIZATION  | LITTLE ENDIAN |   SIZE   | PARAMETERS |    BPW   |
++------+-------+----------------+---------------+----------+------------+----------+
+|  ..  | llama | IQ3_XXS/Q5_K_M |      true     | 8.76 GiB |   13.25 B  | 5.68 bpw |
++------+-------+----------------+---------------+----------+------------+----------+
 
-// Since the estimated result is detail and lack of context,
-// you can summarize the result as below.
-s := es.Summarize(true /* load via mmap */, 0, 0 /* no unified memory RAM, VRAM footprint */)
-spew.Dump(s)
++---------------------------------------------------------------------------------------------------------------------------------------------------+
+| ARCHITECTURE                                                                                                                                      |
++-----------------+---------------+---------------+------------------+--------------------+--------+------------------+------------+----------------+
+| MAX CONTEXT LEN | EMBEDDING LEN | EMBEDDING GQA | ATTENTION CAUSAL | ATTENTION HEAD CNT | LAYERS | FEED FORWARD LEN | EXPERT CNT | VOCABULARY LEN |
++-----------------+---------------+---------------+------------------+--------------------+--------+------------------+------------+----------------+
+|      16384      |      5120     |       1       |       true       |         N/A        |   40   |       13824      |      0     |      55296     |
++-----------------+---------------+---------------+------------------+--------------------+--------+------------------+------------+----------------+
+
++-------------------------------------------------------------------------------------------------------------------------------------------------------+
+| TOKENIZER                                                                                                                                             |
++-------+-------------+------------+------------------+-----------+-----------+-----------+-----------+---------------+-----------------+---------------+
+| MODEL | TOKENS SIZE | TOKENS LEN | ADDED TOKENS LEN | BOS TOKEN | EOS TOKEN | EOT TOKEN | EOM TOKEN | UNKNOWN TOKEN | SEPARATOR TOKEN | PADDING TOKEN |
++-------+-------------+------------+------------------+-----------+-----------+-----------+-----------+---------------+-----------------+---------------+
+| llama |  769.83 KiB |    55296   |        N/A       |     1     |     2     |    N/A    |    N/A    |      N/A      |       N/A       |      N/A      |
++-------+-------------+------------+------------------+-----------+-----------+-----------+-----------+---------------+-----------------+---------------+
+
++-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ESTIMATE                                                                                                                                                                    |
++-------+--------------+--------------------+-----------------+-----------+----------------+----------------+----------------+------------------------+-----------------------+
+|  ARCH | CONTEXT SIZE | BATCH SIZE (L / P) | FLASH ATTENTION | MMAP LOAD | EMBEDDING ONLY | OFFLOAD LAYERS | FULL OFFLOADED |           RAM          |         VRAM 0        |
+|       |              |                    |                 |           |                |                |                +-----------+------------+-----------+-----------+
+|       |              |                    |                 |           |                |                |                |    UMA    |   NONUMA   |    UMA    |   NONUMA  |
++-------+--------------+--------------------+-----------------+-----------+----------------+----------------+----------------+-----------+------------+-----------+-----------+
+| llama |     16384    |     2048 / 512     |     Disabled    | Supported |       No       |   41 (40 + 1)  |       Yes      | 60.95 MiB | 210.95 MiB | 12.50 GiB | 22.74 GiB |
++-------+--------------+--------------------+-----------------+-----------+----------------+----------------+----------------+-----------+------------+-----------+-----------+
+
+```
+
+#### Parse From Ollama Library
+
+```shell
+$ gguf-parser --ol-model="llama3.1"
++------------------------------------------------------------------------------------------------------+
+| MODEL                                                                                                |
++----------------------------+-------+--------------+---------------+----------+------------+----------+
+|            NAME            |  ARCH | QUANTIZATION | LITTLE ENDIAN |   SIZE   | PARAMETERS |    BPW   |
++----------------------------+-------+--------------+---------------+----------+------------+----------+
+| Meta Llama 3.1 8B Instruct | llama |     Q4_0     |      true     | 4.33 GiB |   8.03 B   | 4.64 bpw |
++----------------------------+-------+--------------+---------------+----------+------------+----------+
+
++---------------------------------------------------------------------------------------------------------------------------------------------------+
+| ARCHITECTURE                                                                                                                                      |
++-----------------+---------------+---------------+------------------+--------------------+--------+------------------+------------+----------------+
+| MAX CONTEXT LEN | EMBEDDING LEN | EMBEDDING GQA | ATTENTION CAUSAL | ATTENTION HEAD CNT | LAYERS | FEED FORWARD LEN | EXPERT CNT | VOCABULARY LEN |
++-----------------+---------------+---------------+------------------+--------------------+--------+------------------+------------+----------------+
+|      131072     |      4096     |       4       |       true       |         32         |   32   |       14336      |      0     |     128256     |
++-----------------+---------------+---------------+------------------+--------------------+--------+------------------+------------+----------------+
+
++-------------------------------------------------------------------------------------------------------------------------------------------------------+
+| TOKENIZER                                                                                                                                             |
++-------+-------------+------------+------------------+-----------+-----------+-----------+-----------+---------------+-----------------+---------------+
+| MODEL | TOKENS SIZE | TOKENS LEN | ADDED TOKENS LEN | BOS TOKEN | EOS TOKEN | EOT TOKEN | EOM TOKEN | UNKNOWN TOKEN | SEPARATOR TOKEN | PADDING TOKEN |
++-------+-------------+------------+------------------+-----------+-----------+-----------+-----------+---------------+-----------------+---------------+
+|  gpt2 |    2 MiB    |   128256   |        N/A       |   128000  |   128009  |    N/A    |    N/A    |      N/A      |       N/A       |      N/A      |
++-------+-------------+------------+------------------+-----------+-----------+-----------+-----------+---------------+-----------------+---------------+
+
++---------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ESTIMATE                                                                                                                                                                  |
++-------+--------------+--------------------+-----------------+-----------+----------------+----------------+----------------+-------------------------+--------------------+
+|  ARCH | CONTEXT SIZE | BATCH SIZE (L / P) | FLASH ATTENTION | MMAP LOAD | EMBEDDING ONLY | OFFLOAD LAYERS | FULL OFFLOADED |           RAM           |       VRAM 0       |
+|       |              |                    |                 |           |                |                |                +------------+------------+--------+-----------+
+|       |              |                    |                 |           |                |                |                |     UMA    |   NONUMA   |   UMA  |   NONUMA  |
++-------+--------------+--------------------+-----------------+-----------+----------------+----------------+----------------+------------+------------+--------+-----------+
+| llama |    131072    |     2048 / 512     |     Disabled    | Supported |       No       |   33 (32 + 1)  |       Yes      | 323.62 MiB | 473.62 MiB | 16 GiB | 28.68 GiB |
++-------+--------------+--------------------+-----------------+-----------+----------------+----------------+----------------+------------+------------+--------+-----------+
+
+$ # Ollama Model includes the preset params and other artifacts, like multimodal projectors or LoRA adapters, 
+$ # you can get the usage of Ollama running by using `--ol-usage` option.
+
+$ gguf-parser --ol-model="gemma2" --ol-usage
++------------------------------------------------------------------------------------------+
+| MODEL                                                                                    |
++---------------+--------+--------------+---------------+----------+------------+----------+
+|      NAME     |  ARCH  | QUANTIZATION | LITTLE ENDIAN |   SIZE   | PARAMETERS |    BPW   |
++---------------+--------+--------------+---------------+----------+------------+----------+
+| gemma-2-9b-it | gemma2 |     Q4_0     |      true     | 5.06 GiB |   9.24 B   | 4.71 bpw |
++---------------+--------+--------------+---------------+----------+------------+----------+
+
++---------------------------------------------------------------------------------------------------------------------------------------------------+
+| ARCHITECTURE                                                                                                                                      |
++-----------------+---------------+---------------+------------------+--------------------+--------+------------------+------------+----------------+
+| MAX CONTEXT LEN | EMBEDDING LEN | EMBEDDING GQA | ATTENTION CAUSAL | ATTENTION HEAD CNT | LAYERS | FEED FORWARD LEN | EXPERT CNT | VOCABULARY LEN |
++-----------------+---------------+---------------+------------------+--------------------+--------+------------------+------------+----------------+
+|       8192      |      3584     |       2       |       true       |         16         |   42   |       14336      |      0     |     256000     |
++-----------------+---------------+---------------+------------------+--------------------+--------+------------------+------------+----------------+
+
++-------------------------------------------------------------------------------------------------------------------------------------------------------+
+| TOKENIZER                                                                                                                                             |
++-------+-------------+------------+------------------+-----------+-----------+-----------+-----------+---------------+-----------------+---------------+
+| MODEL | TOKENS SIZE | TOKENS LEN | ADDED TOKENS LEN | BOS TOKEN | EOS TOKEN | EOT TOKEN | EOM TOKEN | UNKNOWN TOKEN | SEPARATOR TOKEN | PADDING TOKEN |
++-------+-------------+------------+------------------+-----------+-----------+-----------+-----------+---------------+-----------------+---------------+
+| llama |   3.80 MiB  |   256000   |        N/A       |     2     |     1     |    N/A    |    N/A    |       3       |       N/A       |       0       |
++-------+-------------+------------+------------------+-----------+-----------+-----------+-----------+---------------+-----------------+---------------+
+
++------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ESTIMATE                                                                                                                                                                     |
++--------+--------------+--------------------+-----------------+-----------+----------------+----------------+----------------+------------------------+-----------------------+
+|  ARCH  | CONTEXT SIZE | BATCH SIZE (L / P) | FLASH ATTENTION | MMAP LOAD | EMBEDDING ONLY | OFFLOAD LAYERS | FULL OFFLOADED |           RAM          |         VRAM 0        |
+|        |              |                    |                 |           |                |                |                +-----------+------------+------------+----------+
+|        |              |                    |                 |           |                |                |                |    UMA    |   NONUMA   |     UMA    |  NONUMA  |
++--------+--------------+--------------------+-----------------+-----------+----------------+----------------+----------------+-----------+------------+------------+----------+
+| gemma2 |     2048     |     2048 / 512     |     Disabled    | Supported |       No       |   43 (42 + 1)  |       Yes      | 52.98 MiB | 202.98 MiB | 672.99 MiB | 6.46 GiB |
++--------+--------------+--------------------+-----------------+-----------+----------------+----------------+----------------+-----------+------------+------------+----------+
+
+```
+
+### Estimate
+
+#### Full Layers Offload (default)
+
+```shell
+$ gguf-parser --hf-repo="NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO-GGUF" --hf-file="Nous-Hermes-2-Mixtral-8x7B-DPO.Q3_K_M.gguf" --skip-model --skip-architecture --skip-tokenizer
++----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ESTIMATE                                                                                                                                                                         |
++-------+--------------+--------------------+-----------------+---------------+----------------+----------------+----------------+-------------------------+-----------------------+
+|  ARCH | CONTEXT SIZE | BATCH SIZE (L / P) | FLASH ATTENTION |   MMAP LOAD   | EMBEDDING ONLY | OFFLOAD LAYERS | FULL OFFLOADED |           RAM           |         VRAM 0        |
+|       |              |                    |                 |               |                |                |                +------------+------------+-----------+-----------+
+|       |              |                    |                 |               |                |                |                |     UMA    |   NONUMA   |    UMA    |   NONUMA  |
++-------+--------------+--------------------+-----------------+---------------+----------------+----------------+----------------+------------+------------+-----------+-----------+
+| llama |     32768    |     2048 / 512     |     Disabled    | Not Supported |       No       |   33 (32 + 1)  |       Yes      | 245.10 MiB | 395.10 MiB | 24.84 GiB | 27.31 GiB |
++-------+--------------+--------------------+-----------------+---------------+----------------+----------------+----------------+------------+------------+-----------+-----------+
+
+```
+
+#### Zero Layers Offload
+
+```shell
+$ gguf-parser --hf-repo="NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO-GGUF" --hf-file="Nous-Hermes-2-Mixtral-8x7B-DPO.Q3_K_M.gguf" --skip-model --skip-architecture --skip-tokenizer --gpu-layers=0
++----------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ESTIMATE                                                                                                                                                                   |
++-------+--------------+--------------------+-----------------+---------------+----------------+----------------+----------------+-----------------------+-------------------+
+|  ARCH | CONTEXT SIZE | BATCH SIZE (L / P) | FLASH ATTENTION |   MMAP LOAD   | EMBEDDING ONLY | OFFLOAD LAYERS | FULL OFFLOADED |          RAM          |       VRAM 0      |
+|       |              |                    |                 |               |                |                |                +-----------+-----------+--------+----------+
+|       |              |                    |                 |               |                |                |                |    UMA    |   NONUMA  |   UMA  |  NONUMA  |
++-------+--------------+--------------------+-----------------+---------------+----------------+----------------+----------------+-----------+-----------+--------+----------+
+| llama |     32768    |     2048 / 512     |     Disabled    | Not Supported |       No       |        0       |       No       | 25.09 GiB | 25.24 GiB |   0 B  | 2.46 GiB |
++-------+--------------+--------------------+-----------------+---------------+----------------+----------------+----------------+-----------+-----------+--------+----------+
+
+```
+
+#### Specific Layers Offload
+
+```shell
+$ gguf-parser --hf-repo="NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO-GGUF" --hf-file="Nous-Hermes-2-Mixtral-8x7B-DPO.Q3_K_M.gguf" --skip-model --skip-architecture --skip-tokenizer --gpu-layers=10
++-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ESTIMATE                                                                                                                                                                      |
++-------+--------------+--------------------+-----------------+---------------+----------------+----------------+----------------+-----------------------+----------------------+
+|  ARCH | CONTEXT SIZE | BATCH SIZE (L / P) | FLASH ATTENTION |   MMAP LOAD   | EMBEDDING ONLY | OFFLOAD LAYERS | FULL OFFLOADED |          RAM          |        VRAM 0        |
+|       |              |                    |                 |               |                |                |                +-----------+-----------+----------+-----------+
+|       |              |                    |                 |               |                |                |                |    UMA    |   NONUMA  |    UMA   |   NONUMA  |
++-------+--------------+--------------------+-----------------+---------------+----------------+----------------+----------------+-----------+-----------+----------+-----------+
+| llama |     32768    |     2048 / 512     |     Disabled    | Not Supported |       No       |       10       |       No       | 17.36 GiB | 17.51 GiB | 7.73 GiB | 10.19 GiB |
++-------+--------------+--------------------+-----------------+---------------+----------------+----------------+----------------+-----------+-----------+----------+-----------+
+
+```
+
+#### Specific Context Size
+
+By default, the context size retrieved from the model's metadata.
+
+Use `--ctx-size` to specify the context size.
+
+```shell
+$ gguf-parser --hf-repo="NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO-GGUF" --hf-file="Nous-Hermes-2-Mixtral-8x7B-DPO.Q3_K_M.gguf" --skip-model --skip-architecture --skip-tokenizer --ctx-size=4096
++----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ESTIMATE                                                                                                                                                                         |
++-------+--------------+--------------------+-----------------+---------------+----------------+----------------+----------------+-------------------------+-----------------------+
+|  ARCH | CONTEXT SIZE | BATCH SIZE (L / P) | FLASH ATTENTION |   MMAP LOAD   | EMBEDDING ONLY | OFFLOAD LAYERS | FULL OFFLOADED |           RAM           |         VRAM 0        |
+|       |              |                    |                 |               |                |                |                +------------+------------+-----------+-----------+
+|       |              |                    |                 |               |                |                |                |     UMA    |   NONUMA   |    UMA    |   NONUMA  |
++-------+--------------+--------------------+-----------------+---------------+----------------+----------------+----------------+------------+------------+-----------+-----------+
+| llama |     4096     |     2048 / 512     |     Disabled    | Not Supported |       No       |   33 (32 + 1)  |       Yes      | 189.10 MiB | 339.10 MiB | 21.34 GiB | 21.89 GiB |
++-------+--------------+--------------------+-----------------+---------------+----------------+----------------+----------------+------------+------------+-----------+-----------+
+
+```
+
+#### Enable Flash Attention
+
+By default, LLaMA.cpp disables the Flash Attention.
+
+Enable Flash Attention will reduce the VRAM usage, but it also increases the GPU/CPU usage.
+
+Use `--flash-attention` to enable the Flash Attention.
+
+Please note that not all models support Flash Attention, if the model does not support, the "FLASH ATTENTION" shows "
+Disabled" even if you enable it.
+
+```shell
+$ gguf-parser --hf-repo="NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO-GGUF" --hf-file="Nous-Hermes-2-Mixtral-8x7B-DPO.Q3_K_M.gguf" --skip-model --skip-architecture --skip-tokenizer --flash-attention
++----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ESTIMATE                                                                                                                                                                         |
++-------+--------------+--------------------+-----------------+---------------+----------------+----------------+----------------+-------------------------+-----------------------+
+|  ARCH | CONTEXT SIZE | BATCH SIZE (L / P) | FLASH ATTENTION |   MMAP LOAD   | EMBEDDING ONLY | OFFLOAD LAYERS | FULL OFFLOADED |           RAM           |         VRAM 0        |
+|       |              |                    |                 |               |                |                |                +------------+------------+-----------+-----------+
+|       |              |                    |                 |               |                |                |                |     UMA    |   NONUMA   |    UMA    |   NONUMA  |
++-------+--------------+--------------------+-----------------+---------------+----------------+----------------+----------------+------------+------------+-----------+-----------+
+| llama |     32768    |     2048 / 512     |     Enabled     | Not Supported |       No       |   33 (32 + 1)  |       Yes      | 245.10 MiB | 395.10 MiB | 24.84 GiB | 25.33 GiB |
++-------+--------------+--------------------+-----------------+---------------+----------------+----------------+----------------+------------+------------+-----------+-----------+
+
+```
+
+#### Disable MMap
+
+By default, LLaMA.cpp loads the model via Memory-Mapped.
+
+For Apple MacOS, Memory-Mapped is an efficient way to load the model, and results in a lower VRAM usage.
+For other platforms, Memory-Mapped affects the first-time model loading speed only.
+
+Use `--no-mmap` to disable loading the model via Memory-Mapped.
+
+Please note that some models require loading the whole weight into memory, if the model does not support MMap, the "MMAP
+LOAD" shows "Not Supported".
+
+```shell
+$ gguf-parser --hf-repo="NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO-GGUF" --hf-file="Nous-Hermes-2-Mixtral-8x7B-DPO.Q3_K_M.gguf" --skip-model --skip-architecture --skip-tokenizer --gpu-layers=10 --no-mmap
++-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ESTIMATE                                                                                                                                                                      |
++-------+--------------+--------------------+-----------------+---------------+----------------+----------------+----------------+-----------------------+----------------------+
+|  ARCH | CONTEXT SIZE | BATCH SIZE (L / P) | FLASH ATTENTION |   MMAP LOAD   | EMBEDDING ONLY | OFFLOAD LAYERS | FULL OFFLOADED |          RAM          |        VRAM 0        |
+|       |              |                    |                 |               |                |                |                +-----------+-----------+----------+-----------+
+|       |              |                    |                 |               |                |                |                |    UMA    |   NONUMA  |    UMA   |   NONUMA  |
++-------+--------------+--------------------+-----------------+---------------+----------------+----------------+----------------+-----------+-----------+----------+-----------+
+| llama |     32768    |     2048 / 512     |     Disabled    | Not Supported |       No       |       10       |       No       | 17.36 GiB | 17.51 GiB | 7.73 GiB | 10.19 GiB |
++-------+--------------+--------------------+-----------------+---------------+----------------+----------------+----------------+-----------+-----------+----------+-----------+
+
+```
+
+#### Get Proper Offload Layers
+
+Use `--gpu-layers-step` to get the proper offload layers number when the model is too large to fit into the GPUs memory.
+
+```shell
+$ gguf-parser --hf-repo="NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO-GGUF" --hf-file="Nous-Hermes-2-Mixtral-8x7B-DPO.Q3_K_M.gguf" --skip-model --skip-architecture --skip-tokenizer --gpu-layers-step=5
++-------+--------------+--------------------+-----------------+---------------+----------------+----------------+----------------+-------------------------+-----------------------+
+|  ARCH | CONTEXT SIZE | BATCH SIZE (L / P) | FLASH ATTENTION |   MMAP LOAD   | EMBEDDING ONLY | OFFLOAD LAYERS | FULL OFFLOADED |           RAM           |         VRAM 0        |
+|       |              |                    |                 |               |                |                |                +------------+------------+-----------+-----------+
+|       |              |                    |                 |               |                |                |                |     UMA    |   NONUMA   |    UMA    |   NONUMA  |
++-------+--------------+--------------------+-----------------+---------------+----------------+----------------+----------------+------------+------------+-----------+-----------+
+| llama |     32768    |     2048 / 512     |     Disabled    | Not Supported |       No       |        0       |       No       |  25.09 GiB |  25.24 GiB |    0 B    |  2.46 GiB |
+|       |              |                    |                 |               |                +----------------+                +------------+------------+-----------+-----------+
+|       |              |                    |                 |               |                |        5       |                |  21.23 GiB |  21.37 GiB |  3.86 GiB |  6.33 GiB |
+|       |              |                    |                 |               |                +----------------+                +------------+------------+-----------+-----------+
+|       |              |                    |                 |               |                |       10       |                |  17.36 GiB |  17.51 GiB |  7.73 GiB | 10.19 GiB |
+|       |              |                    |                 |               |                +----------------+                +------------+------------+-----------+-----------+
+|       |              |                    |                 |               |                |       15       |                |  13.50 GiB |  13.64 GiB | 11.59 GiB | 14.06 GiB |
+|       |              |                    |                 |               |                +----------------+                +------------+------------+-----------+-----------+
+|       |              |                    |                 |               |                |       20       |                |  9.63 GiB  |  9.78 GiB  | 15.46 GiB | 17.92 GiB |
+|       |              |                    |                 |               |                +----------------+                +------------+------------+-----------+-----------+
+|       |              |                    |                 |               |                |       25       |                |  5.77 GiB  |  5.91 GiB  | 19.32 GiB | 21.79 GiB |
+|       |              |                    |                 |               |                +----------------+                +------------+------------+-----------+-----------+
+|       |              |                    |                 |               |                |       30       |                |  1.90 GiB  |  2.05 GiB  | 23.19 GiB | 25.65 GiB |
+|       |              |                    |                 |               |                +----------------+----------------+------------+------------+-----------+-----------+
+|       |              |                    |                 |               |                |   33 (32 + 1)  |       Yes      | 245.10 MiB | 395.10 MiB | 24.84 GiB | 27.31 GiB |
++-------+--------------+--------------------+-----------------+---------------+----------------+----------------+----------------+------------+------------+-----------+-----------+
 
 ```
 
