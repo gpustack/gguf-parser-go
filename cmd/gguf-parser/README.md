@@ -38,7 +38,7 @@ GLOBAL OPTIONS:
    --parallel-size value, --parallel value, --np value  Specify the number of parallel sequences to decode, which is used to estimate the usage. (default: 1)
    --platform-footprint value                           Specify the platform footprint(RAM,VRAM) in MiB, which is used to estimate the NonUMA usage, default is 150,250. Different platform always gets different RAM and VRAM footprints, for example, within CUDA, 'cudaMemGetInfo' would occupy some RAM and VRAM, see https://stackoverflow.com/questions/64854862/free-memory-occupied-by-cudamemgetinfo. (default: "150,250")
    --split-mode value, --sm value                       Specify how to split the model across multiple devices, which is used to estimate the usage, select from [layer, row, none]. Since gguf-parser always estimates the usage of VRAM, "none" is meaningless here, keep for compatibility. (default: "layer")
-   --tensor-split value, --tp value                     Specify the fraction of the model to offload to each device, which is used to estimate the usage, it is a comma-separated list of integer. Since gguf-parser cannot recognize the host GPU devices or RPC servers, must explicitly set --tensor-split to indicate how many devices are used.
+   --tensor-split value, --ts value                     Specify the fraction of the model to offload to each device, which is used to estimate the usage, it is a comma-separated list of integer. Since gguf-parser cannot recognize the host GPU devices or RPC servers, must explicitly set --tensor-split to indicate how many devices are used.
    --ubatch-size value, --ub value                      Specify the physical maximum batch size, which is used to estimate the usage. (default: 512)
 
    Load

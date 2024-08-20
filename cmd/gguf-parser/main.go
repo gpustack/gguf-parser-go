@@ -382,7 +382,7 @@ func main() {
 				Value:       tensorSplit,
 				Category:    "Estimate",
 				Name:        "tensor-split",
-				Aliases:     []string{"tp"},
+				Aliases:     []string{"ts"},
 				Usage: "Specify the fraction of the model to offload to each device, " +
 					"which is used to estimate the usage, " +
 					"it is a comma-separated list of integer. " +
