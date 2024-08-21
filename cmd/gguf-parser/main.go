@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gpustack/gguf-parser-go/util/anyx"
 	"github.com/gpustack/gguf-parser-go/util/json"
@@ -273,6 +274,22 @@ func main() {
 				Usage: "Skip range download detect, " +
 					"works with --url/--hf-*/--ms-*/--ol-*, " +
 					"default is detecting the range download support.",
+			},
+			&cli.DurationFlag{
+				Destination: &cacheExpiration,
+				Value:       cacheExpiration,
+				Category:    "Load",
+				Name:        "cache-expiration",
+				Usage: "Specify the expiration of cache, " +
+					"works with --url/--hf-*/--ms-*/--ol-*.",
+			},
+			&cli.StringFlag{
+				Destination: &cachePath,
+				Value:       cachePath,
+				Category:    "Load",
+				Name:        "cache-path",
+				Usage: "Cache the read result to the path, " +
+					"works with --url/--hf-*/--ms-*/--ol-*.",
 			},
 			&cli.BoolFlag{
 				Destination: &skipCache,
@@ -552,6 +569,8 @@ var (
 	skipTLSVerify          bool
 	skipDNSCache           bool
 	skipRangDownloadDetect bool
+	cacheExpiration        = 24 * time.Hour
+	cachePath              = DefaultCachePath()
 	skipCache              bool
 	// estimate options
 	ctxSize            = -1
@@ -607,6 +626,12 @@ func mainAction(c *cli.Context) error {
 	}
 	if skipRangDownloadDetect {
 		ropts = append(ropts, SkipRangeDownloadDetection())
+	}
+	if cacheExpiration > 0 {
+		ropts = append(ropts, UseCacheExpiration(cacheExpiration))
+	}
+	if cachePath != "" {
+		ropts = append(ropts, UseCachePath(cachePath))
 	}
 	if skipCache {
 		ropts = append(ropts, SkipCache())

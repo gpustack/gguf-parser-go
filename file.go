@@ -34,17 +34,38 @@ type GGUFFile struct {
 	// Padding is the padding size of the GGUF file,
 	// which is used to split Header and TensorInfos from tensor data.
 	Padding int64 `json:"padding"`
+	// SplitPaddings holds the padding size slice of the GGUF file splits,
+	// each item represents splitting Header and TensorInfos from tensor data.
+	//
+	// The length of SplitPaddings is the number of split files.
+	SplitPaddings []int64 `json:"splitPaddings,omitempty"`
 	// TensorDataStartOffset is the offset in bytes of the tensor data in this file.
 	//
 	// The offset is the start of the file.
 	TensorDataStartOffset int64 `json:"tensorDataStartOffset"`
+	// SplitTensorDataStartOffsets holds the offset slice in bytes of the tensor data of the GGUF file splits,
+	// each item represents the offset of the tensor data in the split file.
+	//
+	// The length of SplitTensorDataStartOffsets is the number of split files.
+	SplitTensorDataStartOffsets []int64 `json:"splitTensorDataStartOffsets,omitempty"`
 
 	/* Appendix */
 
-	// Size is the size of the GGUF file.
+	// Size is the size of the GGUF file,
+	// if the file is split, the size is the sum of all split files.
 	Size GGUFBytesScalar `json:"size"`
+	// SplitSizes holds the size slice of the GGUF file splits,
+	// each item represents the size of the split file.
+	//
+	// The length of SplitSizes is the number of split files.
+	SplitSizes []GGUFBytesScalar `json:"splitSizes,omitempty"`
 	// ModelSize is the size of the model when loading.
 	ModelSize GGUFBytesScalar `json:"modelSize"`
+	// SplitModelSizes holds the size slice of the model,
+	// each item represents a size when loading of the split file.
+	//
+	// The length of SplitModelSizes is the number of split files.
+	SplitModelSizes []GGUFBytesScalar `json:"splitModelSizes,omitempty"`
 	// ModelParameters is the number of the model parameters.
 	ModelParameters GGUFParametersScalar `json:"modelParameters"`
 	// ModelBitsPerWeight is the bits per weight of the model,
@@ -207,128 +228,195 @@ func ParseGGUFFile(path string, opts ...GGUFReadOption) (*GGUFFile, error) {
 		opt(&o)
 	}
 
-	var (
-		f io.ReadSeeker
-		s int64
-	)
-	if o.MMap {
-		mf, err := osx.OpenMmapFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("open mmap file: %w", err)
+	var paths []string
+	{
+		rs := CompleteShardGGUFFilename(path)
+		if rs != nil {
+			paths = rs
+		} else {
+			paths = []string{path}
 		}
-		defer osx.Close(mf)
-		f = io.NewSectionReader(mf, 0, mf.Len())
-		s = mf.Len()
-	} else {
-		ff, err := osx.Open(path)
+	}
+
+	fs := make([]_GGUFFileReadSeeker, 0, len(paths))
+	defer func() {
+		for i := range fs {
+			osx.Close(fs[i])
+		}
+	}()
+
+	for i := range paths {
+		if o.MMap {
+			mf, err := osx.OpenMmapFile(paths[i])
+			if err != nil {
+				return nil, fmt.Errorf("open mmap file: %w", err)
+			}
+
+			fs = append(fs, _GGUFFileReadSeeker{
+				Closer:     mf,
+				ReadSeeker: io.NewSectionReader(mf, 0, mf.Len()),
+				Size:       mf.Len(),
+			})
+
+			continue
+		}
+
+		ff, err := osx.Open(paths[i])
 		if err != nil {
 			return nil, fmt.Errorf("open file: %w", err)
 		}
-		defer osx.Close(ff)
-		f = ff
-		s = funcx.MustNoError(ff.Stat()).Size()
+
+		fs = append(fs, _GGUFFileReadSeeker{
+			Closer:     ff,
+			ReadSeeker: ff,
+			Size:       funcx.MustNoError(ff.Stat()).Size(),
+		})
 	}
 
-	return parseGGUFFile(s, f, o)
+	return parseGGUFFile(fs, o)
 }
 
-func parseGGUFFile(s int64, f io.ReadSeeker, o _GGUFReadOptions) (_ *GGUFFile, err error) {
+type _GGUFFileReadSeeker struct {
+	io.Closer
+	io.ReadSeeker
+	Size int64
+}
+
+func parseGGUFFile(fs []_GGUFFileReadSeeker, o _GGUFReadOptions) (_ *GGUFFile, err error) {
 	var gf GGUFFile
-	var bo binary.ByteOrder = binary.LittleEndian
 
-	// magic
-	if err = binary.Read(f, bo, &gf.Header.Magic); err != nil {
-		return nil, fmt.Errorf("read magic: %w", err)
-	}
-	switch gf.Header.Magic {
-	default:
-		return nil, ErrGGUFFileInvalidFormat
-	case GGUFMagicGGML, GGUFMagicGGMF, GGUFMagicGGJT:
-		return nil, fmt.Errorf("unsupported format: %s", gf.Header.Magic)
-	case GGUFMagicGGUFLe:
-	case GGUFMagicGGUFBe:
-		bo = binary.BigEndian
-	}
+	for _, f := range fs {
+		var bo binary.ByteOrder = binary.LittleEndian
 
-	// version
-	if err = binary.Read(f, bo, &gf.Header.Version); err != nil {
-		return nil, fmt.Errorf("read version: %w", err)
-	}
+		// magic
+		var magic GGUFMagic
+		if err = binary.Read(f, bo, &magic); err != nil {
+			return nil, fmt.Errorf("read magic: %w", err)
+		}
+		switch magic {
+		default:
+			return nil, ErrGGUFFileInvalidFormat
+		case GGUFMagicGGML, GGUFMagicGGMF, GGUFMagicGGJT:
+			return nil, fmt.Errorf("unsupported format: %s", magic)
+		case GGUFMagicGGUFLe:
+		case GGUFMagicGGUFBe:
+			bo = binary.BigEndian
+		}
+		gf.Header.Magic = magic
 
-	rd := _GGUFReader{v: gf.Header.Version, o: o, f: f, bo: bo}
+		// version
+		var version GGUFVersion
+		if err = binary.Read(f, bo, &version); err != nil {
+			return nil, fmt.Errorf("read version: %w", err)
+		}
+		gf.Header.Version = version
 
-	// tensor count
-	if gf.Header.Version <= GGUFVersionV1 {
-		gf.Header.TensorCount, err = rd.ReadUint64FromUint32()
-	} else {
-		gf.Header.TensorCount, err = rd.ReadUint64()
-	}
-	if err != nil {
-		return nil, fmt.Errorf("read tensor count: %w", err)
-	}
+		rd := _GGUFReader{v: version, o: o, f: f, bo: bo}
 
-	// metadata kv count
-	if gf.Header.Version <= GGUFVersionV1 {
-		gf.Header.MetadataKVCount, err = rd.ReadUint64FromUint32()
-	} else {
-		gf.Header.MetadataKVCount, err = rd.ReadUint64()
-	}
-	if err != nil {
-		return nil, fmt.Errorf("read metadata kv count: %w", err)
-	}
+		// tensor count
+		var tensorCount uint64
+		if version <= GGUFVersionV1 {
+			tensorCount, err = rd.ReadUint64FromUint32()
+		} else {
+			tensorCount, err = rd.ReadUint64()
+		}
+		if err != nil {
+			return nil, fmt.Errorf("read tensor count: %w", err)
+		}
+		gf.Header.TensorCount += tensorCount
 
-	// metadata kv
-	{
-		rd := _GGUFMetadataReader{_GGUFReader: rd}
-		kvs := make(GGUFMetadataKVs, gf.Header.MetadataKVCount)
-		for i := uint64(0); i < gf.Header.MetadataKVCount; i++ {
-			kvs[i], err = rd.Read()
-			if err != nil {
-				return nil, fmt.Errorf("read metadata kv %d: %w", i, err)
+		// metadata kv count
+		var metadataKVCount uint64
+		if version <= GGUFVersionV1 {
+			metadataKVCount, err = rd.ReadUint64FromUint32()
+		} else {
+			metadataKVCount, err = rd.ReadUint64()
+		}
+		if err != nil {
+			return nil, fmt.Errorf("read metadata kv count: %w", err)
+		}
+		gf.Header.MetadataKVCount += metadataKVCount
+
+		// metadata kv
+		{
+			rd := _GGUFMetadataReader{_GGUFReader: rd}
+			kvs := make(GGUFMetadataKVs, metadataKVCount)
+			for i := uint64(0); i < metadataKVCount; i++ {
+				kvs[i], err = rd.Read()
+				if err != nil {
+					return nil, fmt.Errorf("read metadata kv %d: %w", i, err)
+				}
+			}
+			for i := range kvs {
+				if kvs[i].Key == "split.no" {
+					gf.Header.MetadataKVCount--
+					continue
+				}
+				gf.Header.MetadataKV = append(gf.Header.MetadataKV, kvs[i])
 			}
 		}
-		gf.Header.MetadataKV = kvs
-	}
 
-	// tensor infos
-	{
-		rd := _GGUFTensorInfoReader{_GGUFReader: rd}
-		tis := make(GGUFTensorInfos, gf.Header.TensorCount)
-		for i := uint64(0); i < gf.Header.TensorCount; i++ {
-			tis[i], err = rd.Read()
-			if err != nil {
-				return nil, fmt.Errorf("read tensor info %d: %w", i, err)
+		// tensor infos
+		if gf.TensorInfos == nil {
+			tc, ok := gf.Header.MetadataKV.Get("split.tensors.count")
+			if ok {
+				gf.TensorInfos = make(GGUFTensorInfos, 0, anyx.Number[int](tc.Value))
+			} else {
+				gf.TensorInfos = make(GGUFTensorInfos, 0, tensorCount)
 			}
 		}
-		gf.TensorInfos = tis
-	}
-
-	pds, err := f.Seek(0, io.SeekCurrent)
-	if err != nil {
-		return nil, fmt.Errorf("seek padding start: %w", err)
-	}
-
-	// padding
-	{
-		// The global alignment to use, as described above.
-		// This can vary to allow for different alignment schemes, but it must be a multiple of 8.
-		// Some writers may not write the alignment.
-		// If the alignment is not specified, assume it is 32.
-		var ag uint32 = 32
-		if v, ok := gf.Header.MetadataKV.Get("general.alignment"); ok {
-			ag = v.ValueUint32()
+		{
+			rd := _GGUFTensorInfoReader{_GGUFReader: rd}
+			tis := make(GGUFTensorInfos, tensorCount)
+			for i := uint64(0); i < tensorCount; i++ {
+				tis[i], err = rd.Read()
+				if err != nil {
+					return nil, fmt.Errorf("read tensor info %d: %w", i, err)
+				}
+			}
+			gf.TensorInfos = append(gf.TensorInfos, tis...)
 		}
-		gf.Padding = int64(ag) - (pds % int64(ag))
+
+		pds, err := f.Seek(0, io.SeekCurrent)
+		if err != nil {
+			return nil, fmt.Errorf("seek padding start: %w", err)
+		}
+
+		// padding
+		var padding int64
+		{
+			// The global alignment to use, as described above.
+			// This can vary to allow for different alignment schemes, but it must be a multiple of 8.
+			// Some writers may not write the alignment.
+			// If the alignment is not specified, assume it is 32.
+			var ag uint32 = 32
+			if v, ok := gf.Header.MetadataKV.Get("general.alignment"); ok {
+				ag = v.ValueUint32()
+			}
+			padding = int64(ag) - (pds % int64(ag))
+		}
+		if len(fs) == 1 {
+			gf.Padding = padding
+		}
+		gf.SplitPaddings = append(gf.SplitPaddings, padding)
+
+		// tensor data offset
+		tensorDataStartOffset := pds + padding
+		if len(fs) == 1 {
+			gf.TensorDataStartOffset = tensorDataStartOffset
+		}
+		gf.SplitTensorDataStartOffsets = append(gf.SplitTensorDataStartOffsets, tensorDataStartOffset)
+
+		// size
+		size := GGUFBytesScalar(f.Size)
+		gf.Size += size
+		gf.SplitSizes = append(gf.SplitSizes, size)
+
+		// model size
+		modelSize := GGUFBytesScalar(f.Size - tensorDataStartOffset)
+		gf.ModelSize += modelSize
+		gf.SplitModelSizes = append(gf.SplitModelSizes, modelSize)
 	}
-
-	// tensor data offset
-	gf.TensorDataStartOffset = pds + gf.Padding
-
-	// size
-	gf.Size = GGUFBytesScalar(s)
-
-	// model size
-	gf.ModelSize = GGUFBytesScalar(s - gf.TensorDataStartOffset)
 
 	// model parameters
 	gf.ModelParameters = GGUFParametersScalar(gf.TensorInfos.Elements())

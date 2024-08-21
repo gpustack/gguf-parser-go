@@ -89,12 +89,25 @@ func ParseGGUFFileRemote(ctx context.Context, url string, opts ...GGUFReadOption
 }
 
 func parseGGUFFileFromRemote(ctx context.Context, cli *http.Client, url string, o _GGUFReadOptions) (*GGUFFile, error) {
-	var (
-		f io.ReadSeeker
-		s int64
-	)
+	var urls []string
 	{
-		req, err := httpx.NewGetRequestWithContext(ctx, url)
+		rs := CompleteShardGGUFFilename(url)
+		if rs != nil {
+			urls = rs
+		} else {
+			urls = []string{url}
+		}
+	}
+
+	fs := make([]_GGUFFileReadSeeker, 0, len(urls))
+	defer func() {
+		for i := range fs {
+			osx.Close(fs[i])
+		}
+	}()
+
+	for i := range urls {
+		req, err := httpx.NewGetRequestWithContext(ctx, urls[i])
 		if err != nil {
 			return nil, fmt.Errorf("new request: %w", err)
 		}
@@ -108,11 +121,13 @@ func parseGGUFFileFromRemote(ctx context.Context, cli *http.Client, url string, 
 		if err != nil {
 			return nil, fmt.Errorf("open http file: %w", err)
 		}
-		defer osx.Close(sf)
 
-		f = io.NewSectionReader(sf, 0, sf.Len())
-		s = sf.Len()
+		fs = append(fs, _GGUFFileReadSeeker{
+			Closer:     sf,
+			ReadSeeker: io.NewSectionReader(sf, 0, sf.Len()),
+			Size:       sf.Len(),
+		})
 	}
 
-	return parseGGUFFile(s, f, o)
+	return parseGGUFFile(fs, o)
 }

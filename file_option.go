@@ -109,12 +109,8 @@ func SkipRangeDownloadDetection() GGUFReadOption {
 
 // UseCache caches the remote reading result.
 func UseCache() GGUFReadOption {
-	cd := filepath.Join(osx.UserHomeDir(), ".cache")
-	if runtime.GOOS == "windows" {
-		cd = osx.Getenv("APPDATA", cd)
-	}
 	return func(o *_GGUFReadOptions) {
-		o.CachePath = filepath.Join(cd, "gguf-parser")
+		o.CachePath = DefaultCachePath()
 		o.CacheExpiration = 24 * time.Hour
 	}
 }
@@ -125,6 +121,15 @@ func SkipCache() GGUFReadOption {
 		o.CachePath = ""
 		o.CacheExpiration = 0
 	}
+}
+
+// DefaultCachePath returns the default cache path.
+func DefaultCachePath() string {
+	cd := filepath.Join(osx.UserHomeDir(), ".cache")
+	if runtime.GOOS == "windows" {
+		cd = osx.Getenv("APPDATA", cd)
+	}
+	return filepath.Join(cd, "gguf-parser")
 }
 
 // UseCachePath uses the given path to cache the remote reading result.
