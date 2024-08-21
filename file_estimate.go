@@ -221,7 +221,7 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 	}
 
 	// Full offload: isOffloadOutputLayer && nLoadLayers == 0.
-	// Partial offload: nLoadLayers > 0 && nOffloadLayers > 0.
+	// Partial offload: !isOffloadOutputLayer.
 	// Zero offload: nOffloadLayers == 0.
 	var (
 		nLoadLayers          = a.BlockCount
@@ -254,8 +254,8 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 		e.OffloadLayers = nOffloadLayers
 
 		fullOffload = isOffloadOutputLayer && nLoadLayers == 0
-		partialOffload = nLoadLayers > 0 && nOffloadLayers > 0
-		zeroOffload = !fullOffload && !partialOffload
+		partialOffload = !isOffloadOutputLayer
+		zeroOffload = nOffloadLayers == 0
 	}
 
 	// Footprint.

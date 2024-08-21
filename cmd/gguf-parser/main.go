@@ -1196,6 +1196,9 @@ func tprint(title string, headers, bodies [][]any) {
 		for i := range r {
 			r[i].Number = i + 1
 			r[i].AutoMerge = true
+			if len(headers) > 1 && (headers[1][i] == "UMA" || headers[1][i] == "NonUMA") {
+				r[i].AutoMerge = false
+			}
 			r[i].Align = text.AlignCenter
 			r[i].AlignHeader = text.AlignCenter
 		}
