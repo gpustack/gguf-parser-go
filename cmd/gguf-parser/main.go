@@ -222,6 +222,14 @@ func main() {
 					"See https://modelscope.cn/my/myaccesstoken.",
 			},
 			&cli.StringFlag{
+				Destination: &olBaseURL,
+				Value:       olBaseURL,
+				Category:    "Model/Remote/Ollama",
+				Name:        "ol-base-url",
+				Usage: "Model base URL of Ollama, e.g. " +
+					"https://registry.ollama.ai.",
+			},
+			&cli.StringFlag{
 				Destination: &olModel,
 				Value:       olModel,
 				Category:    "Model/Remote/Ollama",
@@ -517,6 +525,7 @@ var (
 	msDraftRepo  string // for estimate
 	msDraftFile  string // for estimate
 	msToken      string
+	olBaseURL    = "https://registry.ollama.ai"
 	olModel      string
 	olUsage      bool
 	// load options
@@ -649,7 +658,7 @@ func mainAction(c *cli.Context) error {
 			}
 			gf, err = ParseGGUFFileFromModelScope(ctx, msRepo, msFile, ropts...)
 		case olModel != "":
-			om := ParseOllamaModel(olModel)
+			om := ParseOllamaModel(olModel, SetOllamaModelBaseURL(olBaseURL))
 			gf, err = ParseGGUFFileFromOllamaModel(ctx, om, ropts...)
 			if om != nil && olUsage {
 				// Parameters override.

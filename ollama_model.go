@@ -69,9 +69,14 @@ type (
 
 // ParseOllamaModel parses the given Ollama model string,
 // and returns the OllamaModel, or nil if the model is invalid.
-func ParseOllamaModel(model string) *OllamaModel {
+func ParseOllamaModel(model string, opts ...OllamaModelOption) *OllamaModel {
 	if model == "" {
 		return nil
+	}
+
+	var o _OllamaModelOptions
+	for _, opt := range opts {
+		opt(&o)
 	}
 
 	om := OllamaModel{
@@ -79,6 +84,20 @@ func ParseOllamaModel(model string) *OllamaModel {
 		Registry:  OllamaDefaultRegistry,
 		Namespace: OllamaDefaultNamespace,
 		Tag:       OllamaDefaultTag,
+	}
+	{
+		if o.DefaultScheme != "" {
+			om.Schema = o.DefaultScheme
+		}
+		if o.DefaultRegistry != "" {
+			om.Registry = o.DefaultRegistry
+		}
+		if o.DefaultNamespace != "" {
+			om.Namespace = o.DefaultNamespace
+		}
+		if o.DefaultTag != "" {
+			om.Tag = o.DefaultTag
+		}
 	}
 
 	m := model

@@ -76,8 +76,9 @@ GLOBAL OPTIONS:
 
    Model/Remote/Ollama
 
-   --ol-model value  Model name of Ollama, e.g. gemma2.
-   --ol-usage        Specify respecting the extending layers introduced by Ollama, works with --ol-model, which affects the usage estimation. (default: false)
+   --ol-base-url value  Model base URL of Ollama, e.g. https://registry.ollama.ai. (default: "https://registry.ollama.ai")
+   --ol-model value     Model name of Ollama, e.g. gemma2.
+   --ol-usage           Specify respecting the extending layers introduced by Ollama, works with --ol-model, which affects the usage estimation. (default: false)
 
    Output
 
