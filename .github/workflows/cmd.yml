@@ -12,7 +12,8 @@ defaults:
 on:
   push:
     branches:
-      - main
+      - 'main'
+      - 'branch-v*.*'
     paths-ignore:
       - "docs/**"
       - "**.md"
