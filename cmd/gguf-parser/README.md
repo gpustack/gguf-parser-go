@@ -1,7 +1,7 @@
 # GGUF Parser
 
 Review/Check [GGUF](https://github.com/ggerganov/ggml/blob/master/docs/gguf.md) files and estimate the memory usage, 
-see [https://github.com/gpustack/gguf-packer-go](https://github.com/gpustack/gguf-packer-go).
+see [https://github.com/gpustack/gguf-parser-go](https://github.com/gpustack/gguf-parser-go).
 
 ## Usage
 
