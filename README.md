@@ -48,7 +48,7 @@ GGUF Parser helps in reviewing and estimating the usage of a GGUF format model w
 
 - Since v0.7.2, GGUF Parser supports retrieving the model's metadata via split file,
   which suffixes with something like `-00001-of-00009.gguf`.
-- The table result `UMA` indicates the memory usage of Apple MacOS only.
+- The table result `UMA` indicates the memory usage of Apple macOS only.
 - Since v0.7.0, GGUF Parser is going to support estimating the usage of multiple GPUs.
     + The table result `RAM` means the system memory usage when
       running [LLaMA.Cpp](https://github.com/ggerganov/llama.cpp) or LLaMA.Cpp like application.

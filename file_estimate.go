@@ -641,6 +641,12 @@ func (e LLaMACppUsageEstimate) SummarizeMemory(mmap bool, nonUMARamFootprint, no
 			ems.VRAMs[i].UMA = fp + wg + kv + /* cp */ 0
 			if !e.NoMMap && mmap {
 				ems.VRAMs[i].UMA -= wg
+				// NB(thxCode): the weight add back for the following reasons:
+				// - UMA treats as one device.
+				// - RPC server will load all weights and computation.
+				if i > 0 {
+					ems.VRAMs[i].UMA += wg + cp
+				}
 			}
 
 			// NonUMA.
