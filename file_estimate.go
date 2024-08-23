@@ -29,6 +29,9 @@ type (
 		// EmbeddingOnly is the flag to indicate whether the model is used for embedding only,
 		// true for embedding only.
 		EmbeddingOnly bool `json:"embeddingOnly"`
+		// Distributable is the flag to indicate whether the model is distributable,
+		// true for distributable.
+		Distributable bool `json:"distributable"`
 		// LogicalBatchSize is the logical batch size.
 		LogicalBatchSize int32 `json:"logicalBatchSize"`
 		// PhysicalBatchSize is the physical batch size.
@@ -170,6 +173,25 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 	if !a.AttentionCausal {
 		e.EmbeddingOnly = true
 		o.PhysicalBatchSize = o.LogicalBatchSize
+	}
+
+	// Distributable,
+	// see https://github.com/ggerganov/llama.cpp/blob/a07c32ea54850c989f0ef6989da5b955b77b7172/ggml/src/ggml-rpc.cpp#L391-L397.
+	{
+		e.Distributable = true
+		for i := range gf.TensorInfos {
+			if t, ok := gf.TensorInfos[i].Type.Trait(); ok && !t.Quantized {
+				continue
+			}
+			if len(gf.TensorInfos[i].Dimensions) == 0 {
+				continue
+			}
+			if gf.TensorInfos[i].Dimensions[0]%512 == 0 {
+				continue
+			}
+			e.Distributable = false
+			break
+		}
 	}
 
 	// Batch size.
@@ -571,6 +593,9 @@ type (
 		// EmbeddingOnly is the flag to indicate whether the model is used for embedding only,
 		// true for embedding only.
 		EmbeddingOnly bool `json:"embeddingOnly"`
+		// Distributable is the flag to indicate whether the model is distributable,
+		// true for distributable.
+		Distributable bool `json:"distributable"`
 		// LogicalBatchSize is the logical batch size.
 		LogicalBatchSize int32 `json:"logicalBatchSize"`
 		// PhysicalBatchSize is the physical batch size.
@@ -695,6 +720,7 @@ func (e LLaMACppUsageEstimate) Summarize(mmap bool, nonUMARamFootprint, nonUMAVr
 	es.EmbeddingOnly = e.EmbeddingOnly
 	es.LogicalBatchSize = e.LogicalBatchSize
 	es.PhysicalBatchSize = e.PhysicalBatchSize
+	es.Distributable = e.Distributable
 
 	return es
 }
