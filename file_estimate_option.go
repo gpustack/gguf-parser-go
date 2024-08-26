@@ -8,8 +8,8 @@ import (
 
 type (
 	_LLaMACppUsageEstimateOptions struct {
-		Architecture        *GGUFArchitectureMetadata
-		Tokenizer           *GGUFTokenizerMetadata
+		Architecture        *GGUFArchitecture
+		Tokenizer           *GGUFTokenizer
 		ContextSize         *int32
 		InMaxContextSize    bool
 		LogicalBatchSize    *int32
@@ -23,16 +23,18 @@ type (
 		SplitMode           LLaMACppSplitMode
 		TensorSplitFraction []float64
 		MainGPUIndex        int
-		MultimodalProjector *LLaMACppUsageEstimate
+		RPCServers          []string
+		Projector           *LLaMACppUsageEstimate
 		Drafter             *LLaMACppUsageEstimate
+		Adapters            []LLaMACppUsageEstimate
 	}
 	LLaMACppUsageEstimateOption func(*_LLaMACppUsageEstimateOptions)
 )
 
 // WithArchitecture sets the architecture for the estimate.
 //
-// Allows reusing the same GGUFArchitectureMetadata for multiple estimates.
-func WithArchitecture(arch GGUFArchitectureMetadata) LLaMACppUsageEstimateOption {
+// Allows reusing the same GGUFArchitecture for multiple estimates.
+func WithArchitecture(arch GGUFArchitecture) LLaMACppUsageEstimateOption {
 	return func(o *_LLaMACppUsageEstimateOptions) {
 		o.Architecture = &arch
 	}
@@ -40,8 +42,8 @@ func WithArchitecture(arch GGUFArchitectureMetadata) LLaMACppUsageEstimateOption
 
 // WithTokenizer sets the tokenizer for the estimate.
 //
-// Allows reusing the same GGUFTokenizerMetadata for multiple estimates.
-func WithTokenizer(tokenizer GGUFTokenizerMetadata) LLaMACppUsageEstimateOption {
+// Allows reusing the same GGUFTokenizer for multiple estimates.
+func WithTokenizer(tokenizer GGUFTokenizer) LLaMACppUsageEstimateOption {
 	return func(o *_LLaMACppUsageEstimateOptions) {
 		o.Tokenizer = &tokenizer
 	}
@@ -199,10 +201,13 @@ func WithMainGPUIndex(di int) LLaMACppUsageEstimateOption {
 	}
 }
 
-// WithMultimodalProjector sets the multimodal projector estimate usage.
-func WithMultimodalProjector(mmp *LLaMACppUsageEstimate) LLaMACppUsageEstimateOption {
+// WithRPCServers sets the RPC servers for the estimate.
+func WithRPCServers(srvs []string) LLaMACppUsageEstimateOption {
 	return func(o *_LLaMACppUsageEstimateOptions) {
-		o.MultimodalProjector = mmp
+		if len(srvs) == 0 {
+			return
+		}
+		o.RPCServers = srvs
 	}
 }
 
@@ -210,5 +215,22 @@ func WithMultimodalProjector(mmp *LLaMACppUsageEstimate) LLaMACppUsageEstimateOp
 func WithDrafter(dft *LLaMACppUsageEstimate) LLaMACppUsageEstimateOption {
 	return func(o *_LLaMACppUsageEstimateOptions) {
 		o.Drafter = dft
+	}
+}
+
+// WithProjector sets the multimodal projector estimate usage.
+func WithProjector(prj *LLaMACppUsageEstimate) LLaMACppUsageEstimateOption {
+	return func(o *_LLaMACppUsageEstimateOptions) {
+		o.Projector = prj
+	}
+}
+
+// WithAdapters sets the adapters estimate usage.
+func WithAdapters(adp []LLaMACppUsageEstimate) LLaMACppUsageEstimateOption {
+	return func(o *_LLaMACppUsageEstimateOptions) {
+		if len(adp) == 0 {
+			return
+		}
+		o.Adapters = adp
 	}
 }

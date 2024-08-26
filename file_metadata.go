@@ -5,11 +5,14 @@ import (
 	"strings"
 )
 
-// GGUFModelMetadata represents the model metadata of a GGUF file.
-type GGUFModelMetadata struct {
+// GGUFMetadata represents the model metadata of a GGUF file.
+type GGUFMetadata struct {
 	/* Basic */
 
-	// Architecture describes what architecture this model implements.
+	// Type describes the type of the GGUF file,
+	// default is "model".
+	Type string `json:"type"`
+	// Architecture describes what architecture this GGUF file implements.
 	//
 	// All lowercase ASCII, with only [a-z0-9]+ characters allowed.
 	Architecture string `json:"architecture"`
@@ -30,9 +33,9 @@ type GGUFModelMetadata struct {
 	Alignment uint32 `json:"alignment"`
 	// Name to the model.
 	//
-	// This should be a human-readable name that can be used to identify the model.
+	// This should be a human-readable name that can be used to identify the GGUF file.
 	// It should be unique within the community that the model is defined in.
-	Name string `json:"name"`
+	Name string `json:"name,omitempty"`
 	// Author to the model.
 	Author string `json:"author,omitempty"`
 	// URL to the model's homepage.
@@ -57,9 +60,9 @@ type GGUFModelMetadata struct {
 	FileSize GGUFBytesScalar `json:"fileSize"`
 	// Size is the model size.
 	Size GGUFBytesScalar `json:"size"`
-	// Parameters is the parameters of the model.
+	// Parameters is the parameters of the GGUF file.
 	Parameters GGUFParametersScalar `json:"parameters"`
-	// BitsPerWeight is the bits per weight of the model.
+	// BitsPerWeight is the bits per weight of the GGUF file.
 	BitsPerWeight GGUFBitsPerWeightScalar `json:"bitsPerWeight"`
 }
 
@@ -105,9 +108,10 @@ const (
 	_GGUFFileTypeCount                             // Unknown
 )
 
-// Model returns the model metadata of the GGUF file.
-func (gf *GGUFFile) Model() (gm GGUFModelMetadata) {
+// Metadata returns the metadata of the GGUF file.
+func (gf *GGUFFile) Metadata() (gm GGUFMetadata) {
 	const (
+		typeKey         = "general.type"
 		architectureKey = "general.architecture"
 		quantizationKey = "general.quantization_version"
 		alignmentKey    = "general.alignment"
@@ -117,11 +121,14 @@ func (gf *GGUFFile) Model() (gm GGUFModelMetadata) {
 		descriptionKey  = "general.description"
 		licenseKey      = "general.license"
 		fileTypeKey     = "general.file_type"
+
+		controlVectorModelHintKey = "controlvector.model_hint"
 	)
 
 	gm.FileType = _GGUFFileTypeCount
 
 	m, _ := gf.Header.MetadataKV.Index([]string{
+		typeKey,
 		architectureKey,
 		quantizationKey,
 		alignmentKey,
@@ -131,10 +138,23 @@ func (gf *GGUFFile) Model() (gm GGUFModelMetadata) {
 		descriptionKey,
 		licenseKey,
 		fileTypeKey,
+		controlVectorModelHintKey,
 	})
 
-	if v, ok := m[architectureKey]; ok {
+	if v, ok := m[typeKey]; ok {
+		gm.Type = v.ValueString()
+	} else if _, ok = m[controlVectorModelHintKey]; ok {
+		gm.Type = "adapter"
+	} else {
+		gm.Type = "model"
+	}
+	if v, ok := m[controlVectorModelHintKey]; ok {
 		gm.Architecture = v.ValueString()
+	} else if v, ok = m[architectureKey]; ok {
+		gm.Architecture = v.ValueString()
+		if gm.Architecture == "clip" {
+			gm.Type = "projector"
+		}
 	} else {
 		gm.Architecture = "llama"
 	}

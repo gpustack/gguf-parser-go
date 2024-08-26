@@ -1,7 +1,7 @@
 package gguf_parser
 
-// GGUFTokenizerMetadata represents the tokenizer metadata of a GGUF file.
-type GGUFTokenizerMetadata struct {
+// GGUFTokenizer represents the tokenizer metadata of a GGUF file.
+type GGUFTokenizer struct {
 	/* Basic */
 
 	// Model is the model of the tokenizer.
@@ -50,7 +50,7 @@ type GGUFTokenizerMetadata struct {
 }
 
 // Tokenizer returns the tokenizer metadata of a GGUF file.
-func (gf *GGUFFile) Tokenizer() (gt GGUFTokenizerMetadata) {
+func (gf *GGUFFile) Tokenizer() (gt GGUFTokenizer) {
 	const (
 		modelKey            = "tokenizer.ggml.model"
 		tokensKey           = "tokenizer.ggml.tokens"

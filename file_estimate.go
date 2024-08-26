@@ -11,7 +11,9 @@ import (
 type (
 	// LLaMACppUsageEstimate represents the estimated result of loading the GGUF file in llama.cpp.
 	LLaMACppUsageEstimate struct {
-		// Architecture describes what architecture this model implements.
+		// Type describes what type this GGUF file is.
+		Type string `json:"type"`
+		// Architecture describes what architecture this GGUF file implements.
 		Architecture string `json:"architecture"`
 		// FlashAttention is the flag to indicate whether enable the flash attention,
 		// true for enable.
@@ -39,10 +41,12 @@ type (
 		// Devices represents the memory usage for running the GGUF file,
 		// the first device is the CPU, and the rest are GPUs.
 		Devices []LLaMACppMemoryUsage `json:"devices"`
-		// MultimodalProjector is the memory usage of multimodal projector.
-		MultimodalProjector *LLaMACppUsageEstimate `json:"multimodalProjector,omitempty"`
 		// Drafter is the memory usage of drafter.
 		Drafter *LLaMACppUsageEstimate `json:"drafter,omitempty"`
+		// Projector is the memory usage of multimodal projector.
+		Projector *LLaMACppUsageEstimate `json:"projector,omitempty"`
+		// Adapters is the memory usage of adapters.
+		Adapters []LLaMACppUsageEstimate `json:"adapters,omitempty"`
 	}
 
 	// LLaMACppMemoryUsage represents the memory usage for expanding the GGUF file in llama.cpp.
@@ -51,6 +55,9 @@ type (
 		HandleLayers uint64 `json:"handleLayers"`
 		// LastLayer is the index of the last layer the device can handle.
 		LastLayer int `json:"latestLayer"`
+		// Remote is the flag to indicate whether the device is remote,
+		// true for remote.
+		Remote bool `json:"remote"`
 		// Footprint is the memory footprint for bootstrapping.
 		Footprint GGUFBytesScalar `json:"footprint"`
 		// Weight is the memory usage of loading weights.
@@ -136,10 +143,10 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 		e.Devices[i].LastLayer = -1
 	}
 
-	// Architecture and tokenizer metadata.
+	// Metadata.
 	var (
-		a GGUFArchitectureMetadata
-		t GGUFTokenizerMetadata
+		a GGUFArchitecture
+		t GGUFTokenizer
 	)
 	if o.Architecture != nil {
 		a = *o.Architecture
@@ -151,10 +158,11 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 	} else {
 		t = gf.Tokenizer()
 	}
+	e.Type = a.Type
 	e.Architecture = a.Architecture
 
 	// Flash attention.
-	{
+	if a.Type == "model" {
 		// Quantization requires flash attention,
 		// see https://github.com/ggerganov/llama.cpp/blob/172c8256840ffd882ab9992ecedbb587d9b21f15/llama.cpp#L16055-L16058.
 		if *o.CacheValueType > GGMLTypeF16 && !o.FlashAttention {
@@ -170,7 +178,7 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 	}
 
 	// Embedding.
-	if !a.AttentionCausal {
+	if a.Type == "model" && !a.AttentionCausal {
 		e.EmbeddingOnly = true
 		o.PhysicalBatchSize = o.LogicalBatchSize
 	}
@@ -178,19 +186,22 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 	// Distributable,
 	// see https://github.com/ggerganov/llama.cpp/blob/a07c32ea54850c989f0ef6989da5b955b77b7172/ggml/src/ggml-rpc.cpp#L391-L397.
 	{
-		e.Distributable = true
-		for i := range gf.TensorInfos {
-			if t, ok := gf.TensorInfos[i].Type.Trait(); ok && !t.Quantized {
-				continue
+		e.Distributable = false
+		if a.Type == "model" {
+			e.Distributable = true
+			for i := range gf.TensorInfos {
+				if t, ok := gf.TensorInfos[i].Type.Trait(); ok && !t.Quantized {
+					continue
+				}
+				if len(gf.TensorInfos[i].Dimensions) == 0 {
+					continue
+				}
+				if gf.TensorInfos[i].Dimensions[0]%512 == 0 {
+					continue
+				}
+				e.Distributable = false
+				break
 			}
-			if len(gf.TensorInfos[i].Dimensions) == 0 {
-				continue
-			}
-			if gf.TensorInfos[i].Dimensions[0]%512 == 0 {
-				continue
-			}
-			e.Distributable = false
-			break
 		}
 	}
 
@@ -233,7 +244,7 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 
 		// For mamba,
 		// see https://github.com/ggerganov/llama.cpp/blob/7672adeec7a79ea271058c63106c142ba84f951a/llama.cpp#L16122-L16129.
-		if a.Architecture == "mamba" {
+		if a.Type == "model" && a.Architecture == "mamba" {
 			nKV = nParallel
 			o.CacheKeyType = ptr.To(GGMLTypeF32)
 			o.CacheValueType = ptr.To(GGMLTypeF32)
@@ -253,9 +264,9 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 		fullOffload, partialOffload, zeroOffload bool
 	)
 	{
-		// For clip,
+		// For none model,
 		// see https://github.com/ggerganov/llama.cpp/blob/148ec970b62c3c5ae0a8bfdaad2fc237aaae350d/examples/llava/clip.cpp#L994-L1008.
-		if a.Architecture == "clip" {
+		if a.Type != "model" {
 			o.OffloadLayers = ptr.To(a.BlockCount + 1) // Clip means full offload.
 		}
 		switch v := o.OffloadLayers; {
@@ -318,10 +329,10 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 	// Weight.
 	{
 		// Compute.
-		switch a.Architecture {
-		case "clip":
-			e.Devices[1].Weight.Compute = GGUFBytesScalar(ls.Bytes())
+		switch a.Type {
 		default:
+			e.Devices[1].Weight.Compute = GGUFBytesScalar(ls.Bytes())
+		case "model":
 			for i, j, offloadStart := 0, 0, len(tfLs)-int(nOffloadLayers); i < len(tfLs); i++ {
 				switch {
 				case i < int(nLoadLayers):
@@ -338,6 +349,7 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 					}
 					e.Devices[j+1].HandleLayers += 1
 					e.Devices[j+1].LastLayer = i
+					e.Devices[j+1].Remote = len(o.TensorSplitFraction)-len(o.RPCServers) <= j
 					e.Devices[j+1].Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
 				}
 			}
@@ -411,10 +423,8 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 			inpSMask  = GGMLTypeF32.RowSizeOf([]uint64{1, nKV})                    // F32 [1, n_kv]
 			inpSSeq   = GGMLTypeI32.RowSizeOf([]uint64{nKV, nBatch})               // I32 [n_kv, n_batch]
 		)
-		switch a.Architecture {
-		case "clip":
-			// NOP.
-		case "mamba":
+		switch {
+		case a.Type == "model" && a.Architecture == "mamba":
 			e.Devices[0].Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + inpSMask + inpSSeq + inpOutIds)
 			if !zeroOffload {
 				v := GGUFBytesScalar(inpEmbd + inpSMask + inpSSeq + inpOutIds)
@@ -422,7 +432,7 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 					e.Devices[i+1].Computation.Input += v
 				}
 			}
-		default:
+		case a.Type == "model":
 			e.Devices[0].Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + inpPos + inpKQMask + inpOutIds)
 			if !zeroOffload {
 				v := GGUFBytesScalar(inpEmbd + inpPos + inpKQMask + inpOutIds)
@@ -435,10 +445,8 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 		// the allocated memory can be reused for the next layer.
 		// So, we only consider the usage of the largest layer,
 		// which is the last layer by default.
-		switch a.Architecture {
-		case "clip":
-			// NOP.
-		case "mamba":
+		switch {
+		case a.Type == "model" && a.Architecture == "mamba":
 			convInc := GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingKeyGQA, nKV}) // F32 [n_embd_key_gqa, n_kv] reshape
 			for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.(attn_norm|ssm_in|ssm_conv1d)\.weight`)) {
 				if !strings.HasSuffix(l.Name, ".ssm_conv1d.weight") {
@@ -463,12 +471,12 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 			}
 			cp := GGUFBytesScalar(convInc + ssmInc)
 			for i, d := range e.Devices[1:] {
-				if d.LastLayer < 0 && i != 0 {
+				if d.LastLayer < 0 && (i == 0 && !d.Remote) {
 					continue
 				}
 				e.Devices[i+1].Computation.Compute = cp
 			}
-		default:
+		case a.Type == "model":
 			loadAttnInc, offloadAttnInc := uint64(0), uint64(0)
 			if o.FlashAttention {
 				// https://github.com/ggerganov/llama.cpp/blob/172c8256840ffd882ab9992ecedbb587d9b21f15/llama.cpp#L7387.
@@ -530,7 +538,7 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 			}
 			cp := GGUFBytesScalar(max(offloadAttnInc, ffnInc))
 			for i, d := range e.Devices[1:] {
-				if d.LastLayer < 0 && i != 0 {
+				if d.LastLayer < 0 && (i == 0 && !d.Remote) {
 					continue
 				}
 				e.Devices[i+1].Computation.Compute = cp
@@ -541,10 +549,7 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 			}
 		}
 		// Finally, get the usage of output layer.
-		switch a.Architecture {
-		case "clip":
-			// NOP.
-		default:
+		if a.Type == "model" {
 			outInc := inpEmbd
 			if a.Architecture == "mamba" {
 				outInc += inpSMask + inpSSeq
@@ -561,11 +566,14 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 		}
 	}
 
-	// Multimodal projector.
-	e.MultimodalProjector = o.MultimodalProjector
-
 	// Drafter.
 	e.Drafter = o.Drafter
+
+	// Projector.
+	e.Projector = o.Projector
+
+	// Adapters.
+	e.Adapters = o.Adapters
 
 	return e
 }
@@ -580,7 +588,9 @@ type (
 
 		/* Appendix */
 
-		// Architecture describes what architecture this model implements.
+		// Type describes what type this GGUF file is.
+		Type string `json:"type"`
+		// Architecture describes what architecture this GGUF file implements.
 		Architecture string `json:"architecture"`
 		// ContextSize is the size of the context.
 		ContextSize uint64 `json:"contextSize"`
@@ -666,27 +676,13 @@ func (e LLaMACppUsageEstimate) SummarizeMemory(mmap bool, nonUMARamFootprint, no
 			ems.VRAMs[i].UMA = fp + wg + kv + /* cp */ 0
 			if !e.NoMMap && mmap {
 				ems.VRAMs[i].UMA -= wg
-				// NB(thxCode): the weight add back for the following reasons:
-				// - UMA treats as one device.
-				// - RPC server will load all weights and computation.
-				if i > 0 {
+				if i > 0 || v.Remote {
 					ems.VRAMs[i].UMA += wg + cp
 				}
 			}
 
 			// NonUMA.
 			ems.VRAMs[i].NonUMA = GGUFBytesScalar(nonUMAVramFootprint) + fp + wg + kv + cp
-		}
-	}
-
-	// MultimodalProjector.
-	if e.MultimodalProjector != nil {
-		cems := e.MultimodalProjector.SummarizeMemory(mmap, 0, 0)
-		ems.RAM.UMA += cems.RAM.UMA
-		ems.RAM.NonUMA += cems.RAM.NonUMA
-		for i, v := range cems.VRAMs {
-			ems.VRAMs[i].UMA += v.UMA
-			ems.VRAMs[i].NonUMA += v.NonUMA
 		}
 	}
 
@@ -698,6 +694,28 @@ func (e LLaMACppUsageEstimate) SummarizeMemory(mmap bool, nonUMARamFootprint, no
 		for i, v := range dmes.VRAMs {
 			ems.VRAMs[i].UMA += v.UMA
 			ems.VRAMs[i].NonUMA += v.NonUMA
+		}
+	}
+
+	// Projector.
+	if e.Projector != nil {
+		cems := e.Projector.SummarizeMemory(mmap, 0, 0)
+		ems.RAM.UMA += cems.RAM.UMA
+		ems.RAM.NonUMA += cems.RAM.NonUMA
+		for i, v := range cems.VRAMs {
+			ems.VRAMs[i].UMA += v.UMA
+			ems.VRAMs[i].NonUMA += v.NonUMA
+		}
+	}
+
+	// Adapters.
+	for i := range e.Adapters {
+		aems := e.Adapters[i].SummarizeMemory(mmap, 0, 0)
+		ems.RAM.UMA += aems.RAM.UMA
+		ems.RAM.NonUMA += aems.RAM.NonUMA
+		for j, v := range aems.VRAMs {
+			ems.VRAMs[j].UMA += v.UMA
+			ems.VRAMs[j].NonUMA += v.NonUMA
 		}
 	}
 
@@ -713,6 +731,7 @@ func (e LLaMACppUsageEstimate) Summarize(mmap bool, nonUMARamFootprint, nonUMAVr
 	}
 
 	// Just copy from the original estimate.
+	es.Type = e.Type
 	es.Architecture = e.Architecture
 	es.ContextSize = e.ContextSize
 	es.FlashAttention = e.FlashAttention

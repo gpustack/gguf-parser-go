@@ -20,6 +20,7 @@ import (
 	"github.com/urfave/cli/v2"
 
 	. "github.com/gpustack/gguf-parser-go" // nolint: stylecheck
+	"net"
 )
 
 var Version = "v0.0.0"
@@ -412,7 +413,18 @@ func main() {
 					"which is used to estimate the usage, " +
 					"it is a comma-separated list of integer. " +
 					"Since gguf-parser cannot recognize the host GPU devices or RPC servers, " +
-					"must explicitly set --tensor-split to indicate how many devices are used.",
+					"must explicitly set --tensor-split to indicate how many devices are used. " +
+					"To declare the devices belong to RPC servers, set --rpc please.",
+			},
+			&cli.StringFlag{
+				Destination: &rpcServers,
+				Value:       rpcServers,
+				Category:    "Estimate",
+				Name:        "rpc",
+				Usage: "Specify the RPC servers, " +
+					"which is used to estimate the usage, " +
+					"it is a comma-separated list of host:port. " +
+					"Woks with --tensor-split.",
 			},
 			&cli.UintFlag{
 				Destination: &mainGPU,
@@ -490,32 +502,34 @@ func main() {
 				Usage:       "Works with --raw, to save the result to the file",
 			},
 			&cli.BoolFlag{
-				Destination: &skipModel,
-				Value:       skipModel,
+				Destination: &skipMetadata,
+				Value:       skipMetadata,
 				Category:    "Output",
-				Name:        "skip-model",
-				Usage:       "Skip to display model metadata.",
+				Name:        "skip-metadata",
+				Usage:       "Skip to display metadata.",
 			},
 			&cli.BoolFlag{
 				Destination: &skipArchitecture,
 				Value:       skipArchitecture,
 				Category:    "Output",
 				Name:        "skip-architecture",
-				Usage:       "Skip to display architecture metadata.",
+				Usage:       "Skip to display architecture.",
 			},
 			&cli.BoolFlag{
 				Destination: &skipTokenizer,
 				Value:       skipTokenizer,
 				Category:    "Output",
 				Name:        "skip-tokenizer",
-				Usage:       "Skip to display tokenizer metadata.",
+				Usage: "Skip to display tokenizer. " +
+					"By default, gguf-parser always displays the tokenizer of the file which types with \"model\".",
 			},
 			&cli.BoolFlag{
 				Destination: &skipEstimate,
 				Value:       skipEstimate,
 				Category:    "Output",
 				Name:        "skip-estimate",
-				Usage:       "Skip to estimate.",
+				Usage: "Skip to estimate. " +
+					"By default, gguf-parser always estimates the file which types with \"model\".",
 			},
 			&cli.BoolFlag{
 				Destination: &inMib,
@@ -594,6 +608,7 @@ var (
 	splitMode          = "layer"
 	tensorSplit        string
 	mainGPU            uint
+	rpcServers         string
 	platformFootprint  = "150,250"
 	noMMap             bool
 	offloadLayers      = -1
@@ -602,7 +617,7 @@ var (
 	// output options
 	raw              bool
 	rawOutput        string
-	skipModel        bool
+	skipMetadata     bool
 	skipArchitecture bool
 	skipTokenizer    bool
 	skipEstimate     bool
@@ -689,12 +704,13 @@ func mainAction(c *cli.Context) error {
 		eopts = append(eopts, WithSplitMode(LLaMACppSplitModeLayer))
 	}
 	if tensorSplit != "" {
-		ss := strings.Split(tensorSplit, ",")
+		tss := strings.Split(tensorSplit, ",")
 		var vs float64
-		vv := make([]float64, len(ss))
-		vf := make([]float64, len(ss))
-		for i, s := range ss {
-			v, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+		vv := make([]float64, len(tss))
+		vf := make([]float64, len(tss))
+		for i, s := range tss {
+			s = strings.TrimSpace(s)
+			v, err := strconv.ParseFloat(s, 64)
 			if err != nil {
 				return errors.New("--tensor-split has invalid integer")
 			}
@@ -710,11 +726,26 @@ func mainAction(c *cli.Context) error {
 		} else {
 			return errors.New("--main-gpu must be less than item size of --tensor-split")
 		}
+		if rpcServers != "" {
+			rss := strings.Split(rpcServers, ",")
+			if len(rss) > len(tss) {
+				return errors.New("--rpc has more items than --tensor-split")
+			}
+			rpc := make([]string, len(rss))
+			for i, s := range rss {
+				s = strings.TrimSpace(s)
+				if _, _, err := net.SplitHostPort(s); err != nil {
+					return errors.New("--rpc has invalid host:port")
+				}
+				rpc[i] = s
+			}
+			eopts = append(eopts, WithRPCServers(rpc))
+		}
 	}
 
 	// Parse GGUF file.
 
-	var gf, mmpgf, dftgf *GGUFFile
+	var gf, projgf, dftgf *GGUFFile
 	{
 		var err error
 
@@ -761,7 +792,7 @@ func mainAction(c *cli.Context) error {
 				{
 					mls := om.SearchLayers(regexp.MustCompile(`^application/vnd\.ollama\.image\.projector$`))
 					if len(mls) > 0 {
-						mmpgf, err = ParseGGUFFileRemote(ctx, mls[len(mls)-1].BlobURL().String(), ropts...)
+						projgf, err = ParseGGUFFileRemote(ctx, mls[len(mls)-1].BlobURL().String(), ropts...)
 					}
 				}
 			}
@@ -770,16 +801,16 @@ func mainAction(c *cli.Context) error {
 			return fmt.Errorf("failed to parse GGUF file: %w", err)
 		}
 
-		// MultimodalProjector model.
+		// Projector model.
 		switch {
 		case mmprojPath != "":
-			mmpgf, err = ParseGGUFFile(mmprojPath, ropts...)
+			projgf, err = ParseGGUFFile(mmprojPath, ropts...)
 		case mmprojUrl != "":
-			mmpgf, err = ParseGGUFFileRemote(ctx, mmprojUrl, ropts...)
+			projgf, err = ParseGGUFFileRemote(ctx, mmprojUrl, ropts...)
 		case hfRepo != "" && hfMMProjFile != "":
-			mmpgf, err = ParseGGUFFileFromHuggingFace(ctx, hfRepo, hfMMProjFile, ropts...)
+			projgf, err = ParseGGUFFileFromHuggingFace(ctx, hfRepo, hfMMProjFile, ropts...)
 		case msRepo != "" && msMMProjFile != "":
-			mmpgf, err = ParseGGUFFileFromModelScope(ctx, msRepo, msMMProjFile, ropts...)
+			projgf, err = ParseGGUFFileFromModelScope(ctx, msRepo, msMMProjFile, ropts...)
 		}
 		if err != nil {
 			return fmt.Errorf("failed to parse multimodal projector GGUF file: %w", err)
@@ -822,27 +853,21 @@ func mainAction(c *cli.Context) error {
 	// Otherwise, display the metadata and estimate the usage.
 
 	var (
-		m GGUFModelMetadata
-		a GGUFArchitectureMetadata
-		t GGUFTokenizerMetadata
+		m GGUFMetadata
+		a GGUFArchitecture
+		t GGUFTokenizer
 		e LLaMACppUsageEstimate
 	)
-	if !skipModel {
-		m = gf.Model()
+	if !skipMetadata {
+		m = gf.Metadata()
 	}
-	if !skipArchitecture && !skipEstimate {
+	if !skipArchitecture {
 		a = gf.Architecture()
 	}
-	if !skipTokenizer && !skipEstimate {
+	if !skipTokenizer {
 		t = gf.Tokenizer()
 	}
 	if !skipEstimate {
-		if mmpgf != nil {
-			meopts := eopts[:len(eopts):len(eopts)]
-			me := mmpgf.EstimateLLaMACppUsage(meopts...)
-			eopts = append(eopts, WithMultimodalProjector(&me))
-		}
-
 		if dftgf != nil {
 			deopts := eopts[:len(eopts):len(eopts)]
 			if offloadLayersDraft >= 0 {
@@ -850,6 +875,12 @@ func mainAction(c *cli.Context) error {
 			}
 			de := dftgf.EstimateLLaMACppUsage(deopts...)
 			eopts = append(eopts, WithDrafter(&de))
+		}
+
+		if projgf != nil {
+			peopts := eopts[:len(eopts):len(eopts)]
+			me := projgf.EstimateLLaMACppUsage(peopts...)
+			eopts = append(eopts, WithProjector(&me))
 		}
 
 		deopts := eopts[:len(eopts):len(eopts)]
@@ -881,8 +912,8 @@ func mainAction(c *cli.Context) error {
 
 	if inJson {
 		o := map[string]any{}
-		if !skipModel {
-			o["model"] = m
+		if !skipMetadata {
+			o["metadata"] = m
 		}
 		if !skipArchitecture {
 			o["architecture"] = a
@@ -890,35 +921,33 @@ func mainAction(c *cli.Context) error {
 		if !skipTokenizer && t.Model != "" {
 			o["tokenizer"] = t
 		}
-		if !skipEstimate {
+		if !skipEstimate && e.Type == "model" {
 			es := e.Summarize(mmap, platformRAM, platformVRAM)
-			if e.Architecture != "clip" {
-				switch {
-				case offloadLayersStep > e.OffloadLayers:
-					offloadLayersStep = e.OffloadLayers
-				case offloadLayersStep <= 0:
-					offloadLayersStep = e.OffloadLayers
+			switch {
+			case offloadLayersStep > e.OffloadLayers:
+				offloadLayersStep = e.OffloadLayers
+			case offloadLayersStep <= 0:
+				offloadLayersStep = e.OffloadLayers
+			}
+			if offloadLayersStep < e.OffloadLayers {
+				cnt := e.OffloadLayers/offloadLayersStep + 1
+				if e.OffloadLayers%offloadLayersStep != 0 || e.FullOffloaded {
+					cnt++
 				}
-				if offloadLayersStep < e.OffloadLayers {
-					cnt := e.OffloadLayers/offloadLayersStep + 1
-					if e.OffloadLayers%offloadLayersStep != 0 || e.FullOffloaded {
-						cnt++
-					}
-					ess := make([]LLaMACppUsageEstimateMemorySummary, cnt)
-					var wg sync.WaitGroup
-					for i := 0; i < cap(ess); i++ {
-						wg.Add(1)
-						go func(i int) {
-							defer wg.Done()
-							eopts := eopts[:len(eopts):len(eopts)]
-							eopts = append(eopts, WithOffloadLayers(uint64(i)*offloadLayersStep))
-							ess[i] = gf.EstimateLLaMACppUsage(eopts...).SummarizeMemory(mmap, platformRAM, platformVRAM)
-						}(i)
-					}
-					wg.Wait()
-					ess[cap(ess)-1] = es.Memory[0]
-					es.Memory = ess
+				ess := make([]LLaMACppUsageEstimateMemorySummary, cnt)
+				var wg sync.WaitGroup
+				for i := 0; i < cap(ess); i++ {
+					wg.Add(1)
+					go func(i int) {
+						defer wg.Done()
+						eopts := eopts[:len(eopts):len(eopts)]
+						eopts = append(eopts, WithOffloadLayers(uint64(i)*offloadLayersStep))
+						ess[i] = gf.EstimateLLaMACppUsage(eopts...).SummarizeMemory(mmap, platformRAM, platformVRAM)
+					}(i)
 				}
+				wg.Wait()
+				ess[cap(ess)-1] = es.Memory[0]
+				es.Memory = ess
 			}
 			o["estimate"] = es
 		}
@@ -936,11 +965,12 @@ func mainAction(c *cli.Context) error {
 
 	InMiBytes = inMib
 
-	if !skipModel {
+	if !skipMetadata {
 		tprint(
-			"MODEL",
+			"Metadata",
 			[][]any{
 				{
+					"Type",
 					"Name",
 					"Arch",
 					"Quantization",
@@ -952,7 +982,8 @@ func mainAction(c *cli.Context) error {
 			},
 			[][]any{
 				{
-					m.Name,
+					m.Type,
+					sprintf(tenary(len(m.Name) == 0, "N/A", tenary(len([]rune(m.Name)) <= 20, m.Name, string([]rune(m.Name)[:20])+"..."))),
 					m.Architecture,
 					sprintf(m.FileType),
 					sprintf(m.LittleEndian),
@@ -968,7 +999,37 @@ func mainAction(c *cli.Context) error {
 			hd []any
 			bd []any
 		)
-		if a.Architecture != "clip" {
+		switch a.Type {
+		case "projector":
+			hd = []any{
+				"Projector Type",
+				"Embedding Len",
+				"Layers",
+				"Feed Forward Len",
+				"Encoder",
+			}
+			bd = []any{
+				sprintf(a.ClipProjectorType),
+				sprintf(a.EmbeddingLength),
+				sprintf(a.BlockCount),
+				sprintf(a.FeedForwardLength),
+				sprintf(tenary(a.ClipHasTextEncoder, tenary(a.ClipHasVisionEncoder, "Text & Vision", "Text"), tenary(a.ClipHasVisionEncoder, "Vision", "N/A"))),
+			}
+		case "adapter":
+			hd = []any{
+				"Adapter Type",
+			}
+			bd = []any{
+				sprintf(a.AdapterType),
+			}
+			if a.AdapterType == "lora" {
+				hd = append(hd, "LoRA Alpha")
+				bd = append(bd, sprintf(a.AdapterLoRAAlpha))
+			} else {
+				hd = append(hd, "ControlVector Layers")
+				bd = append(bd, sprintf(a.AdapterControlVectorLayerCount))
+			}
+		default:
 			hd = []any{
 				"Max Context Len",
 				"Embedding Len",
@@ -990,21 +1051,6 @@ func mainAction(c *cli.Context) error {
 				sprintf(a.FeedForwardLength),
 				sprintf(a.ExpertCount),
 				sprintf(a.VocabularyLength),
-			}
-		} else {
-			hd = []any{
-				"Embedding Len",
-				"Layers",
-				"Feed Forward Len",
-				"Encoder",
-				"LLaVA MultimodalProjector",
-			}
-			bd = []any{
-				sprintf(a.EmbeddingLength),
-				sprintf(a.BlockCount),
-				sprintf(a.FeedForwardLength),
-				sprintf(tenary(a.ClipHasTextEncoder, tenary(a.ClipHasVisionEncoder, "Text & Vision", "Text"), tenary(a.ClipHasVisionEncoder, "Vision", "N/A"))),
-				sprintf(tenary(a.ClipHasLLaVaProjector, a.ClipProjectorType, "N/A")),
 			}
 		}
 		tprint(
@@ -1048,128 +1094,90 @@ func mainAction(c *cli.Context) error {
 			})
 	}
 
-	if !skipEstimate {
+	if !skipEstimate && e.Type == "model" {
 		var (
 			hds [][]any
 			bds [][]any
 		)
 		es := e.Summarize(mmap, platformRAM, platformVRAM)
-		if e.Architecture != "clip" {
-			hds = [][]any{
-				{
-					"Arch",
-					"Context Size",
-					"Batch Size (L / P)",
-					"Flash Attention",
-					"MMap Load",
-					"Embedding Only",
-					"Distributable",
-					"Offload Layers",
-					"Full Offloaded",
-					"RAM",
-					"RAM",
-				},
-				{
-					"Arch",
-					"Context Size",
-					"Batch Size (L / P)",
-					"Flash Attention",
-					"MMap Load",
-					"Embedding Only",
-					"Distributable",
-					"Offload Layers",
-					"Full Offloaded",
-					"UMA",
-					"NonUMA",
-				},
-			}
-			for i := range es.Memory[0].VRAMs {
-				hds[0] = append(hds[0], fmt.Sprintf("VRAM %d", i), fmt.Sprintf("VRAM %d", i))
-				hds[1] = append(hds[1], "UMA", "NonUMA")
-			}
+		hds = [][]any{
+			{
+				"Arch",
+				"Context Size",
+				"Batch Size (L / P)",
+				"Flash Attention",
+				"MMap Load",
+				"Embedding Only",
+				"Distributable",
+				"Offload Layers",
+				"Full Offloaded",
+				"RAM",
+				"RAM",
+			},
+			{
+				"Arch",
+				"Context Size",
+				"Batch Size (L / P)",
+				"Flash Attention",
+				"MMap Load",
+				"Embedding Only",
+				"Distributable",
+				"Offload Layers",
+				"Full Offloaded",
+				"UMA",
+				"NonUMA",
+			},
+		}
+		for i := range es.Memory[0].VRAMs {
+			hds[0] = append(hds[0], fmt.Sprintf("VRAM %d", i), fmt.Sprintf("VRAM %d", i))
+			hds[1] = append(hds[1], "UMA", "NonUMA")
+		}
 
-			switch {
-			case offloadLayersStep > e.OffloadLayers:
-				offloadLayersStep = e.OffloadLayers
-			case offloadLayersStep <= 0:
-				offloadLayersStep = e.OffloadLayers
+		switch {
+		case offloadLayersStep > e.OffloadLayers:
+			offloadLayersStep = e.OffloadLayers
+		case offloadLayersStep <= 0:
+			offloadLayersStep = e.OffloadLayers
+		}
+		if offloadLayersStep < e.OffloadLayers {
+			cnt := e.OffloadLayers/offloadLayersStep + 1
+			if e.OffloadLayers%offloadLayersStep != 0 || e.FullOffloaded {
+				cnt++
 			}
-			if offloadLayersStep < e.OffloadLayers {
-				cnt := e.OffloadLayers/offloadLayersStep + 1
-				if e.OffloadLayers%offloadLayersStep != 0 || e.FullOffloaded {
-					cnt++
-				}
-				ess := make([]LLaMACppUsageEstimateMemorySummary, cnt)
-				var wg sync.WaitGroup
-				for i := 0; i < cap(ess); i++ {
-					wg.Add(1)
-					go func(i int) {
-						defer wg.Done()
-						eopts := eopts[:len(eopts):len(eopts)]
-						eopts = append(eopts, WithOffloadLayers(uint64(i)*offloadLayersStep))
-						ess[i] = gf.EstimateLLaMACppUsage(eopts...).SummarizeMemory(mmap, platformRAM, platformVRAM)
-					}(i)
-				}
-				wg.Wait()
-				ess[cap(ess)-1] = es.Memory[0]
-				es.Memory = ess
+			ess := make([]LLaMACppUsageEstimateMemorySummary, cnt)
+			var wg sync.WaitGroup
+			for i := 0; i < cap(ess); i++ {
+				wg.Add(1)
+				go func(i int) {
+					defer wg.Done()
+					eopts := eopts[:len(eopts):len(eopts)]
+					eopts = append(eopts, WithOffloadLayers(uint64(i)*offloadLayersStep))
+					ess[i] = gf.EstimateLLaMACppUsage(eopts...).SummarizeMemory(mmap, platformRAM, platformVRAM)
+				}(i)
 			}
+			wg.Wait()
+			ess[cap(ess)-1] = es.Memory[0]
+			es.Memory = ess
+		}
 
-			bds = make([][]any, len(es.Memory))
-			for i := range es.Memory {
-				bds[i] = []any{
-					sprintf(es.Architecture),
-					sprintf(es.ContextSize),
-					sprintf("%d / %d", es.LogicalBatchSize, es.PhysicalBatchSize),
-					sprintf(tenary(es.FlashAttention, "Enabled", "Disabled")),
-					sprintf(tenary(!es.NoMMap, "Supported", "Not Supported")),
-					sprintf(tenary(es.EmbeddingOnly, "Yes", "No")),
-					sprintf(tenary(es.Distributable, "Supported", "Not Supported")),
-					sprintf(tenary(es.Memory[i].FullOffloaded, sprintf("%d (%d + 1)",
-						es.Memory[i].OffloadLayers, es.Memory[i].OffloadLayers-1), es.Memory[i].OffloadLayers)),
-					sprintf(tenary(es.Memory[i].FullOffloaded, "Yes", "No")),
-					sprintf(es.Memory[i].RAM.UMA),
-					sprintf(es.Memory[i].RAM.NonUMA),
-				}
-				for _, v := range es.Memory[i].VRAMs {
-					bds[i] = append(bds[i],
-						sprintf(v.UMA),
-						sprintf(v.NonUMA))
-				}
+		bds = make([][]any, len(es.Memory))
+		for i := range es.Memory {
+			bds[i] = []any{
+				sprintf(es.Architecture),
+				sprintf(es.ContextSize),
+				sprintf("%d / %d", es.LogicalBatchSize, es.PhysicalBatchSize),
+				sprintf(tenary(flashAttention, tenary(es.FlashAttention, "Enabled", "Not Supported"), "Disabled")),
+				sprintf(tenary(mmap, tenary(!es.NoMMap, "Enabled", "Not Supported"), "Disabled")),
+				sprintf(tenary(es.EmbeddingOnly, "Yes", "No")),
+				sprintf(tenary(es.Distributable, "Supported", "Not Supported")),
+				sprintf(tenary(es.Memory[i].FullOffloaded, sprintf("%d (%d + 1)",
+					es.Memory[i].OffloadLayers, es.Memory[i].OffloadLayers-1), es.Memory[i].OffloadLayers)),
+				sprintf(tenary(es.Memory[i].FullOffloaded, "Yes", "No")),
+				sprintf(es.Memory[i].RAM.UMA),
+				sprintf(es.Memory[i].RAM.NonUMA),
 			}
-		} else {
-			hds = [][]any{
-				{
-					"Arch",
-					"Offload Layers",
-					"Full Offloaded",
-					"RAM",
-					"RAM",
-				},
-				{
-					"Arch",
-					"Offload Layers",
-					"Full Offloaded",
-					"UMA",
-					"NonUMA",
-				},
-			}
-			for i := range es.Memory[0].VRAMs {
-				hds[0] = append(hds[0], fmt.Sprintf("VRAM %d", i), fmt.Sprintf("VRAM %d", i))
-				hds[1] = append(hds[1], "UMA", "NonUMA")
-			}
-
-			bds = [][]any{
-				{
-					sprintf(es.Architecture),
-					sprintf(es.Memory[0].OffloadLayers),
-					sprintf(tenary(es.Memory[0].FullOffloaded, "Yes", "No")),
-					sprintf(es.Memory[0].RAM.UMA),
-					sprintf(es.Memory[0].RAM.NonUMA),
-				},
-			}
-			for _, v := range es.Memory[0].VRAMs {
-				bds[0] = append(bds[0],
+			for _, v := range es.Memory[i].VRAMs {
+				bds[i] = append(bds[i],
 					sprintf(v.UMA),
 					sprintf(v.NonUMA))
 			}

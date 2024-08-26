@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestGGUFFile_Model(t *testing.T) {
+func TestGGUFFile_Metadata(t *testing.T) {
 	ctx := context.Background()
 
 	f, err := ParseGGUFFileFromHuggingFace(
@@ -23,10 +23,10 @@ func TestGGUFFile_Model(t *testing.T) {
 		return
 	}
 
-	t.Log("\n", spew.Sdump(f.Model()), "\n")
+	t.Log("\n", spew.Sdump(f.Metadata()), "\n")
 }
 
-func BenchmarkGGUFFile_Model(b *testing.B) {
+func BenchmarkGGUFFile_Metadata(b *testing.B) {
 	mp, ok := os.LookupEnv("TEST_MODEL_PATH")
 	if !ok {
 		b.Skip("TEST_MODEL_PATH is not set")
@@ -43,7 +43,7 @@ func BenchmarkGGUFFile_Model(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = f.Model()
+		_ = f.Metadata()
 	}
 }
 
@@ -74,7 +74,7 @@ func TestGGUFFile_guessFileType(t *testing.T) {
 				t.Fatal(err)
 				return
 			}
-			assert.Equal(t, gf.Model().FileType.String(), gf.guessFileType().String(), tc+" file type should be equal")
+			assert.Equal(t, gf.Metadata().FileType.String(), gf.guessFileType().String(), tc+" file type should be equal")
 		})
 	}
 }

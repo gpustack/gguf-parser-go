@@ -1,9 +1,12 @@
 package gguf_parser
 
-// GGUFArchitectureMetadata represents the architecture metadata of a GGUF file.
-type GGUFArchitectureMetadata struct {
+// GGUFArchitecture represents the architecture metadata of a GGUF file.
+type GGUFArchitecture struct {
 	/* Basic */
 
+	// Type describes the type of the file,
+	// default is "model".
+	Type string `json:"type"`
 	// Architecture describes what architecture this model implements.
 	//
 	// All lowercase ASCII, with only [a-z0-9]+ characters allowed.
@@ -14,13 +17,13 @@ type GGUFArchitectureMetadata struct {
 	// Architectures, like RWKV,
 	// that are not reliant on transformer-style attention may be able to handle larger inputs,
 	// but this is not guaranteed.
-	MaximumContextLength uint64 `json:"maximumContextLength"`
+	MaximumContextLength uint64 `json:"maximumContextLength,omitempty"`
 	// EmbeddingLength(n_embd) is the length of the embedding layer.
-	EmbeddingLength uint64 `json:"embeddingLength"`
+	EmbeddingLength uint64 `json:"embeddingLength,omitempty"`
 	// BlockCount(n_layer) is the number of blocks of attention and feed-forward layers,
 	// i.e. the bulk of the LLM.
 	// This does not include the input or embedding layers.
-	BlockCount uint64 `json:"blockCount"`
+	BlockCount uint64 `json:"blockCount,omitempty"`
 	// FeedForwardLength(n_ff) is the length of the feed-forward layer.
 	FeedForwardLength uint64 `json:"feedForwardLength,omitempty"`
 	// ExpertFeedForwardLength(expert_feed_forward_length) is the length of the feed-forward layer in the expert model.
@@ -51,11 +54,11 @@ type GGUFArchitectureMetadata struct {
 	// AttentionKeyLength(n_embd_head_k) is the size of a key head.
 	//
 	// Defaults to `EmbeddingLength / AttentionHeadCount`.
-	AttentionKeyLength uint32 `json:"attentionKeyLength"`
+	AttentionKeyLength uint32 `json:"attentionKeyLength,omitempty"`
 	// AttentionValueLength(n_embd_head_v) is the size of a value head.
 	//
 	// Defaults to `EmbeddingLength / AttentionHeadCount`.
-	AttentionValueLength uint32 `json:"attentionValueLength"`
+	AttentionValueLength uint32 `json:"attentionValueLength,omitempty"`
 	// AttentionCausal is true if the attention is causal.
 	AttentionCausal bool `json:"attentionCausal,omitempty"`
 	// RoPEDimensionCount is the number of dimensions in the RoPE(Rotary Positional Encoding).
@@ -81,7 +84,7 @@ type GGUFArchitectureMetadata struct {
 	// VocabularyLength is the size of the vocabulary.
 	//
 	// VocabularyLength is the same as the tokenizer's token size.
-	VocabularyLength uint64 `json:"vocabularyLength"`
+	VocabularyLength uint64 `json:"vocabularyLength,omitempty"`
 
 	/* Appendix */
 
@@ -100,35 +103,67 @@ type GGUFArchitectureMetadata struct {
 	//
 	// Only used when Architecture is "clip".
 	ClipHasVisionEncoder bool `json:"clipHasVisionEncoder,omitempty"`
-	// ClipHasLLaVaProjector indicates whether the clip model has LLaVa projector or not.
-	//
-	// Only used when Architecture is "clip".
-	ClipHasLLaVaProjector bool `json:"clipHasLLaVaProjector,omitempty"`
 	// ClipProjectorType is the type of the projector used in the clip model.
 	//
 	// Only used when Architecture is "clip".
 	ClipProjectorType string `json:"clipProjectorType,omitempty"`
+
+	// AdapterType is the type of the adapter.
+	AdapterType string `json:"adapterType,omitempty"`
+	// AdapterLoRAAlpha is the alpha value of the LoRA adapter.
+	//
+	// Only used when AdapterType is "lora".
+	AdapterLoRAAlpha float32 `json:"adapterLoRAAlpha,omitempty"`
+	// AdapterControlVectorLayerCount is the number of layers in the control vector.
+	//
+	// Only used when Architecture is "control_vector".
+	AdapterControlVectorLayerCount uint32 `json:"adapterControlVectorLayerCount,omitempty"`
 }
 
 // Architecture returns the architecture metadata of the GGUF file.
-func (gf *GGUFFile) Architecture() (ga GGUFArchitectureMetadata) {
-	arch := "llama"
-	if v, ok := gf.Header.MetadataKV.Get("general.architecture"); ok {
-		arch = v.ValueString()
+func (gf *GGUFFile) Architecture() (ga GGUFArchitecture) {
+	var (
+		generalTypeKey         = "general.type"
+		generalArchitectureKey = "general.architecture"
+
+		controlVectorModelHintKey = "controlvector.model_hint"
+	)
+	m, _ := gf.Header.MetadataKV.Index([]string{
+		generalTypeKey,
+		generalArchitectureKey,
+		controlVectorModelHintKey,
+	})
+
+	typ, arch := "model", "llama" // nolint: goconst
+	{
+		if v, ok := m[generalTypeKey]; ok {
+			typ = v.ValueString()
+		}
+		if v, ok := m[generalArchitectureKey]; ok {
+			arch = v.ValueString()
+		}
 	}
 
-	if arch == "clip" {
+	switch {
+	case arch == "clip":
 		return gf.clipArchitecture()
+	case arch == "controlvector":
+		arch = "llama"
+		if v, ok := m[controlVectorModelHintKey]; ok {
+			arch = v.ValueString()
+		}
+		return gf.adapterArchitecture(arch)
+	case typ == "adapter":
+		return gf.adapterArchitecture(arch)
 	}
-	return gf.transformArchitecture(arch)
+	return gf.modelArchitecture(arch)
 }
 
-func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitectureMetadata) {
+func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 	var (
-		hasTextEncoderKey    = "clip.has_text_encoder"
-		hasVisionEncoderKey  = "clip.has_vision_encoder"
-		hasLLaVaProjectorKey = "clip.has_llava_projector"
-		projectorTypeKey     = "clip.projector_type"
+		hasTextEncoderKey   = "clip.has_text_encoder"
+		hasVisionEncoderKey = "clip.has_vision_encoder"
+		projectorTypeKey    = "clip.projector_type"
 
 		textEmbeddingLengthKey              = "clip.text.embedding_length"
 		textBlockCountKey                   = "clip.text.block_count"
@@ -143,12 +178,12 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitectureMetadata) {
 		visionAttentionLayerNormRMSEpsilonKey = "clip.vision.attention.layer_norm_epsilon"
 	)
 
+	ga.Type = "projector"
 	ga.Architecture = "clip"
 
 	m, _ := gf.Header.MetadataKV.Index([]string{
 		hasTextEncoderKey,
 		hasVisionEncoderKey,
-		hasLLaVaProjectorKey,
 		projectorTypeKey,
 		textEmbeddingLengthKey,
 		textBlockCountKey,
@@ -167,9 +202,6 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitectureMetadata) {
 	}
 	if v, ok := m[hasVisionEncoderKey]; ok {
 		ga.ClipHasVisionEncoder = v.ValueBool()
-	}
-	if v, ok := m[hasLLaVaProjectorKey]; ok {
-		ga.ClipHasLLaVaProjector = v.ValueBool()
 	}
 	if v, ok := m[projectorTypeKey]; ok {
 		ga.ClipProjectorType = v.ValueString()
@@ -228,7 +260,42 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitectureMetadata) {
 	return ga
 }
 
-func (gf *GGUFFile) transformArchitecture(arch string) (ga GGUFArchitectureMetadata) {
+func (gf *GGUFFile) adapterArchitecture(arch string) (ga GGUFArchitecture) {
+	var (
+		typeKey = "adapter.type"
+
+		loraAlphaKey = "adapter.lora.alpha"
+
+		controlVectorLayerCountKey  = "adapter.control_vector.layer_count"
+		controlVectorLayerCountKey2 = "control_vector.layer_count"
+	)
+
+	ga.Type = "adapter"
+	ga.Architecture = arch
+
+	m, _ := gf.Header.MetadataKV.Index([]string{
+		typeKey,
+		loraAlphaKey,
+		controlVectorLayerCountKey,
+		controlVectorLayerCountKey2,
+	})
+
+	if v, ok := m[typeKey]; ok {
+		ga.AdapterType = v.ValueString()
+	}
+	if v, ok := m[loraAlphaKey]; ok {
+		ga.AdapterLoRAAlpha = ValueNumeric[float32](v)
+	}
+	if v, ok := m[controlVectorLayerCountKey]; ok {
+		ga.AdapterControlVectorLayerCount = ValueNumeric[uint32](v)
+	} else if v, ok := m[controlVectorLayerCountKey2]; ok {
+		ga.AdapterControlVectorLayerCount = ValueNumeric[uint32](v)
+	}
+
+	return ga
+}
+
+func (gf *GGUFFile) modelArchitecture(arch string) (ga GGUFArchitecture) {
 	var (
 		contextLengthKey     = arch + ".context_length"
 		embeddingLengthKey   = arch + ".embedding_length"
@@ -269,6 +336,7 @@ func (gf *GGUFFile) transformArchitecture(arch string) (ga GGUFArchitectureMetad
 		tokenizerGGMLTokensKey = "tokenizer.ggml.tokens"
 	)
 
+	ga.Type = "model"
 	ga.Architecture = arch
 
 	m, _ := gf.Header.MetadataKV.Index([]string{
