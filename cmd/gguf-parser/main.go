@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -20,7 +21,6 @@ import (
 	"github.com/urfave/cli/v2"
 
 	. "github.com/gpustack/gguf-parser-go" // nolint: stylecheck
-	"net"
 )
 
 var Version = "v0.0.0"
@@ -89,6 +89,20 @@ func main() {
 				Aliases:     []string{"mmproj"},
 				Usage:       "Path where the GGUF file to load for the multimodal projector, optional.",
 			},
+			&cli.StringSliceFlag{
+				Destination: &loraPaths,
+				Category:    "Model/Local",
+				Name:        "lora-path",
+				Aliases:     []string{"lora"},
+				Usage:       "Path where the GGUF file to load for the LoRA adapter, optional.",
+			},
+			&cli.StringSliceFlag{
+				Destination: &controlVectorPaths,
+				Category:    "Model/Local",
+				Name:        "control-vector-path",
+				Aliases:     []string{"control-vector"},
+				Usage:       "Path where the GGUF file to load for the Control Vector adapter, optional.",
+			},
 			&cli.StringFlag{
 				Destination: &url,
 				Value:       url,
@@ -117,6 +131,18 @@ func main() {
 				Name:        "mmproj-url",
 				Usage:       "Url where the GGUF file to load for the multimodal projector, optional.",
 			},
+			&cli.StringSliceFlag{
+				Destination: &loraUrls,
+				Category:    "Model/Remote",
+				Name:        "lora-url",
+				Usage:       "Url where the GGUF file to load for the LoRA adapter, optional.",
+			},
+			&cli.StringSliceFlag{
+				Destination: &controlVectorUrls,
+				Category:    "Model/Remote",
+				Name:        "control-vector-url",
+				Usage:       "Url where the GGUF file to load for the Control Vector adapter, optional.",
+			},
 			&cli.StringFlag{
 				Destination: &token,
 				Value:       token,
@@ -144,13 +170,6 @@ func main() {
 					"Qwen2-7B-Instruct.Q5_K_M.gguf.",
 			},
 			&cli.StringFlag{
-				Destination: &hfMMProjFile,
-				Value:       hfMMProjFile,
-				Category:    "Model/Remote/HuggingFace",
-				Name:        "hf-mmproj-file",
-				Usage:       "Multimodal projector file below the --hf-repo.",
-			},
-			&cli.StringFlag{
 				Destination: &hfDraftRepo,
 				Value:       hfDraftRepo,
 				Category:    "Model/Remote/HuggingFace",
@@ -165,6 +184,25 @@ func main() {
 				Name:        "hf-draft-file",
 				Usage: "Model file below the --hf-draft-repo, optional, e.g. " +
 					"Qwen2-1.5B-Instruct.Q5_K_M.gguf.",
+			},
+			&cli.StringFlag{
+				Destination: &hfMMProjFile,
+				Value:       hfMMProjFile,
+				Category:    "Model/Remote/HuggingFace",
+				Name:        "hf-mmproj-file",
+				Usage:       "Multimodal projector file below the --hf-repo.",
+			},
+			&cli.StringSliceFlag{
+				Destination: &hfLoRAFiles,
+				Category:    "Model/Remote/HuggingFace",
+				Name:        "hf-lora-file",
+				Usage:       "LoRA adapter file below the --hf-repo.",
+			},
+			&cli.StringSliceFlag{
+				Destination: &hfControlVectorFiles,
+				Category:    "Model/Remote/HuggingFace",
+				Name:        "hf-control-vector-file",
+				Usage:       "Control Vector adapter file below the --hf-repo.",
 			},
 			&cli.StringFlag{
 				Destination: &hfToken,
@@ -193,13 +231,6 @@ func main() {
 					"qwen1_5-7b-chat-q5_k_m.gguf.",
 			},
 			&cli.StringFlag{
-				Destination: &msMMProjFile,
-				Value:       msMMProjFile,
-				Category:    "Model/Remote/ModelScope",
-				Name:        "ms-mmproj-file",
-				Usage:       "Multimodal projector file below the --ms-repo.",
-			},
-			&cli.StringFlag{
 				Destination: &msDraftRepo,
 				Value:       msDraftRepo,
 				Category:    "Model/Remote/ModelScope",
@@ -214,6 +245,25 @@ func main() {
 				Name:        "ms-draft-file",
 				Usage: "Model file below the --ms-draft-repo, optional, e.g. " +
 					"qwen1_5-1_8b-chat-q5_k_m.gguf.",
+			},
+			&cli.StringFlag{
+				Destination: &msMMProjFile,
+				Value:       msMMProjFile,
+				Category:    "Model/Remote/ModelScope",
+				Name:        "ms-mmproj-file",
+				Usage:       "Multimodal projector file below the --ms-repo.",
+			},
+			&cli.StringSliceFlag{
+				Destination: &msLoRAFiles,
+				Category:    "Model/Remote/ModelScope",
+				Name:        "ms-lora-file",
+				Usage:       "LoRA adapter file below the --ms-repo.",
+			},
+			&cli.StringSliceFlag{
+				Destination: &msControlVectorFiles,
+				Category:    "Model/Remote/ModelScope",
+				Name:        "ms-control-vector-file",
+				Usage:       "Control Vector adapter file below the --ms-repo.",
 			},
 			&cli.StringFlag{
 				Destination: &msToken,
@@ -464,7 +514,7 @@ func main() {
 				Value:       offloadLayers,
 				Category:    "Estimate",
 				Name:        "gpu-layers",
-				Aliases:     []string{"ngl"},
+				Aliases:     []string{"ngl", "n-gpu-layers"},
 				Usage: "Specify how many layers of the main model to offload, " +
 					"which is used to estimate the usage, " +
 					"default is full offloaded.",
@@ -474,7 +524,7 @@ func main() {
 				Value:       offloadLayersDraft,
 				Category:    "Estimate",
 				Name:        "gpu-layers-draft",
-				Aliases:     []string{"ngld"},
+				Aliases:     []string{"ngld", "n-gpu-layers-draft"},
 				Usage: "Specify how many layers of the draft model to offload, " +
 					"which is used to estimate the usage, " +
 					"default is full offloaded.",
@@ -564,28 +614,36 @@ func main() {
 
 var (
 	// model options
-	path         string
-	mmprojPath   string // for estimate
-	draftPath    string // for estimate
-	url          string
-	mmprojUrl    string // for estimate
-	draftUrl     string // for estimate
-	token        string
-	hfRepo       string
-	hfFile       string
-	hfMMProjFile string // for estimate
-	hfDraftRepo  string // for estimate
-	hfDraftFile  string // for estimate
-	hfToken      string
-	msRepo       string
-	msFile       string
-	msMMProjFile string // for estimate
-	msDraftRepo  string // for estimate
-	msDraftFile  string // for estimate
-	msToken      string
-	olBaseURL    = "https://registry.ollama.ai"
-	olModel      string
-	olUsage      bool
+	path                 string
+	mmprojPath           string          // for estimate
+	draftPath            string          // for estimate
+	loraPaths            cli.StringSlice // for estimate
+	controlVectorPaths   cli.StringSlice // for estimate
+	url                  string
+	mmprojUrl            string          // for estimate
+	draftUrl             string          // for estimate
+	loraUrls             cli.StringSlice // for estimate
+	controlVectorUrls    cli.StringSlice // for estimate
+	token                string
+	hfRepo               string
+	hfFile               string
+	hfDraftRepo          string          // for estimate
+	hfDraftFile          string          // for estimate
+	hfMMProjFile         string          // for estimate
+	hfLoRAFiles          cli.StringSlice // for estimate
+	hfControlVectorFiles cli.StringSlice // for estimate
+	hfToken              string
+	msRepo               string
+	msFile               string
+	msDraftRepo          string          // for estimate
+	msDraftFile          string          // for estimate
+	msMMProjFile         string          // for estimate
+	msLoRAFiles          cli.StringSlice // for estimate
+	msControlVectorFiles cli.StringSlice // for estimate
+	msToken              string
+	olBaseURL            = "https://registry.ollama.ai"
+	olModel              string
+	olUsage              bool
 	// load options
 	debug                  bool
 	skipProxy              bool
@@ -745,7 +803,12 @@ func mainAction(c *cli.Context) error {
 
 	// Parse GGUF file.
 
-	var gf, projgf, dftgf *GGUFFile
+	var (
+		gf     *GGUFFile
+		projgf *GGUFFile
+		dftgf  *GGUFFile
+		adpgfs []*GGUFFile
+	)
 	{
 		var err error
 
@@ -795,13 +858,42 @@ func mainAction(c *cli.Context) error {
 						projgf, err = ParseGGUFFileRemote(ctx, mls[len(mls)-1].BlobURL().String(), ropts...)
 					}
 				}
+				// Adapter overlap.
+				{
+					als := om.SearchLayers(regexp.MustCompile(`^application/vnd\.ollama\.image\.adapter$`))
+					if len(als) > 0 {
+						var adpgf *GGUFFile
+						for i := range als {
+							adpgf, err = ParseGGUFFileRemote(ctx, als[i].BlobURL().String(), ropts...)
+							if err != nil {
+								break
+							}
+							adpgfs = append(adpgfs, adpgf)
+						}
+					}
+				}
 			}
 		}
 		if err != nil {
 			return fmt.Errorf("failed to parse GGUF file: %w", err)
 		}
 
-		// Projector model.
+		// Drafter.
+		switch {
+		case draftPath != "":
+			dftgf, err = ParseGGUFFile(draftPath, ropts...)
+		case draftUrl != "":
+			dftgf, err = ParseGGUFFileRemote(ctx, draftUrl, ropts...)
+		case hfDraftRepo != "" && hfDraftFile != "":
+			dftgf, err = ParseGGUFFileFromHuggingFace(ctx, hfDraftRepo, hfDraftFile, ropts...)
+		case msDraftRepo != "" && msDraftFile != "":
+			dftgf, err = ParseGGUFFileFromModelScope(ctx, msDraftRepo, msDraftFile, ropts...)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to parse draft GGUF file: %w", err)
+		}
+
+		// Projector.
 		switch {
 		case mmprojPath != "":
 			projgf, err = ParseGGUFFile(mmprojPath, ropts...)
@@ -816,19 +908,75 @@ func mainAction(c *cli.Context) error {
 			return fmt.Errorf("failed to parse multimodal projector GGUF file: %w", err)
 		}
 
-		// Drafter model.
-		switch {
-		case draftPath != "":
-			dftgf, err = ParseGGUFFile(draftPath, ropts...)
-		case draftUrl != "":
-			dftgf, err = ParseGGUFFileRemote(ctx, draftUrl, ropts...)
-		case hfDraftRepo != "" && hfDraftFile != "":
-			dftgf, err = ParseGGUFFileFromHuggingFace(ctx, hfDraftRepo, hfDraftFile, ropts...)
-		case msDraftRepo != "" && msDraftFile != "":
-			dftgf, err = ParseGGUFFileFromModelScope(ctx, msDraftRepo, msDraftFile, ropts...)
-		}
-		if err != nil {
-			return fmt.Errorf("failed to parse draft GGUF file: %w", err)
+		// Adapter.
+		{
+			// LoRA.
+			for _, loraPath := range loraPaths.Value() {
+				adpgf, err := ParseGGUFFile(loraPath, ropts...)
+				if err != nil {
+					return fmt.Errorf("failed to parse LoRA adapter GGUF file: %w", err)
+				}
+				adpgfs = append(adpgfs, adpgf)
+			}
+			for _, loraUrl := range loraUrls.Value() {
+				adpgf, err := ParseGGUFFileRemote(ctx, loraUrl, ropts...)
+				if err != nil {
+					return fmt.Errorf("failed to parse LoRA adapter GGUF file: %w", err)
+				}
+				adpgfs = append(adpgfs, adpgf)
+			}
+			if hfRepo != "" {
+				for _, hfLoRAFile := range hfLoRAFiles.Value() {
+					adpgf, err := ParseGGUFFileFromHuggingFace(ctx, hfRepo, hfLoRAFile, ropts...)
+					if err != nil {
+						return fmt.Errorf("failed to parse LoRA adapter GGUF file: %w", err)
+					}
+					adpgfs = append(adpgfs, adpgf)
+				}
+			}
+			if msRepo != "" {
+				for _, msLoRAFile := range msLoRAFiles.Value() {
+					adpgf, err := ParseGGUFFileFromModelScope(ctx, msRepo, msLoRAFile, ropts...)
+					if err != nil {
+						return fmt.Errorf("failed to parse LoRA adapter GGUF file: %w", err)
+					}
+					adpgfs = append(adpgfs, adpgf)
+				}
+			}
+
+			// Control Vector.
+			for _, cvPath := range controlVectorPaths.Value() {
+				adpgf, err := ParseGGUFFile(cvPath, ropts...)
+				if err != nil {
+					return fmt.Errorf("failed to parse Control Vector adapter GGUF file: %w", err)
+				}
+				adpgfs = append(adpgfs, adpgf)
+			}
+			for _, cvUrl := range controlVectorUrls.Value() {
+				adpgf, err := ParseGGUFFileRemote(ctx, cvUrl, ropts...)
+				if err != nil {
+					return fmt.Errorf("failed to parse Control Vector adapter GGUF file: %w", err)
+				}
+				adpgfs = append(adpgfs, adpgf)
+			}
+			if hfRepo != "" {
+				for _, hfCvFile := range hfControlVectorFiles.Value() {
+					adpgf, err := ParseGGUFFileFromHuggingFace(ctx, hfRepo, hfCvFile, ropts...)
+					if err != nil {
+						return fmt.Errorf("failed to parse Control Vector adapter GGUF file: %w", err)
+					}
+					adpgfs = append(adpgfs, adpgf)
+				}
+			}
+			if msRepo != "" {
+				for _, msCvFile := range msControlVectorFiles.Value() {
+					adpgf, err := ParseGGUFFileFromModelScope(ctx, msRepo, msCvFile, ropts...)
+					if err != nil {
+						return fmt.Errorf("failed to parse Control Vector adapter GGUF file: %w", err)
+					}
+					adpgfs = append(adpgfs, adpgf)
+				}
+			}
 		}
 	}
 
@@ -881,6 +1029,16 @@ func mainAction(c *cli.Context) error {
 			peopts := eopts[:len(eopts):len(eopts)]
 			me := projgf.EstimateLLaMACppUsage(peopts...)
 			eopts = append(eopts, WithProjector(&me))
+		}
+
+		if len(adpgfs) > 0 {
+			adps := make([]LLaMACppUsageEstimate, len(adpgfs))
+			aeopts := eopts[:len(eopts):len(eopts)]
+			for i, adpgf := range adpgfs {
+				ae := adpgf.EstimateLLaMACppUsage(aeopts...)
+				adps[i] = ae
+			}
+			eopts = append(eopts, WithAdapters(adps))
 		}
 
 		deopts := eopts[:len(eopts):len(eopts)]

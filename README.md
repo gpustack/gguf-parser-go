@@ -44,10 +44,12 @@ GGUF Parser helps in reviewing and estimating the usage of a GGUF format model w
         * [Specific Context Size](#specific-context-size)
         * [Enable Flash Attention](#enable-flash-attention)
         * [Disable MMap](#disable-mmap)
+        * [With Adapter](#with-adapter)
         * [Get Proper Offload Layers](#get-proper-offload-layers)
 
 ## Notes
 
+- Since v0.8.1, GGUF Parser supports to estimate the usage with LoRA/ControlVector adapters.
 - Since v0.8.0, GGUF Parser distinguishes the remote devices from `--tensor-split` via `--rpc`.
     + For one host multiple GPU devices, you can use `--tensor-split` to get the estimated memory usage of each GPU.
     + For multiple hosts multiple GPU devices, you can use `--tensor-split` and `--rpc` to get the estimated memory
@@ -753,6 +755,36 @@ $ gguf-parser --hf-repo="etemiz/Llama-3.1-405B-Inst-GGUF" --hf-file="llama-3.1-4
 +-------+--------------+--------------------+-----------------+-----------+----------------+---------------+----------------+----------------+------------+------------+------------+------------+
 | llama |    131072    |     2048 / 512     |     Disabled    |  Disabled |       No       |   Supported   |  127 (126 + 1) |       Yes      | 684.53 MiB | 834.53 MiB | 213.97 GiB | 247.59 GiB |
 +-------+--------------+--------------------+-----------------+-----------+----------------+---------------+----------------+----------------+------------+------------+------------+------------+
+
+```
+
+#### With Adapter
+
+Use `--lora`/`--control-vector` to estimate the usage when loading a model with adapters.
+
+```shell
+$ gguf-parser --hf-repo="QuantFactory/Meta-Llama-3-8B-Instruct-GGUF" --hf-file="Meta-Llama-3-8B-Instruct.Q5_K_M.gguf" --skip-metadata --skip-architecture --skip-tokenizer
++------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ESTIMATE                                                                                                                                                                                 |
++-------+--------------+--------------------+-----------------+-----------+----------------+---------------+----------------+----------------+-------------------------+-------------------+
+|  ARCH | CONTEXT SIZE | BATCH SIZE (L / P) | FLASH ATTENTION | MMAP LOAD | EMBEDDING ONLY | DISTRIBUTABLE | OFFLOAD LAYERS | FULL OFFLOADED |           RAM           |       VRAM 0      |
+|       |              |                    |                 |           |                |               |                |                +------------+------------+--------+----------+
+|       |              |                    |                 |           |                |               |                |                |     UMA    |   NONUMA   |   UMA  |  NONUMA  |
++-------+--------------+--------------------+-----------------+-----------+----------------+---------------+----------------+----------------+------------+------------+--------+----------+
+| llama |     8192     |     2048 / 512     |     Disabled    |  Enabled  |       No       |   Supported   |   33 (32 + 1)  |       Yes      | 171.62 MiB | 321.62 MiB |  1 GiB | 6.82 GiB |
++-------+--------------+--------------------+-----------------+-----------+----------------+---------------+----------------+----------------+------------+------------+--------+----------+
+
+$ # With a LoRA adapter.
+$ gguf-parser --hf-repo="QuantFactory/Meta-Llama-3-8B-Instruct-GGUF" --hf-file="Meta-Llama-3-8B-Instruct.Q5_K_M.gguf" --lora-url="https://huggingface.co/ngxson/test_gguf_lora_adapter/resolve/main/lora-Llama-3-Instruct-abliteration-LoRA-8B-f16.gguf" --skip-metadata --skip-architecture --skip-tokenizer
++------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ESTIMATE                                                                                                                                                                                 |
++-------+--------------+--------------------+-----------------+-----------+----------------+---------------+----------------+----------------+-------------------------+-------------------+
+|  ARCH | CONTEXT SIZE | BATCH SIZE (L / P) | FLASH ATTENTION | MMAP LOAD | EMBEDDING ONLY | DISTRIBUTABLE | OFFLOAD LAYERS | FULL OFFLOADED |           RAM           |       VRAM 0      |
+|       |              |                    |                 |           |                |               |                |                +------------+------------+--------+----------+
+|       |              |                    |                 |           |                |               |                |                |     UMA    |   NONUMA   |   UMA  |  NONUMA  |
++-------+--------------+--------------------+-----------------+-----------+----------------+---------------+----------------+----------------+------------+------------+--------+----------+
+| llama |     8192     |     2048 / 512     |     Disabled    |  Enabled  |       No       |   Supported   |   33 (32 + 1)  |       Yes      | 184.30 MiB | 334.30 MiB |  1 GiB | 6.98 GiB |
++-------+--------------+--------------------+-----------------+-----------+----------------+---------------+----------------+----------------+------------+------------+--------+----------+
 
 ```
 
