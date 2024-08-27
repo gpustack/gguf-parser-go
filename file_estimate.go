@@ -364,12 +364,9 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 		} else if a.AttentionCausal {
 			op = GGUFBytesScalar(opLs.Bytes()) + e.Devices[0].Weight.Input /* duplicate the input layer */
 		}
+		e.Devices[0].Weight.Output = op
 		if fullOffload {
-			for i := range e.Devices[1:] {
-				e.Devices[i+1].Weight.Output = op
-			}
-		} else {
-			e.Devices[0].Weight.Output = op
+			e.Devices[len(e.Devices)-1].Weight.Output = op
 		}
 	}
 
@@ -470,10 +467,7 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 				ssmInc += rs
 			}
 			cp := GGUFBytesScalar(convInc + ssmInc)
-			for i, d := range e.Devices[1:] {
-				if d.LastLayer < 0 && (i == 0 && !d.Remote) {
-					continue
-				}
+			for i := range e.Devices[1:] {
 				e.Devices[i+1].Computation.Compute = cp
 			}
 		case a.Type == "model":
@@ -537,10 +531,7 @@ func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (
 				e.Devices[0].Computation.Compute = GGUFBytesScalar(loadAttnInc)
 			}
 			cp := GGUFBytesScalar(max(offloadAttnInc, ffnInc))
-			for i, d := range e.Devices[1:] {
-				if d.LastLayer < 0 && (i == 0 && !d.Remote) {
-					continue
-				}
+			for i := range e.Devices[1:] {
 				e.Devices[i+1].Computation.Compute = cp
 			}
 			// Special case: we cannot use mmap for splitting expert weights in MoE.
@@ -676,13 +667,21 @@ func (e LLaMACppUsageEstimate) SummarizeMemory(mmap bool, nonUMARamFootprint, no
 			ems.VRAMs[i].UMA = fp + wg + kv + /* cp */ 0
 			if !e.NoMMap && mmap {
 				ems.VRAMs[i].UMA -= wg
-				if i > 0 || v.Remote {
-					ems.VRAMs[i].UMA += wg + cp
+				if i > 0 && v.LastLayer >= 0 || v.Remote {
+					ems.VRAMs[i].UMA += wg + cp - v.Weight.Output
 				}
 			}
 
 			// NonUMA.
 			ems.VRAMs[i].NonUMA = GGUFBytesScalar(nonUMAVramFootprint) + fp + wg + kv + cp
+			if i > 0 {
+				switch {
+				case v.LastLayer < 0:
+					ems.VRAMs[i].NonUMA -= wg + cp
+				case v.Remote && wg > kv:
+					ems.VRAMs[i].NonUMA -= kv
+				}
+			}
 		}
 	}
 
