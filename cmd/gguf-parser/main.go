@@ -1271,6 +1271,7 @@ func mainAction(c *cli.Context) error {
 				"Full Offloaded",
 				"RAM",
 				"RAM",
+				"RAM",
 			},
 			{
 				"Arch",
@@ -1282,13 +1283,14 @@ func mainAction(c *cli.Context) error {
 				"Distributable",
 				"Offload Layers",
 				"Full Offloaded",
+				"Layers",
 				"UMA",
 				"NonUMA",
 			},
 		}
 		for i := range es.Memory[0].VRAMs {
-			hds[0] = append(hds[0], fmt.Sprintf("VRAM %d", i), fmt.Sprintf("VRAM %d", i))
-			hds[1] = append(hds[1], "UMA", "NonUMA")
+			hds[0] = append(hds[0], fmt.Sprintf("VRAM %d", i), fmt.Sprintf("VRAM %d", i), fmt.Sprintf("VRAM %d", i))
+			hds[1] = append(hds[1], "Layers", "UMA", "NonUMA")
 		}
 
 		switch {
@@ -1331,11 +1333,13 @@ func mainAction(c *cli.Context) error {
 				sprintf(tenary(es.Memory[i].FullOffloaded, sprintf("%d (%d + 1)",
 					es.Memory[i].OffloadLayers, es.Memory[i].OffloadLayers-1), es.Memory[i].OffloadLayers)),
 				sprintf(tenary(es.Memory[i].FullOffloaded, "Yes", "No")),
+				sprintf(tenary(!es.Memory[i].RAM.HandleOutputLayer, es.Memory[i].RAM.HandleLayers, sprintf("%d + 1", es.Memory[i].RAM.HandleLayers))),
 				sprintf(es.Memory[i].RAM.UMA),
 				sprintf(es.Memory[i].RAM.NonUMA),
 			}
 			for _, v := range es.Memory[i].VRAMs {
 				bds[i] = append(bds[i],
+					sprintf(tenary(!v.HandleOutputLayer, v.HandleLayers, sprintf("%d + 1", v.HandleLayers))),
 					sprintf(v.UMA),
 					sprintf(v.NonUMA))
 			}
@@ -1374,7 +1378,7 @@ func tprint(title string, headers, bodies [][]any) {
 		for i := range r {
 			r[i].Number = i + 1
 			r[i].AutoMerge = true
-			if len(headers) > 1 && (headers[1][i] == "UMA" || headers[1][i] == "NonUMA") {
+			if len(headers) > 1 && (headers[1][i] == "Layers" || headers[1][i] == "UMA" || headers[1][i] == "NonUMA") {
 				r[i].AutoMerge = false
 			}
 			r[i].Align = text.AlignCenter

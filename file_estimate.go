@@ -53,8 +53,11 @@ type (
 	LLaMACppMemoryUsage struct {
 		// HandleLayers is the number of layers that the device can handle.
 		HandleLayers uint64 `json:"handleLayers"`
-		// LastLayer is the index of the last layer the device can handle.
-		LastLayer int `json:"latestLayer"`
+		// HandleLastLayer is the index of the last layer the device can handle.
+		HandleLastLayer int `json:"handleLastLayer"`
+		// HandleOutputLayer is the flag to indicate whether the device can handle the output layer,
+		// true for handle.
+		HandleOutputLayer bool `json:"handleOutputLayer"`
 		// Remote is the flag to indicate whether the device is remote,
 		// true for remote.
 		Remote bool `json:"remote"`
@@ -140,7 +143,7 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 	// Devices.
 	e.Devices = make([]LLaMACppMemoryUsage, len(o.TensorSplitFraction)+1)
 	for i := range e.Devices {
-		e.Devices[i].LastLayer = -1
+		e.Devices[i].HandleLastLayer = -1
 	}
 
 	// Metadata.
@@ -309,7 +312,7 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 		// see https://github.com/ggerganov/llama.cpp/blob/7672adeec7a79ea271058c63106c142ba84f951a/llama.cpp#L11940-L12003.
 		ob := 4 /* float32 size */ * (a.VocabularyLength + a.EmbeddingLength) * nParallel
 		if fullOffload {
-			e.Devices[o.MainGPUIndex+1].Footprint += GGUFBytesScalar(ob)
+			e.Devices[len(e.Devices)-1].Footprint += GGUFBytesScalar(ob)
 		} else {
 			e.Devices[0].Footprint += GGUFBytesScalar(ob)
 		}
@@ -337,7 +340,7 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 				switch {
 				case i < int(nLoadLayers):
 					e.Devices[0].HandleLayers += 1
-					e.Devices[0].LastLayer = i
+					e.Devices[0].HandleLastLayer = i
 					e.Devices[0].Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
 				case i >= offloadStart:
 					x := float64(i-offloadStart) / float64(nOffloadLayers)
@@ -348,7 +351,7 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 						}
 					}
 					e.Devices[j+1].HandleLayers += 1
-					e.Devices[j+1].LastLayer = i
+					e.Devices[j+1].HandleLastLayer = i
 					e.Devices[j+1].Remote = len(o.TensorSplitFraction)-len(o.RPCServers) <= j
 					e.Devices[j+1].Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
 				}
@@ -367,6 +370,9 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 		e.Devices[0].Weight.Output = op
 		if fullOffload {
 			e.Devices[len(e.Devices)-1].Weight.Output = op
+			e.Devices[len(e.Devices)-1].HandleOutputLayer = true
+		} else {
+			e.Devices[0].HandleOutputLayer = true
 		}
 	}
 
@@ -618,6 +624,16 @@ type (
 
 	// LLaMACppUsageEstimateMemoryDetail represents the detailed memory usage for loading the GGUF file in llama.cpp.
 	LLaMACppUsageEstimateMemoryDetail struct {
+		// HandleLayers is the number of layers that the device can handle.
+		HandleLayers uint64 `json:"handleLayers"`
+		// HandleLastLayer is the index of the last layer the device can handle.
+		HandleLastLayer int `json:"handleLastLayer"`
+		// HandleOutputLayer is the flag to indicate whether the device can handle the output layer,
+		// true for handle.
+		HandleOutputLayer bool `json:"handleOutputLayer"`
+		// Remote is the flag to indicate whether the device is remote,
+		// true for remote.
+		Remote bool `json:"remote"`
 		// UMA represents the usage of Unified Memory Architecture.
 		UMA GGUFBytesScalar `json:"uma"`
 		// NonUMA represents the usage of Non-Unified Memory Architecture.
@@ -642,6 +658,11 @@ func (e LLaMACppRunEstimate) SummarizeMemory(mmap bool, nonUMARamFootprint, nonU
 		kv := e.Devices[0].KVCache.Sum()
 		cp := e.Devices[0].Computation.Sum()
 
+		ems.RAM.HandleLayers = e.Devices[0].HandleLayers
+		ems.RAM.HandleLastLayer = e.Devices[0].HandleLastLayer
+		ems.RAM.HandleOutputLayer = e.Devices[0].HandleOutputLayer
+		ems.RAM.Remote = e.Devices[0].Remote
+
 		// UMA.
 		ems.RAM.UMA = fp + wg + kv + cp
 		if !e.NoMMap && (mmap || e.FullOffloaded) {
@@ -663,11 +684,16 @@ func (e LLaMACppRunEstimate) SummarizeMemory(mmap bool, nonUMARamFootprint, nonU
 			kv := v.KVCache.Sum()
 			cp := v.Computation.Sum()
 
+			ems.VRAMs[i].HandleLayers = v.HandleLayers
+			ems.VRAMs[i].HandleLastLayer = v.HandleLastLayer
+			ems.VRAMs[i].HandleOutputLayer = v.HandleOutputLayer
+			ems.VRAMs[i].Remote = v.Remote
+
 			// UMA.
 			ems.VRAMs[i].UMA = fp + wg + kv + /* cp */ 0
 			if !e.NoMMap && mmap {
 				ems.VRAMs[i].UMA -= wg
-				if i > 0 && v.LastLayer >= 0 || v.Remote {
+				if i > 0 && v.HandleLastLayer >= 0 || v.Remote {
 					ems.VRAMs[i].UMA += wg + cp - v.Weight.Output
 				}
 			}
@@ -676,7 +702,7 @@ func (e LLaMACppRunEstimate) SummarizeMemory(mmap bool, nonUMARamFootprint, nonU
 			ems.VRAMs[i].NonUMA = GGUFBytesScalar(nonUMAVramFootprint) + fp + wg + kv + cp
 			if i > 0 {
 				switch {
-				case v.LastLayer < 0:
+				case v.HandleLastLayer < 0:
 					ems.VRAMs[i].NonUMA -= wg + cp
 				case v.Remote && wg > kv:
 					ems.VRAMs[i].NonUMA -= kv
