@@ -582,6 +582,13 @@ func main() {
 					"By default, gguf-parser always estimates the file which types with \"model\".",
 			},
 			&cli.BoolFlag{
+				Destination: &inShort,
+				Value:       inShort,
+				Category:    "Output",
+				Name:        "in-short",
+				Usage:       "Display the estimated result in table in short form.",
+			},
+			&cli.BoolFlag{
 				Destination: &inMib,
 				Value:       inMib,
 				Category:    "Output",
@@ -675,6 +682,7 @@ var (
 	// output options
 	raw              bool
 	rawOutput        string
+	inShort          bool
 	skipMetadata     bool
 	skipArchitecture bool
 	skipTokenizer    bool
@@ -1253,13 +1261,10 @@ func mainAction(c *cli.Context) error {
 	}
 
 	if !skipEstimate && e.Type == "model" {
-		var (
-			hds [][]any
-			bds [][]any
-		)
+		hds := make([][]any, 2)
 		es := e.Summarize(mmap, platformRAM, platformVRAM)
-		hds = [][]any{
-			{
+		if !inShort {
+			hds[0] = []any{
 				"Arch",
 				"Context Size",
 				"Batch Size (L / P)",
@@ -1267,13 +1272,8 @@ func mainAction(c *cli.Context) error {
 				"MMap Load",
 				"Embedding Only",
 				"Distributable",
-				"Offload Layers",
-				"Full Offloaded",
-				"RAM",
-				"RAM",
-				"RAM",
-			},
-			{
+			}
+			hds[1] = []any{
 				"Arch",
 				"Context Size",
 				"Batch Size (L / P)",
@@ -1281,13 +1281,10 @@ func mainAction(c *cli.Context) error {
 				"MMap Load",
 				"Embedding Only",
 				"Distributable",
-				"Offload Layers",
-				"Full Offloaded",
-				"Layers",
-				"UMA",
-				"NonUMA",
-			},
+			}
 		}
+		hds[0] = append(hds[0], "Offload Layers", "Full Offloaded", "RAM", "RAM", "RAM")
+		hds[1] = append(hds[1], "Offload Layers", "Full Offloaded", "Layers", "UMA", "NonUMA")
 		for i := range es.Memory[0].VRAMs {
 			hds[0] = append(hds[0], fmt.Sprintf("VRAM %d", i), fmt.Sprintf("VRAM %d", i), fmt.Sprintf("VRAM %d", i))
 			hds[1] = append(hds[1], "Layers", "UMA", "NonUMA")
@@ -1320,23 +1317,26 @@ func mainAction(c *cli.Context) error {
 			es.Memory = ess
 		}
 
-		bds = make([][]any, len(es.Memory))
+		bds := make([][]any, len(es.Memory))
 		for i := range es.Memory {
-			bds[i] = []any{
-				sprintf(es.Architecture),
-				sprintf(es.ContextSize),
-				sprintf("%d / %d", es.LogicalBatchSize, es.PhysicalBatchSize),
-				sprintf(tenary(flashAttention, tenary(es.FlashAttention, "Enabled", "Not Supported"), "Disabled")),
-				sprintf(tenary(mmap, tenary(!es.NoMMap, "Enabled", "Not Supported"), "Disabled")),
-				sprintf(tenary(es.EmbeddingOnly, "Yes", "No")),
-				sprintf(tenary(es.Distributable, "Supported", "Not Supported")),
+			if !inShort {
+				bds[i] = []any{
+					sprintf(es.Architecture),
+					sprintf(es.ContextSize),
+					sprintf("%d / %d", es.LogicalBatchSize, es.PhysicalBatchSize),
+					sprintf(tenary(flashAttention, tenary(es.FlashAttention, "Enabled", "Not Supported"), "Disabled")),
+					sprintf(tenary(mmap, tenary(!es.NoMMap, "Enabled", "Not Supported"), "Disabled")),
+					sprintf(tenary(es.EmbeddingOnly, "Yes", "No")),
+					sprintf(tenary(es.Distributable, "Supported", "Not Supported")),
+				}
+			}
+			bds[i] = append(bds[i],
 				sprintf(tenary(es.Memory[i].FullOffloaded, sprintf("%d (%d + 1)",
 					es.Memory[i].OffloadLayers, es.Memory[i].OffloadLayers-1), es.Memory[i].OffloadLayers)),
 				sprintf(tenary(es.Memory[i].FullOffloaded, "Yes", "No")),
 				sprintf(tenary(!es.Memory[i].RAM.HandleOutputLayer, es.Memory[i].RAM.HandleLayers, sprintf("%d + 1", es.Memory[i].RAM.HandleLayers))),
 				sprintf(es.Memory[i].RAM.UMA),
-				sprintf(es.Memory[i].RAM.NonUMA),
-			}
+				sprintf(es.Memory[i].RAM.NonUMA))
 			for _, v := range es.Memory[i].VRAMs {
 				bds[i] = append(bds[i],
 					sprintf(tenary(!v.HandleOutputLayer, v.HandleLayers, sprintf("%d + 1", v.HandleLayers))),
