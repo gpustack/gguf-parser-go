@@ -7,7 +7,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 )
 
-func TestGGUFFile_EstimateLLaMACppUsage(t *testing.T) {
+func TestGGUFFile_EstimateLLaMACppRun(t *testing.T) {
 	ctx := context.Background()
 
 	cases := []struct {
@@ -60,12 +60,12 @@ func TestGGUFFile_EstimateLLaMACppUsage(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			f := tc.given
-			t.Log("\n", spew.Sdump(f.EstimateLLaMACppUsage()), "\n")
+			t.Log("\n", spew.Sdump(f.EstimateLLaMACppRun()), "\n")
 		})
 	}
 }
 
-func TestGGUFFile_EstimateLLaMACppUsage_ContextSize(t *testing.T) {
+func TestGGUFFile_EstimateLLaMACppRun_ContextSize(t *testing.T) {
 	ctx := context.Background()
 
 	f, err := ParseGGUFFileFromHuggingFace(
@@ -80,21 +80,21 @@ func TestGGUFFile_EstimateLLaMACppUsage_ContextSize(t *testing.T) {
 
 	cases := []struct {
 		name string
-		opts []LLaMACppUsageEstimateOption
+		opts []LLaMACppRunEstimateOption
 	}{
-		{"1024(fp16)", []LLaMACppUsageEstimateOption{WithContextSize(1024)}},
-		{"1024(fp32)", []LLaMACppUsageEstimateOption{WithContextSize(1024), WithCacheKeyType(GGMLTypeF32), WithCacheValueType(GGMLTypeF32)}},
-		{"4096(fp16)", []LLaMACppUsageEstimateOption{WithContextSize(4096)}},
-		{"4096(fp32)", []LLaMACppUsageEstimateOption{WithContextSize(4096), WithCacheKeyType(GGMLTypeF32), WithCacheValueType(GGMLTypeF32)}},
+		{"1024(fp16)", []LLaMACppRunEstimateOption{WithContextSize(1024)}},
+		{"1024(fp32)", []LLaMACppRunEstimateOption{WithContextSize(1024), WithCacheKeyType(GGMLTypeF32), WithCacheValueType(GGMLTypeF32)}},
+		{"4096(fp16)", []LLaMACppRunEstimateOption{WithContextSize(4096)}},
+		{"4096(fp32)", []LLaMACppRunEstimateOption{WithContextSize(4096), WithCacheKeyType(GGMLTypeF32), WithCacheValueType(GGMLTypeF32)}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Log("\n", spew.Sdump(f.EstimateLLaMACppUsage(tc.opts...)), "\n")
+			t.Log("\n", spew.Sdump(f.EstimateLLaMACppRun(tc.opts...)), "\n")
 		})
 	}
 }
 
-func TestGGUFFile_EstimateLLaMACppUsage_OffloadLayers(t *testing.T) {
+func TestGGUFFile_EstimateLLaMACppRun_OffloadLayers(t *testing.T) {
 	ctx := context.Background()
 
 	f, err := ParseGGUFFileFromHuggingFace(
@@ -109,17 +109,17 @@ func TestGGUFFile_EstimateLLaMACppUsage_OffloadLayers(t *testing.T) {
 
 	cases := []struct {
 		name string
-		opts []LLaMACppUsageEstimateOption
+		opts []LLaMACppRunEstimateOption
 	}{
-		{"offload 0 layer", []LLaMACppUsageEstimateOption{WithOffloadLayers(0)}},
-		{"offload 1 layer", []LLaMACppUsageEstimateOption{WithOffloadLayers(1)}},
-		{"offload 10 layers", []LLaMACppUsageEstimateOption{WithOffloadLayers(10)}},
-		{"offload all layers", []LLaMACppUsageEstimateOption{}},
-		{"offload 33 layers", []LLaMACppUsageEstimateOption{WithOffloadLayers(33)}}, // exceeds the number of layers
+		{"offload 0 layer", []LLaMACppRunEstimateOption{WithOffloadLayers(0)}},
+		{"offload 1 layer", []LLaMACppRunEstimateOption{WithOffloadLayers(1)}},
+		{"offload 10 layers", []LLaMACppRunEstimateOption{WithOffloadLayers(10)}},
+		{"offload all layers", []LLaMACppRunEstimateOption{}},
+		{"offload 33 layers", []LLaMACppRunEstimateOption{WithOffloadLayers(33)}}, // exceeds the number of layers
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Log("\n", spew.Sdump(f.EstimateLLaMACppUsage(tc.opts...)), "\n")
+			t.Log("\n", spew.Sdump(f.EstimateLLaMACppRun(tc.opts...)), "\n")
 		})
 	}
 }

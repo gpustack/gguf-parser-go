@@ -7,7 +7,7 @@ import (
 )
 
 type (
-	_LLaMACppUsageEstimateOptions struct {
+	_LLaMACppRunEstimateOptions struct {
 		Architecture        *GGUFArchitecture
 		Tokenizer           *GGUFTokenizer
 		ContextSize         *int32
@@ -24,18 +24,18 @@ type (
 		TensorSplitFraction []float64
 		MainGPUIndex        int
 		RPCServers          []string
-		Projector           *LLaMACppUsageEstimate
-		Drafter             *LLaMACppUsageEstimate
-		Adapters            []LLaMACppUsageEstimate
+		Projector           *LLaMACppRunEstimate
+		Drafter             *LLaMACppRunEstimate
+		Adapters            []LLaMACppRunEstimate
 	}
-	LLaMACppUsageEstimateOption func(*_LLaMACppUsageEstimateOptions)
+	LLaMACppRunEstimateOption func(*_LLaMACppRunEstimateOptions)
 )
 
 // WithArchitecture sets the architecture for the estimate.
 //
 // Allows reusing the same GGUFArchitecture for multiple estimates.
-func WithArchitecture(arch GGUFArchitecture) LLaMACppUsageEstimateOption {
-	return func(o *_LLaMACppUsageEstimateOptions) {
+func WithArchitecture(arch GGUFArchitecture) LLaMACppRunEstimateOption {
+	return func(o *_LLaMACppRunEstimateOptions) {
 		o.Architecture = &arch
 	}
 }
@@ -43,15 +43,15 @@ func WithArchitecture(arch GGUFArchitecture) LLaMACppUsageEstimateOption {
 // WithTokenizer sets the tokenizer for the estimate.
 //
 // Allows reusing the same GGUFTokenizer for multiple estimates.
-func WithTokenizer(tokenizer GGUFTokenizer) LLaMACppUsageEstimateOption {
-	return func(o *_LLaMACppUsageEstimateOptions) {
+func WithTokenizer(tokenizer GGUFTokenizer) LLaMACppRunEstimateOption {
+	return func(o *_LLaMACppRunEstimateOptions) {
 		o.Tokenizer = &tokenizer
 	}
 }
 
 // WithContextSize sets the context size for the estimate.
-func WithContextSize(size int32) LLaMACppUsageEstimateOption {
-	return func(o *_LLaMACppUsageEstimateOptions) {
+func WithContextSize(size int32) LLaMACppRunEstimateOption {
+	return func(o *_LLaMACppRunEstimateOptions) {
 		if size <= 0 {
 			return
 		}
@@ -61,15 +61,15 @@ func WithContextSize(size int32) LLaMACppUsageEstimateOption {
 
 // WithinMaxContextSize limits the context size to the maximum,
 // if the context size is over the maximum.
-func WithinMaxContextSize() LLaMACppUsageEstimateOption {
-	return func(o *_LLaMACppUsageEstimateOptions) {
+func WithinMaxContextSize() LLaMACppRunEstimateOption {
+	return func(o *_LLaMACppRunEstimateOptions) {
 		o.InMaxContextSize = true
 	}
 }
 
 // WithLogicalBatchSize sets the logical batch size for the estimate.
-func WithLogicalBatchSize(size int32) LLaMACppUsageEstimateOption {
-	return func(o *_LLaMACppUsageEstimateOptions) {
+func WithLogicalBatchSize(size int32) LLaMACppRunEstimateOption {
+	return func(o *_LLaMACppRunEstimateOptions) {
 		if size <= 0 {
 			return
 		}
@@ -78,8 +78,8 @@ func WithLogicalBatchSize(size int32) LLaMACppUsageEstimateOption {
 }
 
 // WithPhysicalBatchSize sets the physical batch size for the estimate.
-func WithPhysicalBatchSize(size int32) LLaMACppUsageEstimateOption {
-	return func(o *_LLaMACppUsageEstimateOptions) {
+func WithPhysicalBatchSize(size int32) LLaMACppRunEstimateOption {
+	return func(o *_LLaMACppRunEstimateOptions) {
 		if size <= 0 {
 			return
 		}
@@ -88,8 +88,8 @@ func WithPhysicalBatchSize(size int32) LLaMACppUsageEstimateOption {
 }
 
 // WithParallelSize sets the (decoding sequences) parallel size for the estimate.
-func WithParallelSize(size int32) LLaMACppUsageEstimateOption {
-	return func(o *_LLaMACppUsageEstimateOptions) {
+func WithParallelSize(size int32) LLaMACppRunEstimateOption {
+	return func(o *_LLaMACppRunEstimateOptions) {
 		if size <= 0 {
 			return
 		}
@@ -108,8 +108,8 @@ var _GGUFEstimateCacheTypeAllowList = []GGMLType{
 }
 
 // WithCacheKeyType sets the cache key type for the estimate.
-func WithCacheKeyType(t GGMLType) LLaMACppUsageEstimateOption {
-	return func(o *_LLaMACppUsageEstimateOptions) {
+func WithCacheKeyType(t GGMLType) LLaMACppRunEstimateOption {
+	return func(o *_LLaMACppRunEstimateOptions) {
 		if slices.Contains(_GGUFEstimateCacheTypeAllowList, t) {
 			o.CacheKeyType = &t
 		}
@@ -117,8 +117,8 @@ func WithCacheKeyType(t GGMLType) LLaMACppUsageEstimateOption {
 }
 
 // WithCacheValueType sets the cache value type for the estimate.
-func WithCacheValueType(t GGMLType) LLaMACppUsageEstimateOption {
-	return func(o *_LLaMACppUsageEstimateOptions) {
+func WithCacheValueType(t GGMLType) LLaMACppRunEstimateOption {
+	return func(o *_LLaMACppRunEstimateOptions) {
 		if slices.Contains(_GGUFEstimateCacheTypeAllowList, t) {
 			o.CacheValueType = &t
 		}
@@ -126,22 +126,22 @@ func WithCacheValueType(t GGMLType) LLaMACppUsageEstimateOption {
 }
 
 // WithoutOffloadKVCache disables offloading the KV cache.
-func WithoutOffloadKVCache() LLaMACppUsageEstimateOption {
-	return func(o *_LLaMACppUsageEstimateOptions) {
+func WithoutOffloadKVCache() LLaMACppRunEstimateOption {
+	return func(o *_LLaMACppRunEstimateOptions) {
 		o.OffloadKVCache = ptr.To(false)
 	}
 }
 
 // WithOffloadLayers sets the number of layers to offload.
-func WithOffloadLayers(layers uint64) LLaMACppUsageEstimateOption {
-	return func(o *_LLaMACppUsageEstimateOptions) {
+func WithOffloadLayers(layers uint64) LLaMACppRunEstimateOption {
+	return func(o *_LLaMACppRunEstimateOptions) {
 		o.OffloadLayers = &layers
 	}
 }
 
 // WithFlashAttention sets the flash attention flag.
-func WithFlashAttention() LLaMACppUsageEstimateOption {
-	return func(o *_LLaMACppUsageEstimateOptions) {
+func WithFlashAttention() LLaMACppRunEstimateOption {
+	return func(o *_LLaMACppRunEstimateOptions) {
 		o.FlashAttention = true
 	}
 }
@@ -157,8 +157,8 @@ const (
 )
 
 // WithSplitMode sets the split mode for the estimate.
-func WithSplitMode(mode LLaMACppSplitMode) LLaMACppUsageEstimateOption {
-	return func(o *_LLaMACppUsageEstimateOptions) {
+func WithSplitMode(mode LLaMACppSplitMode) LLaMACppRunEstimateOption {
+	return func(o *_LLaMACppRunEstimateOptions) {
 		if mode < _LLAMACppSplitModeMax {
 			o.SplitMode = mode
 		}
@@ -172,8 +172,8 @@ func WithSplitMode(mode LLaMACppSplitMode) LLaMACppUsageEstimateOption {
 // and the last fraction must be 1.
 //
 // For example, WithTensorSplitFraction(0.2, 0.4, 0.6, 0.8, 1) will split the tensor into five parts with 20% each.
-func WithTensorSplitFraction(fractions []float64) LLaMACppUsageEstimateOption {
-	return func(o *_LLaMACppUsageEstimateOptions) {
+func WithTensorSplitFraction(fractions []float64) LLaMACppRunEstimateOption {
+	return func(o *_LLaMACppRunEstimateOptions) {
 		if len(fractions) == 0 {
 			return
 		}
@@ -195,15 +195,15 @@ func WithTensorSplitFraction(fractions []float64) LLaMACppUsageEstimateOption {
 // When split mode is LLaMACppSplitModeRow, the main device handles the intermediate results and KV.
 //
 // WithMainGPUIndex only works when TensorSplitFraction is set.
-func WithMainGPUIndex(di int) LLaMACppUsageEstimateOption {
-	return func(o *_LLaMACppUsageEstimateOptions) {
+func WithMainGPUIndex(di int) LLaMACppRunEstimateOption {
+	return func(o *_LLaMACppRunEstimateOptions) {
 		o.MainGPUIndex = di
 	}
 }
 
 // WithRPCServers sets the RPC servers for the estimate.
-func WithRPCServers(srvs []string) LLaMACppUsageEstimateOption {
-	return func(o *_LLaMACppUsageEstimateOptions) {
+func WithRPCServers(srvs []string) LLaMACppRunEstimateOption {
+	return func(o *_LLaMACppRunEstimateOptions) {
 		if len(srvs) == 0 {
 			return
 		}
@@ -212,22 +212,22 @@ func WithRPCServers(srvs []string) LLaMACppUsageEstimateOption {
 }
 
 // WithDrafter sets the drafter estimate usage.
-func WithDrafter(dft *LLaMACppUsageEstimate) LLaMACppUsageEstimateOption {
-	return func(o *_LLaMACppUsageEstimateOptions) {
+func WithDrafter(dft *LLaMACppRunEstimate) LLaMACppRunEstimateOption {
+	return func(o *_LLaMACppRunEstimateOptions) {
 		o.Drafter = dft
 	}
 }
 
 // WithProjector sets the multimodal projector estimate usage.
-func WithProjector(prj *LLaMACppUsageEstimate) LLaMACppUsageEstimateOption {
-	return func(o *_LLaMACppUsageEstimateOptions) {
+func WithProjector(prj *LLaMACppRunEstimate) LLaMACppRunEstimateOption {
+	return func(o *_LLaMACppRunEstimateOptions) {
 		o.Projector = prj
 	}
 }
 
 // WithAdapters sets the adapters estimate usage.
-func WithAdapters(adp []LLaMACppUsageEstimate) LLaMACppUsageEstimateOption {
-	return func(o *_LLaMACppUsageEstimateOptions) {
+func WithAdapters(adp []LLaMACppRunEstimate) LLaMACppRunEstimateOption {
+	return func(o *_LLaMACppRunEstimateOptions) {
 		if len(adp) == 0 {
 			return
 		}

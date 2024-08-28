@@ -44,7 +44,7 @@ func main() {
 	name := filepath.Base(os.Args[0])
 	app := &cli.App{
 		Name:            name,
-		Usage:           "Review/Check/Estimate the GGUF file.",
+		Usage:           "Review/Check GGUF files and estimate the memory usage.",
 		UsageText:       name + " [GLOBAL OPTIONS]",
 		Version:         Version,
 		Reader:          os.Stdin,
@@ -719,7 +719,7 @@ func mainAction(c *cli.Context) error {
 		ropts = append(ropts, SkipCache())
 	}
 
-	eopts := []LLaMACppUsageEstimateOption{
+	eopts := []LLaMACppRunEstimateOption{
 		WithCacheValueType(GGMLTypeF16),
 		WithCacheKeyType(GGMLTypeF16),
 	}
@@ -1004,7 +1004,7 @@ func mainAction(c *cli.Context) error {
 		m GGUFMetadata
 		a GGUFArchitecture
 		t GGUFTokenizer
-		e LLaMACppUsageEstimate
+		e LLaMACppRunEstimate
 	)
 	if !skipMetadata {
 		m = gf.Metadata()
@@ -1021,21 +1021,21 @@ func mainAction(c *cli.Context) error {
 			if offloadLayersDraft >= 0 {
 				deopts = append(deopts, WithOffloadLayers(uint64(offloadLayersDraft)))
 			}
-			de := dftgf.EstimateLLaMACppUsage(deopts...)
+			de := dftgf.EstimateLLaMACppRun(deopts...)
 			eopts = append(eopts, WithDrafter(&de))
 		}
 
 		if projgf != nil {
 			peopts := eopts[:len(eopts):len(eopts)]
-			me := projgf.EstimateLLaMACppUsage(peopts...)
+			me := projgf.EstimateLLaMACppRun(peopts...)
 			eopts = append(eopts, WithProjector(&me))
 		}
 
 		if len(adpgfs) > 0 {
-			adps := make([]LLaMACppUsageEstimate, len(adpgfs))
+			adps := make([]LLaMACppRunEstimate, len(adpgfs))
 			aeopts := eopts[:len(eopts):len(eopts)]
 			for i, adpgf := range adpgfs {
-				ae := adpgf.EstimateLLaMACppUsage(aeopts...)
+				ae := adpgf.EstimateLLaMACppRun(aeopts...)
 				adps[i] = ae
 			}
 			eopts = append(eopts, WithAdapters(adps))
@@ -1045,7 +1045,7 @@ func mainAction(c *cli.Context) error {
 		if offloadLayers >= 0 {
 			deopts = append(deopts, WithOffloadLayers(uint64(offloadLayers)))
 		}
-		e = gf.EstimateLLaMACppUsage(deopts...)
+		e = gf.EstimateLLaMACppRun(deopts...)
 	}
 
 	// Then, output as JSON or table.
@@ -1100,7 +1100,7 @@ func mainAction(c *cli.Context) error {
 						defer wg.Done()
 						eopts := eopts[:len(eopts):len(eopts)]
 						eopts = append(eopts, WithOffloadLayers(uint64(i)*offloadLayersStep))
-						ess[i] = gf.EstimateLLaMACppUsage(eopts...).SummarizeMemory(mmap, platformRAM, platformVRAM)
+						ess[i] = gf.EstimateLLaMACppRun(eopts...).SummarizeMemory(mmap, platformRAM, platformVRAM)
 					}(i)
 				}
 				wg.Wait()
@@ -1310,7 +1310,7 @@ func mainAction(c *cli.Context) error {
 					defer wg.Done()
 					eopts := eopts[:len(eopts):len(eopts)]
 					eopts = append(eopts, WithOffloadLayers(uint64(i)*offloadLayersStep))
-					ess[i] = gf.EstimateLLaMACppUsage(eopts...).SummarizeMemory(mmap, platformRAM, platformVRAM)
+					ess[i] = gf.EstimateLLaMACppRun(eopts...).SummarizeMemory(mmap, platformRAM, platformVRAM)
 				}(i)
 			}
 			wg.Wait()

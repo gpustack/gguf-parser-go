@@ -9,8 +9,8 @@ import (
 
 // Types for LLaMACpp estimation.
 type (
-	// LLaMACppUsageEstimate represents the estimated result of loading the GGUF file in llama.cpp.
-	LLaMACppUsageEstimate struct {
+	// LLaMACppRunEstimate represents the estimated result of loading the GGUF file in llama.cpp.
+	LLaMACppRunEstimate struct {
 		// Type describes what type this GGUF file is.
 		Type string `json:"type"`
 		// Architecture describes what architecture this GGUF file implements.
@@ -42,11 +42,11 @@ type (
 		// the first device is the CPU, and the rest are GPUs.
 		Devices []LLaMACppMemoryUsage `json:"devices"`
 		// Drafter is the memory usage of drafter.
-		Drafter *LLaMACppUsageEstimate `json:"drafter,omitempty"`
+		Drafter *LLaMACppRunEstimate `json:"drafter,omitempty"`
 		// Projector is the memory usage of multimodal projector.
-		Projector *LLaMACppUsageEstimate `json:"projector,omitempty"`
+		Projector *LLaMACppRunEstimate `json:"projector,omitempty"`
 		// Adapters is the memory usage of adapters.
-		Adapters []LLaMACppUsageEstimate `json:"adapters,omitempty"`
+		Adapters []LLaMACppRunEstimate `json:"adapters,omitempty"`
 	}
 
 	// LLaMACppMemoryUsage represents the memory usage for expanding the GGUF file in llama.cpp.
@@ -61,15 +61,15 @@ type (
 		// Footprint is the memory footprint for bootstrapping.
 		Footprint GGUFBytesScalar `json:"footprint"`
 		// Weight is the memory usage of loading weights.
-		Weight LLaMACppWeightUsage `json:"weight"`
+		Weight LLaMACppWeightMemoryUsage `json:"weight"`
 		// KVCache is the memory usage of caching previous KV.
-		KVCache LLaMACppKVCacheUsage `json:"kvCache"`
+		KVCache LLaMACppKVCacheMemoryUsage `json:"kvCache"`
 		// Computation is the memory usage of computation.
-		Computation LLaMACppComputationUsage `json:"computation"`
+		Computation LLaMACppComputationMemoryUsage `json:"computation"`
 	}
 
-	// LLaMACppWeightUsage represents the memory usage of loading weights in llama.cpp.
-	LLaMACppWeightUsage struct {
+	// LLaMACppWeightMemoryUsage represents the memory usage of loading weights in llama.cpp.
+	LLaMACppWeightMemoryUsage struct {
 		// Input is the memory usage for loading input tensors.
 		Input GGUFBytesScalar `json:"input"`
 		// Compute is the memory usage for loading compute tensors.
@@ -78,16 +78,16 @@ type (
 		Output GGUFBytesScalar `json:"output"`
 	}
 
-	// LLaMACppKVCacheUsage represents the memory usage of caching previous KV in llama.cpp.
-	LLaMACppKVCacheUsage struct {
+	// LLaMACppKVCacheMemoryUsage represents the memory usage of caching previous KV in llama.cpp.
+	LLaMACppKVCacheMemoryUsage struct {
 		// Key is the memory usage for caching previous keys.
 		Key GGUFBytesScalar `json:"key"`
 		// Value is the memory usage for caching previous values.
 		Value GGUFBytesScalar `json:"value"`
 	}
 
-	// LLaMACppComputationUsage represents the memory usage of computation in llama.cpp.
-	LLaMACppComputationUsage struct {
+	// LLaMACppComputationMemoryUsage represents the memory usage of computation in llama.cpp.
+	LLaMACppComputationMemoryUsage struct {
 		// Footprint is the memory footprint for computation.
 		Footprint GGUFBytesScalar `json:"footprint"`
 		// Input is the memory usage for input.
@@ -99,9 +99,9 @@ type (
 	}
 )
 
-// EstimateLLaMACppUsage returns the inference memory usage estimated result of the GGUF file.
-func (gf *GGUFFile) EstimateLLaMACppUsage(opts ...LLaMACppUsageEstimateOption) (e LLaMACppUsageEstimate) {
-	var o _LLaMACppUsageEstimateOptions
+// EstimateLLaMACppRun returns the inference estimated result of the GGUF file.
+func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LLaMACppRunEstimate) {
+	var o _LLaMACppRunEstimateOptions
 	for _, opt := range opts {
 		opt(&o)
 	}
@@ -627,7 +627,7 @@ type (
 
 // SummarizeMemory returns the summary of the estimated memory usage of loading the GGUF file in llama.cpp,
 // the input options are used to adjust the summary.
-func (e LLaMACppUsageEstimate) SummarizeMemory(mmap bool, nonUMARamFootprint, nonUMAVramFootprint uint64) (ems LLaMACppUsageEstimateMemorySummary) {
+func (e LLaMACppRunEstimate) SummarizeMemory(mmap bool, nonUMARamFootprint, nonUMAVramFootprint uint64) (ems LLaMACppUsageEstimateMemorySummary) {
 	ems.OffloadLayers, ems.FullOffloaded = e.OffloadLayers, e.FullOffloaded
 	if ems.FullOffloaded {
 		ems.OffloadLayers++ // The output layer is offloaded.
@@ -723,7 +723,7 @@ func (e LLaMACppUsageEstimate) SummarizeMemory(mmap bool, nonUMARamFootprint, no
 
 // Summarize returns the summary of the estimated result of loading the GGUF file in llama.cpp,
 // the input options are used to adjust the summary.
-func (e LLaMACppUsageEstimate) Summarize(mmap bool, nonUMARamFootprint, nonUMAVramFootprint uint64) (es LLaMACppUsageEstimateSummary) {
+func (e LLaMACppRunEstimate) Summarize(mmap bool, nonUMARamFootprint, nonUMAVramFootprint uint64) (es LLaMACppUsageEstimateSummary) {
 	// Summarize memory.
 	es.Memory = []LLaMACppUsageEstimateMemorySummary{
 		e.SummarizeMemory(mmap, nonUMARamFootprint, nonUMAVramFootprint),
@@ -743,14 +743,14 @@ func (e LLaMACppUsageEstimate) Summarize(mmap bool, nonUMARamFootprint, nonUMAVr
 	return es
 }
 
-func (u LLaMACppWeightUsage) Sum() GGUFBytesScalar {
+func (u LLaMACppWeightMemoryUsage) Sum() GGUFBytesScalar {
 	return u.Input + u.Compute + u.Output
 }
 
-func (u LLaMACppKVCacheUsage) Sum() GGUFBytesScalar {
+func (u LLaMACppKVCacheMemoryUsage) Sum() GGUFBytesScalar {
 	return u.Key + u.Value
 }
 
-func (u LLaMACppComputationUsage) Sum() GGUFBytesScalar {
+func (u LLaMACppComputationMemoryUsage) Sum() GGUFBytesScalar {
 	return u.Footprint + u.Input + max(u.Compute, u.Output)
 }

@@ -8,7 +8,7 @@ see [https://github.com/gpustack/gguf-parser-go](https://github.com/gpustack/ggu
 ```shell
 $ gguf-parser --help
 NAME:
-   gguf-parser - Review/Check/Estimate the GGUF file.
+   gguf-parser - Review/Check GGUF files and estimate the memory usage.
 
 USAGE:
    gguf-parser [GLOBAL OPTIONS]
