@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"golang.org/x/exp/constraints"
@@ -73,18 +72,6 @@ type GGUFFile struct {
 	// higher is better.
 	ModelBitsPerWeight GGUFBitsPerWeightScalar `json:"modelBitsPerWeight"`
 }
-
-// Types for scalar.
-type (
-	// GGUFBytesScalar is the scalar for bytes.
-	GGUFBytesScalar uint64
-
-	// GGUFParametersScalar is the scalar for parameters.
-	GGUFParametersScalar uint64
-
-	// GGUFBitsPerWeightScalar is the scalar for bits per weight.
-	GGUFBitsPerWeightScalar float64
-)
 
 // GGUFMagic is a magic number of GGUF file,
 // see https://github.com/ggerganov/ggml/blob/master/docs/gguf.md#historical-state-of-affairs.
@@ -546,88 +533,6 @@ func (gf *GGUFFile) layers() GGUFLayerTensorInfos {
 		}
 	}
 	return ret
-}
-
-const (
-	_KiBytes = 1 << ((iota + 1) * 10)
-	_MiBytes
-	_GiBytes
-	_TiBytes
-	_PiBytes
-)
-
-var InMiBytes bool
-
-func (s GGUFBytesScalar) String() string {
-	if s == 0 {
-		return "0 B"
-	}
-	b, u := float64(1), "B"
-	if InMiBytes {
-		b = _MiBytes
-		u = "MiB"
-	} else {
-		switch {
-		case s >= _PiBytes:
-			b = _PiBytes
-			u = "PiB"
-		case s >= _TiBytes:
-			b = _TiBytes
-			u = "TiB"
-		case s >= _GiBytes:
-			b = _GiBytes
-			u = "GiB"
-		case s >= _MiBytes:
-			b = _MiBytes
-			u = "MiB"
-		case s >= _KiBytes:
-			b = _KiBytes
-			u = "KiB"
-		}
-	}
-	f := strconv.FormatFloat(float64(s)/b, 'f', 2, 64)
-	return strings.TrimSuffix(f, ".00") + " " + u
-}
-
-const (
-	_Thousand    = 1e3
-	_Million     = 1e6
-	_Billion     = 1e9
-	_Trillion    = 1e12
-	_Quadrillion = 1e15
-)
-
-func (s GGUFParametersScalar) String() string {
-	if s == 0 {
-		return "0"
-	}
-	b, u := float64(1), ""
-	switch {
-	case s >= _Quadrillion:
-		b = _Quadrillion
-		u = "Q"
-	case s >= _Trillion:
-		b = _Trillion
-		u = "T"
-	case s >= _Billion:
-		b = _Billion
-		u = "B"
-	case s >= _Million:
-		b = _Million
-		u = "M"
-	case s >= _Thousand:
-		b = _Thousand
-		u = "K"
-	}
-	f := strconv.FormatFloat(float64(s)/b, 'f', 2, 64)
-	return strings.TrimSuffix(f, ".00") + " " + u
-}
-
-func (s GGUFBitsPerWeightScalar) String() string {
-	if s == 0 {
-		return "0 bpw"
-	}
-	return strconv.FormatFloat(float64(s), 'f', 2, 64) + " bpw"
 }
 
 func (kv GGUFMetadataKV) ValueUint8() uint8 {

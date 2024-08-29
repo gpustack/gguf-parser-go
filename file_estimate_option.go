@@ -27,7 +27,36 @@ type (
 		Projector           *LLaMACppRunEstimate
 		Drafter             *LLaMACppRunEstimate
 		Adapters            []LLaMACppRunEstimate
+		DeviceMetrics       []LLaMACppRunDeviceMetric
 	}
+
+	// LLaMACppRunDeviceMetric holds the device metric for the estimate.
+	//
+	// When the device represents a CPU,
+	// FLOPS refers to the floating-point operations per second of that CPU,
+	// while UpBandwidth indicates the bandwidth of the RAM (since SRAM is typically small and cannot hold all weights,
+	// the RAM here refers to the bandwidth of DRAM,
+	// unless the device's SRAM can accommodate the corresponding model weights).
+	//
+	// When the device represents a GPU,
+	// FLOPS refers to the floating-point operations per second of that GPU,
+	// while UpBandwidth indicates the bandwidth of the VRAM.
+	//
+	// When the device represents a specific node,
+	// FLOPS depends on whether a CPU or GPU is being used,
+	// while UpBandwidth refers to the network bandwidth between nodes.
+	LLaMACppRunDeviceMetric struct {
+		// FLOPS is the floating-point operations per second of the device.
+		FLOPS FLOPSScalar
+		// UpBandwidth is the bandwidth of the device to transmit data to calculate,
+		// unit is Bps (bytes per second).
+		UpBandwidth BytesPerSecondScalar
+		// DownBandwidth is the bandwidth of the device to transmit calculated result to next layer,
+		// unit is Bps (bytes per second).
+		DownBandwidth BytesPerSecondScalar
+	}
+
+	// LLaMACppRunEstimateOption is the options for the estimate.
 	LLaMACppRunEstimateOption func(*_LLaMACppRunEstimateOptions)
 )
 
@@ -232,5 +261,15 @@ func WithAdapters(adp []LLaMACppRunEstimate) LLaMACppRunEstimateOption {
 			return
 		}
 		o.Adapters = adp
+	}
+}
+
+// WithDeviceMetrics sets the device metrics for the estimate.
+func WithDeviceMetrics(metrics []LLaMACppRunDeviceMetric) LLaMACppRunEstimateOption {
+	return func(o *_LLaMACppRunEstimateOptions) {
+		if len(metrics) == 0 {
+			return
+		}
+		o.DeviceMetrics = metrics
 	}
 }

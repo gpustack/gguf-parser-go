@@ -67,9 +67,9 @@ func main() {
 				Category:    "Model/Local",
 				Name:        "path",
 				Aliases:     []string{"model", "m"},
-				Usage: "Path where the GGUF file to load for the main model, e.g. ~/.cache" +
+				Usage: "Path where the GGUF file to load for the main model, e.g. \"~/.cache" +
 					"/lm-studio/models/QuantFactory/Qwen2-7B-Instruct-GGUF" +
-					"/Qwen2-7B-Instruct.Q5_K_M.gguf.",
+					"/Qwen2-7B-Instruct.Q5_K_M.gguf\".",
 			},
 			&cli.StringFlag{
 				Destination: &draftPath,
@@ -77,9 +77,9 @@ func main() {
 				Category:    "Model/Local",
 				Name:        "draft-path",
 				Aliases:     []string{"model-draft", "md"},
-				Usage: "Path where the GGUF file to load for the draft model, optional, e.g. ~/.cache" +
+				Usage: "Path where the GGUF file to load for the draft model, optional, e.g. \"~/.cache" +
 					"/lm-studio/models/QuantFactory/Qwen2-1.5B-Instruct-GGUF" +
-					"/Qwen2-1.5B-Instruct.Q5_K_M.gguf",
+					"/Qwen2-1.5B-Instruct.Q5_K_M.gguf\".",
 			},
 			&cli.StringFlag{
 				Destination: &mmprojPath,
@@ -110,8 +110,8 @@ func main() {
 				Name:        "url",
 				Aliases:     []string{"model-url", "mu"},
 				Usage: "Url where the GGUF file to load for the main model, e.g. " +
-					"https://huggingface.co/QuantFactory/Qwen2-7B-Instruct-GGUF" +
-					"/resolve/main/Qwen2-7B-Instruct.Q5_K_M.gguf. " +
+					"\"https://huggingface.co/QuantFactory/Qwen2-7B-Instruct-GGUF" +
+					"/resolve/main/Qwen2-7B-Instruct.Q5_K_M.gguf\". " +
 					"Note that gguf-parser does not need to download the entire GGUF file.",
 			},
 			&cli.StringFlag{
@@ -120,8 +120,8 @@ func main() {
 				Category:    "Model/Remote",
 				Name:        "draft-url",
 				Usage: "Url where the GGUF file to load for the draft model, optional, e.g. " +
-					"https://huggingface.co/QuantFactory/Qwen2-1.5B-Instruct-GGUF" +
-					"/resolve/main/Qwen2-1.5B-Instruct.Q5_K_M.gguf. " +
+					"\"https://huggingface.co/QuantFactory/Qwen2-1.5B-Instruct-GGUF" +
+					"/resolve/main/Qwen2-1.5B-Instruct.Q5_K_M.gguf\". " +
 					"Note that gguf-parser does not need to download the entire GGUF file.",
 			},
 			&cli.StringFlag{
@@ -149,7 +149,7 @@ func main() {
 				Category:    "Model/Remote",
 				Name:        "token",
 				Usage: "Bearer auth token to load GGUF file, optional, " +
-					"works with --url/--draft-url.",
+					"works with \"--url/--draft-url\".",
 			},
 			&cli.StringFlag{
 				Destination: &hfRepo,
@@ -158,7 +158,7 @@ func main() {
 				Name:        "hf-repo",
 				Aliases:     []string{"hfr"},
 				Usage: "Repository of HuggingFace which the GGUF file store for the main model, e.g. " +
-					"QuantFactory/Qwen2-7B-Instruct-GGUF, works with --hf-file.",
+					"\"QuantFactory/Qwen2-7B-Instruct-GGUF\", works with \"--hf-file\".",
 			},
 			&cli.StringFlag{
 				Destination: &hfFile,
@@ -166,8 +166,8 @@ func main() {
 				Category:    "Model/Remote/HuggingFace",
 				Name:        "hf-file",
 				Aliases:     []string{"hff"},
-				Usage: "Model file below the --hf-repo, e.g. " +
-					"Qwen2-7B-Instruct.Q5_K_M.gguf.",
+				Usage: "Model file below the \"--hf-repo\", e.g. " +
+					"\"Qwen2-7B-Instruct.Q5_K_M.gguf\".",
 			},
 			&cli.StringFlag{
 				Destination: &hfDraftRepo,
@@ -175,34 +175,34 @@ func main() {
 				Category:    "Model/Remote/HuggingFace",
 				Name:        "hf-draft-repo",
 				Usage: "Repository of HuggingFace which the GGUF file store for the draft model, optional, e.g. " +
-					"QuantFactory/Qwen2-1.5B-Instruct-GGUF, works with --hf-draft-file.",
+					"\"QuantFactory/Qwen2-1.5B-Instruct-GGUF\", works with \"--hf-draft-file\".",
 			},
 			&cli.StringFlag{
 				Destination: &hfDraftFile,
 				Value:       hfDraftFile,
 				Category:    "Model/Remote/HuggingFace",
 				Name:        "hf-draft-file",
-				Usage: "Model file below the --hf-draft-repo, optional, e.g. " +
-					"Qwen2-1.5B-Instruct.Q5_K_M.gguf.",
+				Usage: "Model file below the \"--hf-draft-repo\", optional, e.g. " +
+					"\"Qwen2-1.5B-Instruct.Q5_K_M.gguf\".",
 			},
 			&cli.StringFlag{
 				Destination: &hfMMProjFile,
 				Value:       hfMMProjFile,
 				Category:    "Model/Remote/HuggingFace",
 				Name:        "hf-mmproj-file",
-				Usage:       "Multimodal projector file below the --hf-repo.",
+				Usage:       "Multimodal projector file below the \"--hf-repo\".",
 			},
 			&cli.StringSliceFlag{
 				Destination: &hfLoRAFiles,
 				Category:    "Model/Remote/HuggingFace",
 				Name:        "hf-lora-file",
-				Usage:       "LoRA adapter file below the --hf-repo.",
+				Usage:       "LoRA adapter file below the \"--hf-repo\".",
 			},
 			&cli.StringSliceFlag{
 				Destination: &hfControlVectorFiles,
 				Category:    "Model/Remote/HuggingFace",
 				Name:        "hf-control-vector-file",
-				Usage:       "Control Vector adapter file below the --hf-repo.",
+				Usage:       "Control Vector adapter file below the \"--hf-repo\".",
 			},
 			&cli.StringFlag{
 				Destination: &hfToken,
@@ -211,7 +211,7 @@ func main() {
 				Name:        "hf-token",
 				Aliases:     []string{"hft"},
 				Usage: "User access token of HuggingFace, optional, " +
-					"works with --hf-repo/--hf-file pair or --hf-draft-repo/--hf-draft-file pair. " +
+					"works with \"--hf-repo/--hf-file pair\" or \"--hf-draft-repo/--hf-draft-file\" pair. " +
 					"See https://huggingface.co/settings/tokens.",
 			},
 			&cli.StringFlag{
@@ -220,15 +220,15 @@ func main() {
 				Category:    "Model/Remote/ModelScope",
 				Name:        "ms-repo",
 				Usage: "Repository of ModelScope which the GGUF file store for the main model, e.g. " +
-					"qwen/Qwen1.5-7B-Chat-GGUF, works with --ms-file.",
+					"\"qwen/Qwen1.5-7B-Chat-GGUF\", works with \"--ms-file\".",
 			},
 			&cli.StringFlag{
 				Destination: &msFile,
 				Value:       msFile,
 				Category:    "Model/Remote/ModelScope",
 				Name:        "ms-file",
-				Usage: "Model file below the --ms-repo, e.g. " +
-					"qwen1_5-7b-chat-q5_k_m.gguf.",
+				Usage: "Model file below the \"--ms-repo\", e.g. " +
+					"\"qwen1_5-7b-chat-q5_k_m.gguf\".",
 			},
 			&cli.StringFlag{
 				Destination: &msDraftRepo,
@@ -236,34 +236,34 @@ func main() {
 				Category:    "Model/Remote/ModelScope",
 				Name:        "ms-draft-repo",
 				Usage: "Repository of ModelScope which the GGUF file store for the draft model, optional, e.g. " +
-					"qwen/Qwen1.5-1.8B-Chat-GGUF, works with --ms-draft-file.",
+					"\"qwen/Qwen1.5-1.8B-Chat-GGUF\", works with \"--ms-draft-file\".",
 			},
 			&cli.StringFlag{
 				Destination: &msDraftFile,
 				Value:       msDraftFile,
 				Category:    "Model/Remote/ModelScope",
 				Name:        "ms-draft-file",
-				Usage: "Model file below the --ms-draft-repo, optional, e.g. " +
-					"qwen1_5-1_8b-chat-q5_k_m.gguf.",
+				Usage: "Model file below the \"--ms-draft-repo\", optional, e.g. " +
+					"\"qwen1_5-1_8b-chat-q5_k_m.gguf\".",
 			},
 			&cli.StringFlag{
 				Destination: &msMMProjFile,
 				Value:       msMMProjFile,
 				Category:    "Model/Remote/ModelScope",
 				Name:        "ms-mmproj-file",
-				Usage:       "Multimodal projector file below the --ms-repo.",
+				Usage:       "Multimodal projector file below the \"--ms-repo\".",
 			},
 			&cli.StringSliceFlag{
 				Destination: &msLoRAFiles,
 				Category:    "Model/Remote/ModelScope",
 				Name:        "ms-lora-file",
-				Usage:       "LoRA adapter file below the --ms-repo.",
+				Usage:       "LoRA adapter file below the \"--ms-repo\".",
 			},
 			&cli.StringSliceFlag{
 				Destination: &msControlVectorFiles,
 				Category:    "Model/Remote/ModelScope",
 				Name:        "ms-control-vector-file",
-				Usage:       "Control Vector adapter file below the --ms-repo.",
+				Usage:       "Control Vector adapter file below the \"--ms-repo\".",
 			},
 			&cli.StringFlag{
 				Destination: &msToken,
@@ -271,7 +271,7 @@ func main() {
 				Category:    "Model/Remote/ModelScope",
 				Name:        "ms-token",
 				Usage: "Git access token of ModelScope, optional, " +
-					"works with --ms-repo/--ms-file pair or --ms-draft-repo/--ms-draft-file pair. " +
+					"works with \"--ms-repo/--ms-file\" pair or \"--ms-draft-repo/--ms-draft-file\" pair. " +
 					"See https://modelscope.cn/my/myaccesstoken.",
 			},
 			&cli.StringFlag{
@@ -288,7 +288,7 @@ func main() {
 				Category:    "Model/Remote/Ollama",
 				Name:        "ol-model",
 				Usage: "Model name of Ollama, e.g. " +
-					"gemma2.",
+					"\"gemma2\".",
 			},
 			&cli.BoolFlag{
 				Destination: &olUsage,
@@ -296,7 +296,7 @@ func main() {
 				Category:    "Model/Remote/Ollama",
 				Name:        "ol-usage",
 				Usage: "Specify respecting the extending layers introduced by Ollama, " +
-					"works with --ol-model, which affects the usage estimation.",
+					"works with \"--ol-model\", which affects the usage estimation.",
 			},
 			&cli.BoolFlag{
 				Destination: &skipProxy,
@@ -304,8 +304,8 @@ func main() {
 				Category:    "Load",
 				Name:        "skip-proxy",
 				Usage: "Skip proxy settings, " +
-					"works with --url/--hf-*/--ms-*/--ol-*, " +
-					"default is respecting the environment variables HTTP_PROXY/HTTPS_PROXY/NO_PROXY.",
+					"works with \"--url/--hf-*/--ms-*/--ol-*\", " +
+					"default is respecting the environment variables \"HTTP_PROXY/HTTPS_PROXY/NO_PROXY\".",
 			},
 			&cli.BoolFlag{
 				Destination: &skipTLSVerify,
@@ -313,7 +313,7 @@ func main() {
 				Category:    "Load",
 				Name:        "skip-tls-verify",
 				Usage: "Skip TLS verification, " +
-					"works with --url/--hf-*/--ms-*/--ol-*, " +
+					"works with \"--url/--hf-*/--ms-*/--ol-*\", " +
 					"default is verifying the TLS certificate on HTTPs request.",
 			},
 			&cli.BoolFlag{
@@ -322,7 +322,7 @@ func main() {
 				Category:    "Load",
 				Name:        "skip-dns-cache",
 				Usage: "Skip DNS cache, " +
-					"works with --url/--hf-*/--ms-*/--ol-*, " +
+					"works with \"--url/--hf-*/--ms-*/--ol-*\", " +
 					"default is caching the DNS lookup result.",
 			},
 			&cli.BoolFlag{
@@ -331,7 +331,7 @@ func main() {
 				Category:    "Load",
 				Name:        "skip-rang-download-detect",
 				Usage: "Skip range download detect, " +
-					"works with --url/--hf-*/--ms-*/--ol-*, " +
+					"works with \"--url/--hf-*/--ms-*/--ol-*\", " +
 					"default is detecting the range download support.",
 			},
 			&cli.DurationFlag{
@@ -340,7 +340,7 @@ func main() {
 				Category:    "Load",
 				Name:        "cache-expiration",
 				Usage: "Specify the expiration of cache, " +
-					"works with --url/--hf-*/--ms-*/--ol-*.",
+					"works with \"--url/--hf-*/--ms-*/--ol-*\".",
 			},
 			&cli.StringFlag{
 				Destination: &cachePath,
@@ -348,7 +348,7 @@ func main() {
 				Category:    "Load",
 				Name:        "cache-path",
 				Usage: "Cache the read result to the path, " +
-					"works with --url/--hf-*/--ms-*/--ol-*.",
+					"works with \"--url/--hf-*/--ms-*/--ol-*\".",
 			},
 			&cli.BoolFlag{
 				Destination: &skipCache,
@@ -356,7 +356,7 @@ func main() {
 				Category:    "Load",
 				Name:        "skip-cache",
 				Usage: "Skip cache, " +
-					"works with --url/--hf-*/--ms-*/--ol-*, " +
+					"works with \"--url/--hf-*/--ms-*/--ol-*\", " +
 					"default is caching the read result.",
 			},
 			&cli.IntFlag{
@@ -463,8 +463,8 @@ func main() {
 					"which is used to estimate the usage, " +
 					"it is a comma-separated list of integer. " +
 					"Since gguf-parser cannot recognize the host GPU devices or RPC servers, " +
-					"must explicitly set --tensor-split to indicate how many devices are used. " +
-					"To declare the devices belong to RPC servers, set --rpc please.",
+					"must explicitly set \"--tensor-split\" to indicate how many devices are used. " +
+					"To declare the devices belong to RPC servers, set \"--rpc\" please.",
 			},
 			&cli.StringFlag{
 				Destination: &rpcServers,
@@ -474,7 +474,7 @@ func main() {
 				Usage: "Specify the RPC servers, " +
 					"which is used to estimate the usage, " +
 					"it is a comma-separated list of host:port. " +
-					"Woks with --tensor-split.",
+					"Woks with \"--tensor-split\".",
 			},
 			&cli.UintFlag{
 				Destination: &mainGPU,
@@ -482,11 +482,11 @@ func main() {
 				Category:    "Estimate",
 				Name:        "main-gpu",
 				Aliases:     []string{"mg"},
-				Usage: "Specify the GPU to use for the model (with --split-mode = none) " +
-					"or for intermediate results and KV (with --split-mode = row), " +
+				Usage: "Specify the GPU to use for the model (with \"--split-mode=none\") " +
+					"or for intermediate results and KV (with \"--split-mode=row\"), " +
 					"which is used to estimate the usage. " +
 					"Since gguf-parser cannot recognize the host GPU devices or RPC servers, " +
-					"--main-gpu only works when --tensor-split is set.",
+					"\"--main-gpu\" only works when \"--tensor-split\" is set.",
 			},
 			&cli.StringFlag{
 				Destination: &platformFootprint,
@@ -495,9 +495,9 @@ func main() {
 				Name:        "platform-footprint",
 				Usage: "Specify the platform footprint(RAM,VRAM) of running host in MiB, " +
 					"which is used to estimate the NonUMA usage, " +
-					"default is 150,250. " +
+					"default is \"150,250\". " +
 					"Different platform always gets different RAM and VRAM footprints, " +
-					"for example, within CUDA, 'cudaMemGetInfo' would occupy some RAM and VRAM, " +
+					"for example, within CUDA, \"cudaMemGetInfo\" would occupy some RAM and VRAM, " +
 					"see https://stackoverflow.com/questions/64854862/free-memory-occupied-by-cudamemgetinfo.",
 			},
 			&cli.BoolFlag{
@@ -535,7 +535,23 @@ func main() {
 				Category:    "Estimate",
 				Name:        "gpu-layers-step",
 				Usage: "Specify the step of layers to offload, " +
-					"works with --gpu-layers.",
+					"works with \"--gpu-layers\".",
+			},
+			&cli.StringSliceFlag{
+				Destination: &deviceMetrics,
+				Category:    "Estimate",
+				Name:        "device-metric",
+				Usage: "Specify the device metrics, " +
+					"which is used to estimate the usage, in form of \"FLOPS;Up Bandwidth[;Down Bandwidth]\". " +
+					"The FLOPS unit, select from [PFLOPS, TFLOPS, GFLOPS, MFLOPS, KFLOPS]. " +
+					"The Up/Down Bandwidth unit, select from [PiBps, PBps, TiBps, TBps, GiBps, GBps, MiBps, MBps, KiBps, KBps]. " +
+					"Up Bandwidth usually indicates the bandwidth to transmit the data to calculate, " +
+					"and Down Bandwidth indicates the bandwidth to transmit the calculated result to next layer. " +
+					"For example, \"--device-metric 10TFLOPS;400GBps\" means the device has 10 TFLOPS and 400 GBps Up/Down bandwidth, " +
+					"\"--device-metric 10TFLOPS;400GBps;5000MBps\" means the device has 5000MBps Down bandwidth. " +
+					"If the quantity specified by \"--device-metric\" is less than the number of estimation devices(" +
+					"determined by \"--tensor-split\" and \"--rpc\" to infer the device count), " +
+					"then replicate the last \"--device-metric\" to meet the required number of evaluation devices.",
 			},
 			&cli.BoolFlag{
 				Destination: &raw,
@@ -549,7 +565,7 @@ func main() {
 				Value:       rawOutput,
 				Category:    "Output",
 				Name:        "raw-output",
-				Usage:       "Works with --raw, to save the result to the file",
+				Usage:       "Works with \"--raw\", to save the result to the file",
 			},
 			&cli.BoolFlag{
 				Destination: &skipMetadata,
@@ -607,7 +623,7 @@ func main() {
 				Value:       inPrettyJson,
 				Category:    "Output",
 				Name:        "json-pretty",
-				Usage:       "Works with --json, to output pretty format JSON.",
+				Usage:       "Works with \"--json\", to output pretty format JSON.",
 			},
 		},
 		Action: mainAction,
@@ -679,6 +695,7 @@ var (
 	offloadLayers      = -1
 	offloadLayersDraft = -1
 	offloadLayersStep  uint64
+	deviceMetrics      cli.StringSlice
 	// output options
 	raw              bool
 	rawOutput        string
@@ -807,6 +824,33 @@ func mainAction(c *cli.Context) error {
 			}
 			eopts = append(eopts, WithRPCServers(rpc))
 		}
+	}
+	if dmss := deviceMetrics.Value(); len(dmss) > 0 {
+		dms := make([]LLaMACppRunDeviceMetric, len(dmss))
+		for i := range dmss {
+			ss := strings.Split(dmss[i], ";")
+			if len(ss) < 2 {
+				return errors.New("--device-metric has invalid format")
+			}
+			var err error
+			dms[i].FLOPS, err = ParseFLOPSScalar(strings.TrimSpace(ss[0]))
+			if err != nil {
+				return fmt.Errorf("--device-metric has invalid FLOPS: %w", err)
+			}
+			dms[i].UpBandwidth, err = ParseBytesPerSecondScalar(strings.TrimSpace(ss[1]))
+			if err != nil {
+				return fmt.Errorf("--device-metric has invalid Up Bandwidth: %w", err)
+			}
+			if len(ss) > 2 {
+				dms[i].DownBandwidth, err = ParseBytesPerSecondScalar(strings.TrimSpace(ss[2]))
+				if err != nil {
+					return fmt.Errorf("--device-metric has invalid Down Bandwidth: %w", err)
+				}
+			} else {
+				dms[i].DownBandwidth = dms[i].UpBandwidth
+			}
+		}
+		eopts = append(eopts, WithDeviceMetrics(dms))
 	}
 
 	// Parse GGUF file.
@@ -1100,20 +1144,20 @@ func mainAction(c *cli.Context) error {
 				if e.OffloadLayers%offloadLayersStep != 0 || e.FullOffloaded {
 					cnt++
 				}
-				ess := make([]LLaMACppUsageEstimateMemorySummary, cnt)
+				esis := make([]LLaMACppRunEstimateSummaryItem, cnt)
 				var wg sync.WaitGroup
-				for i := 0; i < cap(ess); i++ {
+				for i := 0; i < cap(esis); i++ {
 					wg.Add(1)
 					go func(i int) {
 						defer wg.Done()
 						eopts := eopts[:len(eopts):len(eopts)]
 						eopts = append(eopts, WithOffloadLayers(uint64(i)*offloadLayersStep))
-						ess[i] = gf.EstimateLLaMACppRun(eopts...).SummarizeMemory(mmap, platformRAM, platformVRAM)
+						esis[i] = gf.EstimateLLaMACppRun(eopts...).SummarizeItem(mmap, platformRAM, platformVRAM)
 					}(i)
 				}
 				wg.Wait()
-				ess[cap(ess)-1] = es.Memory[0]
-				es.Memory = ess
+				esis[cap(esis)-1] = es.Items[0]
+				es.Items = esis
 			}
 			o["estimate"] = es
 		}
@@ -1129,7 +1173,7 @@ func mainAction(c *cli.Context) error {
 		return nil
 	}
 
-	InMiBytes = inMib
+	GGUFBytesScalarStringInMiBytes = inMib
 
 	if !skipMetadata {
 		tprint(
@@ -1287,9 +1331,13 @@ func mainAction(c *cli.Context) error {
 				"Full Offloaded",
 			}
 		}
+		if es.Items[0].MaximumTokensPerSecond != nil {
+			hds[0] = append(hds[0], "Max TPS")
+			hds[1] = append(hds[1], "Max TPS")
+		}
 		hds[0] = append(hds[0], "RAM", "RAM", "RAM")
 		hds[1] = append(hds[1], "Layers (I + T + O)", "UMA", "NonUMA")
-		for i := range es.Memory[0].VRAMs {
+		for i := range es.Items[0].VRAMs {
 			hds[0] = append(hds[0], fmt.Sprintf("VRAM %d", i), fmt.Sprintf("VRAM %d", i), fmt.Sprintf("VRAM %d", i))
 			hds[1] = append(hds[1], "Layers (T + O)", "UMA", "NonUMA")
 		}
@@ -1305,24 +1353,24 @@ func mainAction(c *cli.Context) error {
 			if e.OffloadLayers%offloadLayersStep != 0 || e.FullOffloaded {
 				cnt++
 			}
-			ess := make([]LLaMACppUsageEstimateMemorySummary, cnt)
+			esis := make([]LLaMACppRunEstimateSummaryItem, cnt)
 			var wg sync.WaitGroup
-			for i := 0; i < cap(ess); i++ {
+			for i := 0; i < cap(esis); i++ {
 				wg.Add(1)
 				go func(i int) {
 					defer wg.Done()
 					eopts := eopts[:len(eopts):len(eopts)]
 					eopts = append(eopts, WithOffloadLayers(uint64(i)*offloadLayersStep))
-					ess[i] = gf.EstimateLLaMACppRun(eopts...).SummarizeMemory(mmap, platformRAM, platformVRAM)
+					esis[i] = gf.EstimateLLaMACppRun(eopts...).SummarizeItem(mmap, platformRAM, platformVRAM)
 				}(i)
 			}
 			wg.Wait()
-			ess[cap(ess)-1] = es.Memory[0]
-			es.Memory = ess
+			esis[cap(esis)-1] = es.Items[0]
+			es.Items = esis
 		}
 
-		bds := make([][]any, len(es.Memory))
-		for i := range es.Memory {
+		bds := make([][]any, len(es.Items))
+		for i := range es.Items {
 			if !inShort {
 				bds[i] = []any{
 					sprintf(es.Architecture),
@@ -1332,16 +1380,20 @@ func mainAction(c *cli.Context) error {
 					sprintf(tenary(mmap, tenary(!es.NoMMap, "Enabled", "Unsupported"), "Disabled")),
 					sprintf(tenary(es.EmbeddingOnly, "Yes", "No")),
 					sprintf(tenary(es.Distributable, "Supported", "Unsupported")),
-					sprintf(tenary(es.Memory[i].FullOffloaded, sprintf("%d (%d + 1)",
-						es.Memory[i].OffloadLayers, es.Memory[i].OffloadLayers-1), es.Memory[i].OffloadLayers)),
-					sprintf(tenary(es.Memory[i].FullOffloaded, "Yes", "No")),
+					sprintf(tenary(es.Items[i].FullOffloaded, sprintf("%d (%d + 1)",
+						es.Items[i].OffloadLayers, es.Items[i].OffloadLayers-1), es.Items[i].OffloadLayers)),
+					sprintf(tenary(es.Items[i].FullOffloaded, "Yes", "No")),
 				}
 			}
+			if es.Items[i].MaximumTokensPerSecond != nil {
+				bds[i] = append(bds[i],
+					sprintf(*es.Items[i].MaximumTokensPerSecond))
+			}
 			bds[i] = append(bds[i],
-				sprintf("1 + %d + %d", es.Memory[i].RAM.HandleLayers, tenary(es.Memory[i].RAM.HandleOutputLayer, 1, 0)),
-				sprintf(es.Memory[i].RAM.UMA),
-				sprintf(es.Memory[i].RAM.NonUMA))
-			for _, v := range es.Memory[i].VRAMs {
+				sprintf("1 + %d + %d", es.Items[i].RAM.HandleLayers, tenary(es.Items[i].RAM.HandleOutputLayer, 1, 0)),
+				sprintf(es.Items[i].RAM.UMA),
+				sprintf(es.Items[i].RAM.NonUMA))
+			for _, v := range es.Items[i].VRAMs {
 				bds[i] = append(bds[i],
 					sprintf("%d + %d", v.HandleLayers, tenary(v.HandleOutputLayer, 1, 0)),
 					sprintf(v.UMA),

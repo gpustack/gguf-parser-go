@@ -29,6 +29,8 @@ type (
 		CachePath                  string
 		CacheExpiration            time.Duration
 	}
+
+	// GGUFReadOption is the option for reading the file.
 	GGUFReadOption func(o *_GGUFReadOptions)
 )
 

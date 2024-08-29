@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/gpustack/gguf-parser-go/util/anyx"
 	"github.com/gpustack/gguf-parser-go/util/ptr"
 	"github.com/gpustack/gguf-parser-go/util/slicex"
 )
@@ -39,19 +40,21 @@ type (
 		LogicalBatchSize int32 `json:"logicalBatchSize"`
 		// PhysicalBatchSize is the physical batch size.
 		PhysicalBatchSize int32 `json:"physicalBatchSize"`
-		// Devices represents the memory usage for running the GGUF file,
+		// Devices represents the usage for running the GGUF file,
 		// the first device is the CPU, and the rest are GPUs.
-		Devices []LLaMACppMemoryUsage `json:"devices"`
+		Devices []LLaMACppRunDeviceUsage `json:"devices"`
 		// Drafter is the memory usage of drafter.
 		Drafter *LLaMACppRunEstimate `json:"drafter,omitempty"`
 		// Projector is the memory usage of multimodal projector.
 		Projector *LLaMACppRunEstimate `json:"projector,omitempty"`
 		// Adapters is the memory usage of adapters.
 		Adapters []LLaMACppRunEstimate `json:"adapters,omitempty"`
+		// MaximumTokensPerSecond represents the maximum tokens per second for running the GGUF file.
+		MaximumTokensPerSecond *GGUFTokensPerSecondScalar `json:"maximumTokensPerSecond,omitempty"`
 	}
 
-	// LLaMACppMemoryUsage represents the memory usage for expanding the GGUF file in llama.cpp.
-	LLaMACppMemoryUsage struct {
+	// LLaMACppRunDeviceUsage represents the usage for running the GGUF file in llama.cpp.
+	LLaMACppRunDeviceUsage struct {
 		// HandleLayers is the number of layers that the device can handle.
 		HandleLayers uint64 `json:"handleLayers"`
 		// HandleLastLayer is the index of the last layer the device can handle.
@@ -64,12 +67,26 @@ type (
 		Remote bool `json:"remote"`
 		// Footprint is the memory footprint for bootstrapping.
 		Footprint GGUFBytesScalar `json:"footprint"`
-		// Weight is the memory usage of loading weights.
+		// Parameter is the running parameters that the device processes.
+		Parameter LLaMACppParameterUsage `json:"parameter"`
+		// Weight is the memory usage of weights that the device loads.
 		Weight LLaMACppWeightMemoryUsage `json:"weight"`
-		// KVCache is the memory usage of caching previous KV.
+		// KVCache is the memory usage of kv that the device caches.
 		KVCache LLaMACppKVCacheMemoryUsage `json:"kvCache"`
-		// Computation is the memory usage of computation.
+		// Computation is the memory usage of computation that the device processes.
 		Computation LLaMACppComputationMemoryUsage `json:"computation"`
+	}
+
+	// LLaMACppParameterUsage represents the parameter usage for running the GGUF file in llama.cpp.
+	LLaMACppParameterUsage struct {
+		// KVCache is the parameter usage for caching previous KV.
+		KVCache GGUFParametersScalar `json:"kvCache"`
+		// Input is the parameter usage for input tensors.
+		Input GGUFParametersScalar `json:"input"`
+		// Compute is the parameter usage for compute tensors.
+		Compute GGUFParametersScalar `json:"compute"`
+		// Output is the parameter usage for output tensors.
+		Output GGUFParametersScalar `json:"output"`
 	}
 
 	// LLaMACppWeightMemoryUsage represents the memory usage of loading weights in llama.cpp.
@@ -140,9 +157,14 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 	case o.MainGPUIndex < 0 || o.MainGPUIndex >= len(o.TensorSplitFraction):
 		panic("main device index must be range of 0 to the length of tensor split fraction")
 	}
+	if len(o.DeviceMetrics) > 0 {
+		for i, j := 0, len(o.DeviceMetrics)-1; i < len(o.TensorSplitFraction)-j; i++ {
+			o.DeviceMetrics = append(o.DeviceMetrics, o.DeviceMetrics[j])
+		}
+	}
 
 	// Devices.
-	e.Devices = make([]LLaMACppMemoryUsage, len(o.TensorSplitFraction)+1)
+	e.Devices = make([]LLaMACppRunDeviceUsage, len(o.TensorSplitFraction)+1)
 	for i := range e.Devices {
 		e.Devices[i].HandleLastLayer = -1
 	}
@@ -342,6 +364,7 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 		switch a.Type {
 		default:
 			e.Devices[1].Weight.Compute = GGUFBytesScalar(ls.Bytes())
+			e.Devices[1].Parameter.Compute = GGUFParametersScalar(ls.Elements())
 		case "model":
 			for i, j, offloadStart := 0, 0, len(tfLs)-int(nOffloadLayers); i < len(tfLs); i++ {
 				switch {
@@ -349,6 +372,7 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 					e.Devices[0].HandleLayers += 1
 					e.Devices[0].HandleLastLayer = i
 					e.Devices[0].Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
+					e.Devices[0].Parameter.Compute += GGUFParametersScalar(tfLs[i].Elements())
 				case i >= offloadStart:
 					x := float64(i-offloadStart) / float64(nActualOffloadLayers)
 					j = slicex.UpperBound(o.TensorSplitFraction, x)
@@ -356,6 +380,7 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 					e.Devices[j+1].HandleLastLayer = i
 					e.Devices[j+1].Remote = len(o.TensorSplitFraction)-len(o.RPCServers) <= j
 					e.Devices[j+1].Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
+					e.Devices[j+1].Parameter.Compute += GGUFParametersScalar(tfLs[i].Elements())
 				}
 			}
 		}
@@ -363,36 +388,47 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 		// IO,
 		// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L4930-L5002.
 		e.Devices[0].Weight.Input = GGUFBytesScalar(ipLs.Bytes())
-		var op GGUFBytesScalar
+		e.Devices[0].Parameter.Input = GGUFParametersScalar(ipLs.Elements())
+		var (
+			wg GGUFBytesScalar
+			ps GGUFParametersScalar
+		)
 		if _, ok := opLs.Get("output.weight"); ok {
-			op = GGUFBytesScalar(opLs.Bytes())
+			wg = GGUFBytesScalar(opLs.Bytes())
+			ps = GGUFParametersScalar(opLs.Elements())
 		} else if a.AttentionCausal {
-			op = GGUFBytesScalar(opLs.Bytes()) + e.Devices[0].Weight.Input /* duplicate the input layer */
+			wg = GGUFBytesScalar(opLs.Bytes()) + e.Devices[0].Weight.Input /* duplicate the input layer */
+			ps = GGUFParametersScalar(opLs.Elements() + ipLs.Elements())
 		}
-		e.Devices[0].Weight.Output = op
+		e.Devices[0].Weight.Output = wg
 		if fullOffload {
-			e.Devices[len(e.Devices)-1].Weight.Output = op
 			e.Devices[len(e.Devices)-1].HandleOutputLayer = true
+			e.Devices[len(e.Devices)-1].Weight.Output = wg
+			e.Devices[len(e.Devices)-1].Parameter.Output = ps
 		} else {
 			e.Devices[0].HandleOutputLayer = true
+			e.Devices[0].Parameter.Output = ps
 		}
 	}
 
 	// KV cache,
 	// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L2479-L2501.
 	{
-		krs := o.CacheKeyType.RowSizeOf([]uint64{a.EmbeddingKeyGQA * nKV})
-		vrs := o.CacheValueType.RowSizeOf([]uint64{a.EmbeddingValueGQA * nKV})
+		kps, vps := a.EmbeddingKeyGQA*nKV, a.EmbeddingValueGQA*nKV
+		krs, vrs := o.CacheKeyType.RowSizeOf([]uint64{kps}), o.CacheValueType.RowSizeOf([]uint64{vps})
 
 		e.Devices[0].KVCache.Key = GGUFBytesScalar(krs * nLoadLayers)
 		e.Devices[0].KVCache.Value = GGUFBytesScalar(vrs * nLoadLayers)
+		e.Devices[0].Parameter.KVCache = GGUFParametersScalar((kps + vps) * nLoadLayers)
 		if !*o.OffloadKVCache {
 			e.Devices[0].KVCache.Key += GGUFBytesScalar(krs * nOffloadLayers)
 			e.Devices[0].KVCache.Value += GGUFBytesScalar(vrs * nOffloadLayers)
+			e.Devices[0].Parameter.KVCache += GGUFParametersScalar((kps + vps) * nOffloadLayers)
 		} else if !zeroOffload {
 			for i, d := range e.Devices[1:] {
 				e.Devices[i+1].KVCache.Key = GGUFBytesScalar(krs * d.HandleLayers)
 				e.Devices[i+1].KVCache.Value = GGUFBytesScalar(vrs * d.HandleLayers)
+				e.Devices[i+1].Parameter.KVCache = GGUFParametersScalar((kps + vps) * d.HandleLayers)
 			}
 		}
 	}
@@ -579,16 +615,36 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 	// Adapters.
 	e.Adapters = o.Adapters
 
+	// Maximum tokens per second.
+	if ds, dmss := e.Devices, o.DeviceMetrics; len(dmss) != 0 {
+		bs := anyx.Number[float64](*o.LogicalBatchSize) / float64(nBatch)
+		var lt float64
+		for i, dm := range dmss {
+			fl, upbw, dwbw := float64(max(dm.FLOPS, 1)), float64(max(dm.UpBandwidth, 1)), float64(max(dm.DownBandwidth, 1))
+			cmpops := (float64(ds[i].Parameter.Compute)*2 /* FMA */ + float64(ds[i].Parameter.Input+ds[i].Parameter.Output)) * bs
+			cmps := float64(ds[i].Weight.Sum())
+			cmplat := max(cmpops/fl, cmps/upbw)
+			kvcops := float64(ds[i].Parameter.KVCache) * 2 /* FMA */
+			kvcs := float64(ds[i].KVCache.Sum())
+			kvclat := max(kvcops/fl, kvcs/upbw)
+			ffs := GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingLength, nBatch})
+			fflat := float64(ffs) / dwbw
+			lt += cmplat + kvclat + fflat
+		}
+		e.MaximumTokensPerSecond = ptr.To(GGUFTokensPerSecondScalar(1 / lt))
+	}
+
 	return e
 }
 
 // Types for LLaMACpp estimated summary.
 type (
-	// LLaMACppUsageEstimateSummary represents the summary of the usage for loading the GGUF file in llama.cpp.
-	LLaMACppUsageEstimateSummary struct {
+	// LLaMACppRunEstimateSummary represents the summary of the usage for loading the GGUF file in llama.cpp.
+	LLaMACppRunEstimateSummary struct {
 		/* Basic */
 
-		Memory []LLaMACppUsageEstimateMemorySummary `json:"memory"`
+		// Items
+		Items []LLaMACppRunEstimateSummaryItem `json:"items"`
 
 		/* Appendix */
 
@@ -616,21 +672,23 @@ type (
 		PhysicalBatchSize int32 `json:"physicalBatchSize"`
 	}
 
-	// LLaMACppUsageEstimateMemorySummary represents the memory summary of the usage for loading the GGUF file in llama.cpp.
-	LLaMACppUsageEstimateMemorySummary struct {
+	// LLaMACppRunEstimateSummaryItem represents one summary item for loading the GGUF file in llama.cpp.
+	LLaMACppRunEstimateSummaryItem struct {
 		// OffloadLayers is the number of offloaded layers.
 		OffloadLayers uint64 `json:"offloadLayers"`
 		// FullOffloaded is the flag to indicate whether the layers are fully offloaded,
 		// false for partial offloaded or zero offloaded.
 		FullOffloaded bool `json:"fullOffloaded"`
+		// MaximumTokensPerSecond is the maximum tokens per second for running the GGUF file.
+		MaximumTokensPerSecond *GGUFTokensPerSecondScalar `json:"maximumTokensPerSecond,omitempty"`
 		// RAM is the memory usage for loading the GGUF file in RAM.
-		RAM LLaMACppUsageEstimateMemoryDetail `json:"ram"`
+		RAM LLaMACppRunEstimateMemory `json:"ram"`
 		// VRAMs is the memory usage for loading the GGUF file in VRAM per device.
-		VRAMs []LLaMACppUsageEstimateMemoryDetail `json:"vrams"`
+		VRAMs []LLaMACppRunEstimateMemory `json:"vrams"`
 	}
 
-	// LLaMACppUsageEstimateMemoryDetail represents the detailed memory usage for loading the GGUF file in llama.cpp.
-	LLaMACppUsageEstimateMemoryDetail struct {
+	// LLaMACppRunEstimateMemory represents the memory usage for loading the GGUF file in llama.cpp.
+	LLaMACppRunEstimateMemory struct {
 		// HandleLayers is the number of layers that the device can handle.
 		HandleLayers uint64 `json:"handleLayers"`
 		// HandleLastLayer is the index of the last layer the device can handle.
@@ -648,15 +706,13 @@ type (
 	}
 )
 
-// SummarizeMemory returns the summary of the estimated memory usage of loading the GGUF file in llama.cpp,
-// the input options are used to adjust the summary.
-func (e LLaMACppRunEstimate) SummarizeMemory(mmap bool, nonUMARamFootprint, nonUMAVramFootprint uint64) (ems LLaMACppUsageEstimateMemorySummary) {
-	ems.OffloadLayers, ems.FullOffloaded = e.OffloadLayers, e.FullOffloaded
-	if ems.FullOffloaded {
-		ems.OffloadLayers++ // The output layer is offloaded.
+// SummarizeItem returns the corresponding LLaMACppRunEstimateSummaryItem with the given options.
+func (e LLaMACppRunEstimate) SummarizeItem(mmap bool, nonUMARamFootprint, nonUMAVramFootprint uint64) (emi LLaMACppRunEstimateSummaryItem) {
+	emi.OffloadLayers, emi.FullOffloaded = e.OffloadLayers, e.FullOffloaded
+	if emi.FullOffloaded {
+		emi.OffloadLayers++ // The output layer is offloaded.
 	}
-
-	ems.VRAMs = make([]LLaMACppUsageEstimateMemoryDetail, len(e.Devices)-1)
+	emi.MaximumTokensPerSecond = e.MaximumTokensPerSecond
 
 	// RAM.
 	{
@@ -665,25 +721,26 @@ func (e LLaMACppRunEstimate) SummarizeMemory(mmap bool, nonUMARamFootprint, nonU
 		kv := e.Devices[0].KVCache.Sum()
 		cp := e.Devices[0].Computation.Sum()
 
-		ems.RAM.HandleLayers = e.Devices[0].HandleLayers
-		ems.RAM.HandleLastLayer = e.Devices[0].HandleLastLayer
-		ems.RAM.HandleOutputLayer = e.Devices[0].HandleOutputLayer
-		ems.RAM.Remote = e.Devices[0].Remote
+		emi.RAM.HandleLayers = e.Devices[0].HandleLayers
+		emi.RAM.HandleLastLayer = e.Devices[0].HandleLastLayer
+		emi.RAM.HandleOutputLayer = e.Devices[0].HandleOutputLayer
+		emi.RAM.Remote = e.Devices[0].Remote
 
 		// UMA.
-		ems.RAM.UMA = fp + wg + kv + cp
+		emi.RAM.UMA = fp + wg + kv + cp
 		if !e.NoMMap && (mmap || e.FullOffloaded) {
-			ems.RAM.UMA -= wg
+			emi.RAM.UMA -= wg
 			if !mmap {
-				ems.RAM.UMA += e.Devices[0].Weight.Output
+				emi.RAM.UMA += e.Devices[0].Weight.Output
 			}
 		}
 
 		// NonUMA.
-		ems.RAM.NonUMA = GGUFBytesScalar(nonUMARamFootprint) + ems.RAM.UMA
+		emi.RAM.NonUMA = GGUFBytesScalar(nonUMARamFootprint) + emi.RAM.UMA
 	}
 
 	// VRAMs.
+	emi.VRAMs = make([]LLaMACppRunEstimateMemory, len(e.Devices)-1)
 	{
 		for i, v := range e.Devices[1:] {
 			fp := v.Footprint
@@ -691,70 +748,69 @@ func (e LLaMACppRunEstimate) SummarizeMemory(mmap bool, nonUMARamFootprint, nonU
 			kv := v.KVCache.Sum()
 			cp := v.Computation.Sum()
 
-			ems.VRAMs[i].HandleLayers = v.HandleLayers
-			ems.VRAMs[i].HandleLastLayer = v.HandleLastLayer
-			ems.VRAMs[i].HandleOutputLayer = v.HandleOutputLayer
-			ems.VRAMs[i].Remote = v.Remote
+			emi.VRAMs[i].HandleLayers = v.HandleLayers
+			emi.VRAMs[i].HandleLastLayer = v.HandleLastLayer
+			emi.VRAMs[i].HandleOutputLayer = v.HandleOutputLayer
+			emi.VRAMs[i].Remote = v.Remote
 
 			// UMA.
-			ems.VRAMs[i].UMA = fp + wg + kv + /* cp */ 0
+			emi.VRAMs[i].UMA = fp + wg + kv + /* cp */ 0
 			if !e.NoMMap && mmap {
-				ems.VRAMs[i].UMA -= wg
+				emi.VRAMs[i].UMA -= wg
 				if i > 0 && v.HandleLastLayer >= 0 || v.Remote {
-					ems.VRAMs[i].UMA += wg
+					emi.VRAMs[i].UMA += wg
 				}
 			}
 
 			// NonUMA.
-			ems.VRAMs[i].NonUMA = GGUFBytesScalar(nonUMAVramFootprint) + fp + wg + kv + cp
+			emi.VRAMs[i].NonUMA = GGUFBytesScalar(nonUMAVramFootprint) + fp + wg + kv + cp
 			if i > 0 && v.HandleLastLayer < 0 {
-				ems.VRAMs[i].NonUMA -= wg + cp
+				emi.VRAMs[i].NonUMA -= wg + cp
 			}
 		}
 	}
 
-	// Drafter.
+	// Add drafter's usage.
 	if e.Drafter != nil {
-		dmes := e.Drafter.SummarizeMemory(mmap, 0, 0)
-		ems.RAM.UMA += dmes.RAM.UMA
-		ems.RAM.NonUMA += dmes.RAM.NonUMA
-		for i, v := range dmes.VRAMs {
-			ems.VRAMs[i].UMA += v.UMA
-			ems.VRAMs[i].NonUMA += v.NonUMA
+		demi := e.Drafter.SummarizeItem(mmap, 0, 0)
+		emi.RAM.UMA += demi.RAM.UMA
+		emi.RAM.NonUMA += demi.RAM.NonUMA
+		for i, v := range demi.VRAMs {
+			emi.VRAMs[i].UMA += v.UMA
+			emi.VRAMs[i].NonUMA += v.NonUMA
 		}
 	}
 
-	// Projector.
+	// Add projector's usage.
 	if e.Projector != nil {
-		cems := e.Projector.SummarizeMemory(mmap, 0, 0)
-		ems.RAM.UMA += cems.RAM.UMA
-		ems.RAM.NonUMA += cems.RAM.NonUMA
-		for i, v := range cems.VRAMs {
-			ems.VRAMs[i].UMA += v.UMA
-			ems.VRAMs[i].NonUMA += v.NonUMA
+		pemi := e.Projector.SummarizeItem(mmap, 0, 0)
+		emi.RAM.UMA += pemi.RAM.UMA
+		emi.RAM.NonUMA += pemi.RAM.NonUMA
+		for i, v := range pemi.VRAMs {
+			emi.VRAMs[i].UMA += v.UMA
+			emi.VRAMs[i].NonUMA += v.NonUMA
 		}
 	}
 
-	// Adapters.
+	// Add adapters' usage.
 	for i := range e.Adapters {
-		aems := e.Adapters[i].SummarizeMemory(mmap, 0, 0)
-		ems.RAM.UMA += aems.RAM.UMA
-		ems.RAM.NonUMA += aems.RAM.NonUMA
-		for j, v := range aems.VRAMs {
-			ems.VRAMs[j].UMA += v.UMA
-			ems.VRAMs[j].NonUMA += v.NonUMA
+		aemi := e.Adapters[i].SummarizeItem(mmap, 0, 0)
+		emi.RAM.UMA += aemi.RAM.UMA
+		emi.RAM.NonUMA += aemi.RAM.NonUMA
+		for j, v := range aemi.VRAMs {
+			emi.VRAMs[j].UMA += v.UMA
+			emi.VRAMs[j].NonUMA += v.NonUMA
 		}
 	}
 
-	return ems
+	return emi
 }
 
-// Summarize returns the summary of the estimated result of loading the GGUF file in llama.cpp,
-// the input options are used to adjust the summary.
-func (e LLaMACppRunEstimate) Summarize(mmap bool, nonUMARamFootprint, nonUMAVramFootprint uint64) (es LLaMACppUsageEstimateSummary) {
-	// Summarize memory.
-	es.Memory = []LLaMACppUsageEstimateMemorySummary{
-		e.SummarizeMemory(mmap, nonUMARamFootprint, nonUMAVramFootprint),
+// Summarize returns the corresponding LLaMACppRunEstimateSummary with the given options.
+func (e LLaMACppRunEstimate) Summarize(mmap bool, nonUMARamFootprint, nonUMAVramFootprint uint64) (es LLaMACppRunEstimateSummary) {
+	// Items.
+	es.Items = []LLaMACppRunEstimateSummaryItem{
+		e.SummarizeItem(mmap, nonUMARamFootprint, nonUMAVramFootprint),
 	}
 
 	// Just copy from the original estimate.

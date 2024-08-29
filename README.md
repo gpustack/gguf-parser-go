@@ -15,13 +15,15 @@ with GGML and executors based on GGML. GGUF is a binary format that is designed 
 and for ease of reading. Models are traditionally developed using PyTorch or another framework, and then converted to
 GGUF for use in GGML.
 
-GGUF Parser helps in reviewing and estimating the usage of a GGUF format model without download it.
+GGUF Parser helps in reviewing and estimating the usage and maximum tokens per second of a GGUF format model without
+download it.
 
 ## Key Features
 
 - **No File Required**: GGUF Parser uses chunking reading to parse the metadata of remote GGUF file, which means you
   don't need to download the entire file and load it.
 - **Accurate Prediction**: The evaluation results of GGUF Parser usually deviate from the actual usage by about 100MiB.
+- **Quick verification**: Provide device metrics to calculate the maximum tokens per second (TPS) without running.
 - **Fast**: GGUF Parser is written in Go, which is fast and efficient.
 
 ## Agenda
@@ -37,7 +39,8 @@ GGUF Parser helps in reviewing and estimating the usage of a GGUF format model w
         * [From Ollama Library](#parse-from-ollama-library)
         * [None Model](#parse-none-model)
     + [Estimate](#estimate)
-        * [Across Multiple GPU devices](#estimate-across-multiple-gpu-devices)
+        * [Across Multiple GPU devices](#across-multiple-gpu-devices)
+        * [Maximum Tokens Per Second](#maximum-tokens-per-second)
         * [Full Layers Offload (default)](#full-layers-offload-default)
         * [Zero Layers Offload](#zero-layers-offload)
         * [Specific Layers Offload](#specific-layers-offload)
@@ -49,6 +52,7 @@ GGUF Parser helps in reviewing and estimating the usage of a GGUF format model w
 
 ## Notes
 
+- Since v0.10.0, GGUF Parser supports to estimate the maximum tokens per second(`Max TPS`) for a model.
 - The table result `I`/`T`/`O` means the count for input layers, transformer
   layers, and output layers. Input layers are not offloaded at present.
 - Since v0.8.1, GGUF Parser supports to estimate the usage with LoRA/ControlVector adapters.
@@ -72,8 +76,7 @@ GGUF Parser helps in reviewing and estimating the usage of a GGUF format model w
 
 ## Installation
 
-Install from [releases](https://github.com/gpustack/gguf-parser-go/releases)
-or `go install github.com/gpustack/gguf-parser-go/cmd/gguf-parser@latest`.
+Install from [releases](https://github.com/gpustack/gguf-parser-go/releases).
 
 ## Overview
 
@@ -472,7 +475,7 @@ $ gguf-parser --hf-repo="ngxson/test_gguf_lora_adapter" --hf-file="lora-Llama-3-
 
 ### Estimate
 
-#### Estimate Across Multiple GPU Devices
+#### Across Multiple GPU Devices
 
 Imaging you're preparing to run
 the [hierholzer/Llama-3.1-70B-Instruct-GGUF](https://huggingface.co/hierholzer/Llama-3.1-70B-Instruct-GGUF) model file
@@ -640,6 +643,130 @@ following resource consumption:
 | host3 (NVIDIA 4080 1) |               |             | 10 GiB         | 9.25 GiB     | :thumbsup: |
 
 Now, the model can be successfully served on `host3`, with all layers offloaded to `host1`, `host2`, and `host4`.
+
+#### Maximum Tokens Per Second
+
+The maximum TPS estimation for the GGUF Parser is determined by the model's parameter size, context size, model
+offloaded layers, and devices on which the model runs. Among these factors, the device's specifications are particularly
+important.
+
+Inspired
+by [LLM inference speed of light](https://zeux.io/2024/03/15/llm-inference-sol/), GGUF Parser use the **FLOPS** and
+**bandwidth** of the device as evaluation metrics:
+
+- When the device is a CPU, FLOPS refers to the performance of that CPU, while bandwidth corresponds to the DRAM
+  bandwidth.
+- When the device is a (i)GPU, FLOPS indicates the performance of that (i)GPU, and bandwidth corresponds to the VRAM
+  bandwidth.
+- When the device is a specific host, FLOPS depends on whether the CPU or (i)GPU of that host is being used, while
+  bandwidth corresponds to the bandwidth connecting the main node to that host. **After all, a chain is only as strong
+  as
+  its weakest link.** If the connection bandwidth between the
+  main node and the host is equal to or greater than the *RAM bandwidth, then the bandwidth should be taken as the *RAM
+  bandwidth value.
+
+##### CPU FLOPS Calculation
+
+The performance of a single CPU cache can be calculated using the following formula:
+
+$$ CPU\ FLOPS = Number\ of \ Cores \times Core\ Frequency \times Floating\ Point\ Operations\ per\ Cycle $$
+
+The Apple M1 Max CPU features a total of 10 cores, consisting of 8 performance cores and 2 efficiency cores. The
+performance cores operate at a clock speed of 3.2 GHz, while the efficiency cores run at 2.2 GHz. All cores support
+the [ARM NEON instruction set](https://en.wikipedia.org/wiki/ARM_architecture_family#Advanced_SIMD_(Neon)), which
+enables 128-bit SIMD operations, allowing multiple floating-point numbers to be processed simultaneously within a
+single CPU cycle. Specifically, using single-precision (32-bit) floating-point numbers, each cycle can handle 4
+floating-point operations.
+
+The peak floating-point performance for a single performance core is calculated as follows:
+
+$$ Peak\ Performance = 3.2\ GHz \times 4\ FLOPS = 12.8\ GFLOPS $$
+
+For a single efficiency core, the calculation is:
+
+$$ Peak\ Performance = 2.2\ GHz \times 4\ FLOPS = 8.8\ GFLOPS $$
+
+Thus, the overall peak floating-point performance of the entire CPU can be determined by combining the contributions
+from both types of cores:
+
+$$ Peak\ Performance = 8\ Cores \times 12.8\ GFLOPS + 2\ Cores \times 8.8\ GFLOPS = 120\ GFLOPS $$
+
+> This results in an average performance of 12 GFLOPS per core. It is evident that the average performance achieved by
+> utilizing both performance and efficiency cores is lower than that obtained by exclusively using performance cores.
+
+##### Run LLaMA2-7B-Chat with Apple Silicon M-series
+
+Taking [TheBloke/Llama-2-7B-Chat-GGUF](https://huggingface.co/TheBloke/Llama-2-7B-Chat-GGUF) as an
+example and estimate the maximum tokens per second for Apple Silicon M-series using the GGUF Parser.
+
+```shell
+$ # Estimate full offloaded Q8_0 model
+$ gguf-parser --hf-repo TheBloke/LLaMA-7b-GGUF --hf-file llama-7b.Q8_0.gguf --skip-metadata --skip-architecture --skip-tokenizer --in-short \
+  -c 512 \
+  --device-metric "<CPU FLOPS>;<RAM BW>,<iGPU FLOPS>;<VRAM BW>"
+
+$ # Estimate full offloaded Q4_0 model
+$ gguf-parser --hf-repo TheBloke/LLaMA-7b-GGUF --hf-file llama-7b.Q4_0.gguf --skip-metadata --skip-architecture --skip-tokenizer --in-short \
+  -c 512 \
+  --device-metric "<CPU FLOPS>;<RAM BW>,<iGPU FLOPS>;<VRAM BW>"
+```
+
+| Variant  | CPU FLOPS (Performance Core) | iGPU FLOPS             | (V)RAM Bandwidth | Q8_0 Max TPS | Q4_0 Max TPS |
+|----------|------------------------------|------------------------|------------------|--------------|--------------|
+| M1       | 51.2 GFLOPS  (4 cores)       | 2.6 TFLOPS (8 cores)   | 68.3 GBps        | 8.58         | 14.57        |
+| M1 Pro   | 102.4 GFLOPS  (8 cores)      | 5.2 TFLOPS (16 cores)  | 204.8 GBps       | 24.73        | 40.85        |
+| M1 Max   | 102.4 GFLOPS  (8 cores)      | 10.4 TFLOPS (32 cores) | 409.6 GBps       | 44.24        | 68.38        |
+| M1 Ultra | 204.8 GFLOPS (16 cores)      | 21 TFLOPS (64 cores)   | 819.2 GBps       | 88.47        | 136.77       |
+| M2       | 56 GFLOPS (4 cores)          | 3.6 TFLOPS (10 cores)  | 102.4 GBps       | 12.49        | 20.77        |
+| M2 Pro   | 112 GFLOPS (8 cores)         | 6.8 TFLOPS (19 cores)  | 204.8 GBps       | 24.98        | 41.55        |
+| M2 Max   | 112 GFLOPS (8 cores)         | 13.6 TFLOPS (38 cores) | 409.6 GBps       | 45.05        | 70.35        |
+| M2 Ultra | 224 GFLOPS (16 cores)        | 27.2 TFLOPS (76 cores) | 819.2 GBps       | 90.10        | 140.70       |
+| M3       | 64.96 GFLOPS (4 cores)       | 4.1 TFLOPS (10 cores)  | 102.4 GBps       | 12.68        | 21.31        |
+| M3 Pro   | 97.44 GFLOPS (6 cores)       | 7.4 TFLOPS (18 cores)  | 153.6 GBps       | 19.02        | 31.96        |
+| M3 Max   | 194.88 GFLOPS (12 cores)     | 16.4 TFLOPS (40 cores) | 409.6 GBps       | 49.16        | 80.90        |
+| M4       | 70.56 GFLOPS (4 cores)       | 4.1 TFLOPS             | 120 GBps         | 14.75        | 24.66        |
+
+> References:
+> - https://www.cpu-monkey.com/en/cpu_family-apple_m_series
+> - https://nanoreview.net/
+> - https://en.wikipedia.org/wiki/Apple_M1#Variants
+> - https://en.wikipedia.org/wiki/Apple_M2#Variants
+> - https://en.wikipedia.org/wiki/Apple_M3#Variants
+> - https://en.wikipedia.org/wiki/Apple_M4#Variants
+
+You can further verify the above results in [Performance of llama.cpp on Apple Silicon M-series
+](https://github.com/ggerganov/llama.cpp/discussions/4167#user-content-fn-1-e9a4caf2848534167e450e18fc4ede7f).
+
+##### Run LLaMA3.1-405B-Instruct with Apple Mac Studio devices combined with Thunderbolt
+
+Example
+by [leafspark/Meta-Llama-3.1-405B-Instruct-GGUF](https://huggingface.co/leafspark/Meta-Llama-3.1-405B-Instruct-GGUF)
+and estimate the maximum tokens per second for three Apple Mac Studio devices combined with Thunderbolt.
+
+| Device                        | CPU FLOPS (Performance Core) | iGPU FLOPS             | (V)RAM Bandwidth | Thunderbolt Bandwidth | Role       |
+|-------------------------------|------------------------------|------------------------|------------------|-----------------------|------------|
+| Apple Mac Studio (M2 Ultra) 0 | 224 GFLOPS (16 cores)        | 27.2 TFLOPS (76 cores) | 819.2 GBps       | 5000 MBps             | Main       |
+| Apple Mac Studio (M2 Ultra) 1 | 224 GFLOPS (16 cores)        | 27.2 TFLOPS (76 cores) | 819.2 GBps       | 5000 MBps             | RPC Server |
+| Apple Mac Studio (M2 Ultra) 2 | 224 GFLOPS (16 cores)        | 27.2 TFLOPS (76 cores) | 819.2 GBps       | 5000 MBps             | RPC Server |
+
+Get the maximum tokens per second with the following command:
+
+```shell
+$ # Estimate full offloaded Q4_K_M model.
+$ gguf-parser --hf-repo leafspark/Meta-Llama-3.1-405B-Instruct-GGUF --hf-file Llama-3.1-405B-Instruct.Q4_0.gguf/Llama-3.1-405B-Instruct.Q4_0-00001-of-00012.gguf --skip-metadata --skip-architecture --skip-tokenizer --in-short \
+  -c 512 \
+  --device-metric "224GFLOPS;819.2GBps,27.2TFLOPS;819.2GBps" \
+  --rpc host1:port,host2:port \
+  --device-metric "27.2TFLOPS;819.2GBps;5000MBps" \
+  --device-metric "27.2TFLOPS;819.2GBps;5000MBps" \
+  --tensor-split "<Proportions>"
+```
+
+| Tensor Split | Apple Mac Studio 0 (V)RAM Usage | Apple Mac Studio 1 (V)RAM Usage | Apple Mac Studio 2 (V)RAM Usage | Q4_0 Max TPS |
+|--------------|---------------------------------|---------------------------------|---------------------------------|--------------|
+| 5,1,1        | 761.53 MiB                      | 30.45 GiB                       | 30.36 GiB                       | 3.03         |
+| 10,1,1       | 821.53 MiB                      | 18.61 GiB                       | 16.83 GiB                       | 3.03         |
+| 20,1,1       | 861.53 MiB                      | 10.15 GiB                       | 8.37 GiB                        | 3.03         |
 
 #### Full Layers Offload (default)
 
