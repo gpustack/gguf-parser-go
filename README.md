@@ -793,7 +793,7 @@ $ gguf-parser --hf-repo="QuantFactory/Meta-Llama-3-8B-Instruct-GGUF" --hf-file="
 Use `--gpu-layers-step` to get the proper offload layers number when the model is too large to fit into the GPUs memory.
 
 ```shell
-$ gguf-parser --hf-repo="etemiz/Llama-3.1-405B-Inst-GGUF" --hf-file="llama-3.1-405b-IQ1_M-00019-of-00019.gguf" --skip-metadata --skip-architecture --skip-tokenizer --gpu-layers-step=10 --in-short
+$ gguf-parser --hf-repo="etemiz/Llama-3.1-405B-Inst-GGUF" --hf-file="llama-3.1-405b-IQ1_M-00019-of-00019.gguf" --skip-metadata --skip-architecture --skip-tokenizer --gpu-layers-step=1 --in-short
 +------------------------------------------------------------------------------------------------------+
 | ESTIMATE                                                                                             |
 +----------------+----------------+-----------------------------------+--------------------------------+
