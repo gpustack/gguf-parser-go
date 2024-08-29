@@ -257,15 +257,15 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 		e.ContextSize = nContext
 	}
 
-	// Full offload: isOffloadOutputLayer && nLoadLayers == 0.
-	// Partial offload: !isOffloadOutputLayer.
-	// Zero offload: nOffloadLayers == 0.
+	// Full offload: nLoadLayers == 0 && isOffloadOutputLayer
+	// Zero offload: nOffloadLayers == 0
+	// Partial offload: !Full offload && !Zero offload
 	var (
 		nOffloadLayers       uint64
 		nActualOffloadLayers uint64
 		nLoadLayers          = a.BlockCount
 
-		fullOffload, partialOffload, zeroOffload bool
+		fullOffload, zeroOffload bool
 	)
 	{
 		var isOffloadOutputLayer bool
@@ -293,11 +293,10 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 		}
 		nLoadLayers -= nOffloadLayers
 
-		fullOffload = isOffloadOutputLayer && nLoadLayers == 0
-		partialOffload = !isOffloadOutputLayer
+		fullOffload = nLoadLayers == 0 && isOffloadOutputLayer
 		zeroOffload = nOffloadLayers == 0
 
-		e.FullOffloaded = isOffloadOutputLayer && nLoadLayers == 0
+		e.FullOffloaded = fullOffload
 		e.OffloadLayers = nOffloadLayers
 	}
 
@@ -329,6 +328,7 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 	ioLs, tfLs, _ := ls.Cut([]string{
 		"token_embd.weight",
 		"output.weight",
+		"output.bias",
 		"output_norm.weight",
 		"output_norm.bias",
 	})
@@ -530,12 +530,9 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 				rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
 				ffnInc += rs
 			}
-			switch {
-			case fullOffload:
-				e.Devices[0].Computation.Compute = GGUFBytesScalar(loadAttnInc*uint64(len(e.Devices)) + ffnInc)
-			case partialOffload:
+			if !zeroOffload {
 				e.Devices[0].Computation.Compute = GGUFBytesScalar(loadAttnInc + ffnInc)
-			case zeroOffload:
+			} else {
 				e.Devices[0].Computation.Compute = GGUFBytesScalar(loadAttnInc)
 			}
 			cp := GGUFBytesScalar(max(offloadAttnInc, ffnInc))
@@ -560,7 +557,9 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 				rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
 				outInc += rs
 			}
-			outInc += uint64(e.Devices[0].Weight.Output)
+			if !fullOffload {
+				outInc += uint64(e.Devices[0].Weight.Output)
+			}
 			e.Devices[o.MainGPUIndex+1].Computation.Output += GGUFBytesScalar(outInc)
 		}
 	}
@@ -696,19 +695,14 @@ func (e LLaMACppRunEstimate) SummarizeMemory(mmap bool, nonUMARamFootprint, nonU
 			if !e.NoMMap && mmap {
 				ems.VRAMs[i].UMA -= wg
 				if i > 0 && v.HandleLastLayer >= 0 || v.Remote {
-					ems.VRAMs[i].UMA += wg + cp - v.Weight.Output
+					ems.VRAMs[i].UMA += wg
 				}
 			}
 
 			// NonUMA.
 			ems.VRAMs[i].NonUMA = GGUFBytesScalar(nonUMAVramFootprint) + fp + wg + kv + cp
-			if i > 0 {
-				switch {
-				case v.HandleLastLayer < 0:
-					ems.VRAMs[i].NonUMA -= wg + cp
-				case v.Remote && wg > kv:
-					ems.VRAMs[i].NonUMA -= kv
-				}
+			if i > 0 && v.HandleLastLayer < 0 {
+				ems.VRAMs[i].NonUMA -= wg + cp
 			}
 		}
 	}

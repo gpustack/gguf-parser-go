@@ -100,6 +100,7 @@ GLOBAL OPTIONS:
    Output
 
    --in-mib             Display the estimated result in table with MiB. (default: false)
+   --in-short           Display the estimated result in table in short form. (default: false)
    --json               Output as JSON. (default: false)
    --json-pretty        Works with --json, to output pretty format JSON. (default: true)
    --raw                Output the GGUF file information as JSON only, skip anything. (default: false)
