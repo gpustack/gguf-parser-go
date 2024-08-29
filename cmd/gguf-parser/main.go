@@ -1272,6 +1272,8 @@ func mainAction(c *cli.Context) error {
 				"MMap Load",
 				"Embedding Only",
 				"Distributable",
+				"Offload Layers",
+				"Full Offloaded",
 			}
 			hds[1] = []any{
 				"Arch",
@@ -1281,13 +1283,15 @@ func mainAction(c *cli.Context) error {
 				"MMap Load",
 				"Embedding Only",
 				"Distributable",
+				"Offload Layers",
+				"Full Offloaded",
 			}
 		}
-		hds[0] = append(hds[0], "Offload Layers", "Full Offloaded", "RAM", "RAM", "RAM")
-		hds[1] = append(hds[1], "Offload Layers", "Full Offloaded", "Layers", "UMA", "NonUMA")
+		hds[0] = append(hds[0], "RAM", "RAM", "RAM")
+		hds[1] = append(hds[1], "Layers (I + T + O)", "UMA", "NonUMA")
 		for i := range es.Memory[0].VRAMs {
 			hds[0] = append(hds[0], fmt.Sprintf("VRAM %d", i), fmt.Sprintf("VRAM %d", i), fmt.Sprintf("VRAM %d", i))
-			hds[1] = append(hds[1], "Layers", "UMA", "NonUMA")
+			hds[1] = append(hds[1], "Layers (T + O)", "UMA", "NonUMA")
 		}
 
 		switch {
@@ -1324,22 +1328,22 @@ func mainAction(c *cli.Context) error {
 					sprintf(es.Architecture),
 					sprintf(es.ContextSize),
 					sprintf("%d / %d", es.LogicalBatchSize, es.PhysicalBatchSize),
-					sprintf(tenary(flashAttention, tenary(es.FlashAttention, "Enabled", "Not Supported"), "Disabled")),
-					sprintf(tenary(mmap, tenary(!es.NoMMap, "Enabled", "Not Supported"), "Disabled")),
+					sprintf(tenary(flashAttention, tenary(es.FlashAttention, "Enabled", "Unsupported"), "Disabled")),
+					sprintf(tenary(mmap, tenary(!es.NoMMap, "Enabled", "Unsupported"), "Disabled")),
 					sprintf(tenary(es.EmbeddingOnly, "Yes", "No")),
-					sprintf(tenary(es.Distributable, "Supported", "Not Supported")),
+					sprintf(tenary(es.Distributable, "Supported", "Unsupported")),
+					sprintf(tenary(es.Memory[i].FullOffloaded, sprintf("%d (%d + 1)",
+						es.Memory[i].OffloadLayers, es.Memory[i].OffloadLayers-1), es.Memory[i].OffloadLayers)),
+					sprintf(tenary(es.Memory[i].FullOffloaded, "Yes", "No")),
 				}
 			}
 			bds[i] = append(bds[i],
-				sprintf(tenary(es.Memory[i].FullOffloaded, sprintf("%d (%d + 1)",
-					es.Memory[i].OffloadLayers, es.Memory[i].OffloadLayers-1), es.Memory[i].OffloadLayers)),
-				sprintf(tenary(es.Memory[i].FullOffloaded, "Yes", "No")),
-				sprintf(tenary(!es.Memory[i].RAM.HandleOutputLayer, es.Memory[i].RAM.HandleLayers, sprintf("%d + 1", es.Memory[i].RAM.HandleLayers))),
+				sprintf("1 + %d + %d", es.Memory[i].RAM.HandleLayers, tenary(es.Memory[i].RAM.HandleOutputLayer, 1, 0)),
 				sprintf(es.Memory[i].RAM.UMA),
 				sprintf(es.Memory[i].RAM.NonUMA))
 			for _, v := range es.Memory[i].VRAMs {
 				bds[i] = append(bds[i],
-					sprintf(tenary(!v.HandleOutputLayer, v.HandleLayers, sprintf("%d + 1", v.HandleLayers))),
+					sprintf("%d + %d", v.HandleLayers, tenary(v.HandleOutputLayer, 1, 0)),
 					sprintf(v.UMA),
 					sprintf(v.NonUMA))
 			}
@@ -1378,7 +1382,7 @@ func tprint(title string, headers, bodies [][]any) {
 		for i := range r {
 			r[i].Number = i + 1
 			r[i].AutoMerge = true
-			if len(headers) > 1 && (headers[1][i] == "Layers" || headers[1][i] == "UMA" || headers[1][i] == "NonUMA") {
+			if len(headers) > 1 && (strings.HasPrefix(headers[1][i].(string), "Layers") || headers[1][i] == "UMA" || headers[1][i] == "NonUMA") {
 				r[i].AutoMerge = false
 			}
 			r[i].Align = text.AlignCenter
