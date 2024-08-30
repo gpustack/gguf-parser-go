@@ -546,7 +546,7 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 		}
 		// Finally, get the usage of output layer.
 		if a.Type == "model" {
-			outInc := inpEmbd
+			var outInc uint64
 			if a.Architecture == "mamba" {
 				outInc += inpSMask + inpSSeq
 			}
@@ -557,10 +557,16 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 				rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
 				outInc += rs
 			}
+			idx := 0 // Default to the main host's RAM.
 			if !fullOffload {
-				outInc += uint64(e.Devices[0].Weight.Output)
+				if len(e.Devices) != len(o.RPCServers)+1 { // If the main host has a GPU.
+					outInc += uint64(e.Devices[0].Weight.Output)
+					idx = o.MainGPUIndex + 1
+				}
+			} else {
+				idx = len(e.Devices) - 1 // The last device is the output device.
 			}
-			e.Devices[o.MainGPUIndex+1].Computation.Output += GGUFBytesScalar(outInc)
+			e.Devices[idx].Computation.Output += GGUFBytesScalar(outInc)
 		}
 	}
 
