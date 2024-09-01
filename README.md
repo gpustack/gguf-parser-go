@@ -23,7 +23,8 @@ download it.
 - **No File Required**: GGUF Parser uses chunking reading to parse the metadata of remote GGUF file, which means you
   don't need to download the entire file and load it.
 - **Accurate Prediction**: The evaluation results of GGUF Parser usually deviate from the actual usage by about 100MiB.
-- **Quick verification**: Provide device metrics to calculate the maximum tokens per second (TPS) without running.
+- **Quick Verification**: Provide device metrics to calculate the maximum tokens per second (TPS) without running the
+  model.
 - **Fast**: GGUF Parser is written in Go, which is fast and efficient.
 
 ## Agenda
