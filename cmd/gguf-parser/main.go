@@ -544,7 +544,7 @@ func main() {
 				Usage: "Specify the device metrics, " +
 					"which is used to estimate the usage, in form of \"FLOPS;Up Bandwidth[;Down Bandwidth]\". " +
 					"The FLOPS unit, select from [PFLOPS, TFLOPS, GFLOPS, MFLOPS, KFLOPS]. " +
-					"The Up/Down Bandwidth unit, select from [PiBps, PBps, TiBps, TBps, GiBps, GBps, MiBps, MBps, KiBps, KBps]. " +
+					"The Up/Down Bandwidth unit, select from [PiBps, TiBps, GiBps, MiBps, KiBps, PBps, TBps, GBps, MBps, KBps, Pbps, Tbps, Gbps, Mbps, Kbps]. " +
 					"Up Bandwidth usually indicates the bandwidth to transmit the data to calculate, " +
 					"and Down Bandwidth indicates the bandwidth to transmit the calculated result to next layer. " +
 					"For example, \"--device-metric 10TFLOPS;400GBps\" means the device has 10 TFLOPS and 400 GBps Up/Down bandwidth, " +

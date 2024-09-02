@@ -42,20 +42,8 @@ type (
 )
 
 var (
-	// _SizeBaseUnitMatrix is the base unit matrix for size.
-	_SizeBaseUnitMatrix = []struct {
-		Base float64
-		Unit string
-	}{
-		{_Pi, "P"},
-		{_Ti, "T"},
-		{_Gi, "G"},
-		{_Mi, "M"},
-		{_Ki, "K"},
-	}
-
-	// _BytesBaseUnitMatrix is the base unit matrix for bytes.
-	_BytesBaseUnitMatrix = []struct {
+	// _GeneralBaseUnitMatrix is the base unit matrix for bytes.
+	_GeneralBaseUnitMatrix = []struct {
 		Base float64
 		Unit string
 	}{
@@ -69,6 +57,18 @@ var (
 		{_M, "M"},
 		{_Ki, "Ki"},
 		{_K, "K"},
+	}
+
+	// _SizeBaseUnitMatrix is the base unit matrix for size.
+	_SizeBaseUnitMatrix = []struct {
+		Base float64
+		Unit string
+	}{
+		{_Pi, "P"},
+		{_Ti, "T"},
+		{_Gi, "G"},
+		{_Mi, "M"},
+		{_Ki, "K"},
 	}
 
 	// _NumberBaseUnitMatrix is the base unit matrix for numbers.
@@ -89,15 +89,15 @@ func ParseSizeScalar(s string) (_ SizeScalar, err error) {
 	if s == "" {
 		return 0, errors.New("invalid SizeScalar")
 	}
-	b := float64(0)
+	b := float64(1)
 	for i := range _SizeBaseUnitMatrix {
 		if strings.HasSuffix(s, _SizeBaseUnitMatrix[i].Unit) {
 			b = _SizeBaseUnitMatrix[i].Base
-			s = strings.TrimSpace(strings.TrimSuffix(s, _SizeBaseUnitMatrix[i].Unit))
+			s = strings.TrimSuffix(s, _SizeBaseUnitMatrix[i].Unit)
 			break
 		}
 	}
-	f, err := strconv.ParseFloat(s, 64)
+	f, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
 	if err != nil {
 		return 0, err
 	}
@@ -125,16 +125,16 @@ func ParseFLOPSScalar(s string) (_ FLOPSScalar, err error) {
 	if s == "" {
 		return 0, errors.New("invalid FLOPSScalar")
 	}
-	s = strings.TrimSpace(strings.TrimSuffix(s, "FLOPS"))
-	b := float64(0)
-	for i := range _SizeBaseUnitMatrix {
-		if strings.HasSuffix(s, _SizeBaseUnitMatrix[i].Unit) {
-			b = _SizeBaseUnitMatrix[i].Base
-			s = strings.TrimSpace(strings.TrimSuffix(s, _SizeBaseUnitMatrix[i].Unit))
+	s = strings.TrimSuffix(s, "FLOPS")
+	b := float64(1)
+	for i := range _GeneralBaseUnitMatrix {
+		if strings.HasSuffix(s, _GeneralBaseUnitMatrix[i].Unit) {
+			b = _GeneralBaseUnitMatrix[i].Base
+			s = strings.TrimSuffix(s, _GeneralBaseUnitMatrix[i].Unit)
 			break
 		}
 	}
-	f, err := strconv.ParseFloat(s, 64)
+	f, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
 	if err != nil {
 		return 0, err
 	}
@@ -146,10 +146,10 @@ func (s FLOPSScalar) String() string {
 		return "0 FLOPS"
 	}
 	b, u := float64(1), ""
-	for i := range _SizeBaseUnitMatrix {
-		if float64(s) >= _SizeBaseUnitMatrix[i].Base {
-			b = _SizeBaseUnitMatrix[i].Base
-			u = _SizeBaseUnitMatrix[i].Unit
+	for i := range _GeneralBaseUnitMatrix {
+		if float64(s) >= _GeneralBaseUnitMatrix[i].Base {
+			b = _GeneralBaseUnitMatrix[i].Base
+			u = _GeneralBaseUnitMatrix[i].Unit
 			break
 		}
 	}
@@ -162,20 +162,27 @@ func ParseBytesPerSecondScalar(s string) (_ BytesPerSecondScalar, err error) {
 	if s == "" {
 		return 0, errors.New("invalid BytesPerSecondScalar")
 	}
-	s = strings.TrimSpace(strings.TrimSuffix(s, "Bps"))
-	b := float64(0)
-	for i := range _BytesBaseUnitMatrix {
-		if strings.HasSuffix(s, _BytesBaseUnitMatrix[i].Unit) {
-			b = _BytesBaseUnitMatrix[i].Base
-			s = strings.TrimSpace(strings.TrimSuffix(s, _BytesBaseUnitMatrix[i].Unit))
+	b := float64(1)
+	o := float64(1)
+	switch {
+	case strings.HasSuffix(s, "Bps") || strings.HasSuffix(s, "B/s"):
+		s = strings.TrimSuffix(strings.TrimSuffix(s, "Bps"), "B/s")
+	case strings.HasSuffix(s, "bps") || strings.HasSuffix(s, "b/s"):
+		s = strings.TrimSuffix(strings.TrimSuffix(s, "bps"), "b/s")
+		o = 8
+	}
+	for i := range _GeneralBaseUnitMatrix {
+		if strings.HasSuffix(s, _GeneralBaseUnitMatrix[i].Unit) {
+			b = _GeneralBaseUnitMatrix[i].Base
+			s = strings.TrimSuffix(s, _GeneralBaseUnitMatrix[i].Unit)
 			break
 		}
 	}
-	f, err := strconv.ParseFloat(s, 64)
+	f, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
 	if err != nil {
 		return 0, err
 	}
-	return BytesPerSecondScalar(f * b), nil
+	return BytesPerSecondScalar(f * b / o), nil
 }
 
 func (s BytesPerSecondScalar) String() string {
@@ -183,10 +190,10 @@ func (s BytesPerSecondScalar) String() string {
 		return "0 Bps"
 	}
 	b, u := float64(1), ""
-	for i := range _BytesBaseUnitMatrix {
-		if float64(s) >= _BytesBaseUnitMatrix[i].Base {
-			b = _BytesBaseUnitMatrix[i].Base
-			u = _BytesBaseUnitMatrix[i].Unit
+	for i := range _GeneralBaseUnitMatrix {
+		if float64(s) >= _GeneralBaseUnitMatrix[i].Base {
+			b = _GeneralBaseUnitMatrix[i].Base
+			u = _GeneralBaseUnitMatrix[i].Unit
 			break
 		}
 	}
@@ -213,16 +220,16 @@ func ParseGGUFBytesScalar(s string) (_ GGUFBytesScalar, err error) {
 	if s == "" {
 		return 0, errors.New("invalid GGUFBytesScalar")
 	}
-	s = strings.TrimSpace(strings.TrimSuffix(s, "B"))
-	b := float64(0)
-	for i := range _BytesBaseUnitMatrix {
-		if strings.HasSuffix(s, _BytesBaseUnitMatrix[i].Unit) {
-			b = _BytesBaseUnitMatrix[i].Base
-			s = strings.TrimSpace(strings.TrimSuffix(s, _BytesBaseUnitMatrix[i].Unit))
+	s = strings.TrimSuffix(s, "B")
+	b := float64(1)
+	for i := range _GeneralBaseUnitMatrix {
+		if strings.HasSuffix(s, _GeneralBaseUnitMatrix[i].Unit) {
+			b = _GeneralBaseUnitMatrix[i].Base
+			s = strings.TrimSuffix(s, _GeneralBaseUnitMatrix[i].Unit)
 			break
 		}
 	}
-	f, err := strconv.ParseFloat(s, 64)
+	f, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
 	if err != nil {
 		return 0, err
 	}
@@ -241,10 +248,10 @@ func (s GGUFBytesScalar) String() string {
 		b = _Mi
 		u = "Mi"
 	} else {
-		for i := range _BytesBaseUnitMatrix {
-			if float64(s) >= _BytesBaseUnitMatrix[i].Base {
-				b = _BytesBaseUnitMatrix[i].Base
-				u = _BytesBaseUnitMatrix[i].Unit
+		for i := range _GeneralBaseUnitMatrix {
+			if float64(s) >= _GeneralBaseUnitMatrix[i].Base {
+				b = _GeneralBaseUnitMatrix[i].Base
+				u = _GeneralBaseUnitMatrix[i].Unit
 				break
 			}
 		}

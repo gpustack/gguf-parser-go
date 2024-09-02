@@ -714,18 +714,18 @@ $ gguf-parser --hf-repo TheBloke/LLaMA-7b-GGUF --hf-file llama-7b.Q4_0.gguf --sk
 
 | Variant  | CPU FLOPS (Performance Core) | iGPU FLOPS             | (V)RAM Bandwidth | Q8_0 Max TPS | Q4_0 Max TPS |
 |----------|------------------------------|------------------------|------------------|--------------|--------------|
-| M1       | 51.2 GFLOPS  (4 cores)       | 2.6 TFLOPS (8 cores)   | 68.3 GBps        | 8.58         | 14.57        |
-| M1 Pro   | 102.4 GFLOPS  (8 cores)      | 5.2 TFLOPS (16 cores)  | 204.8 GBps       | 24.73        | 40.85        |
-| M1 Max   | 102.4 GFLOPS  (8 cores)      | 10.4 TFLOPS (32 cores) | 409.6 GBps       | 44.24        | 68.38        |
-| M1 Ultra | 204.8 GFLOPS (16 cores)      | 21 TFLOPS (64 cores)   | 819.2 GBps       | 88.47        | 136.77       |
-| M2       | 56 GFLOPS (4 cores)          | 3.6 TFLOPS (10 cores)  | 102.4 GBps       | 12.49        | 20.77        |
-| M2 Pro   | 112 GFLOPS (8 cores)         | 6.8 TFLOPS (19 cores)  | 204.8 GBps       | 24.98        | 41.55        |
-| M2 Max   | 112 GFLOPS (8 cores)         | 13.6 TFLOPS (38 cores) | 409.6 GBps       | 45.05        | 70.35        |
-| M2 Ultra | 224 GFLOPS (16 cores)        | 27.2 TFLOPS (76 cores) | 819.2 GBps       | 90.10        | 140.70       |
-| M3       | 64.96 GFLOPS (4 cores)       | 4.1 TFLOPS (10 cores)  | 102.4 GBps       | 12.68        | 21.31        |
-| M3 Pro   | 97.44 GFLOPS (6 cores)       | 7.4 TFLOPS (18 cores)  | 153.6 GBps       | 19.02        | 31.96        |
-| M3 Max   | 194.88 GFLOPS (12 cores)     | 16.4 TFLOPS (40 cores) | 409.6 GBps       | 49.16        | 80.90        |
-| M4       | 70.56 GFLOPS (4 cores)       | 4.1 TFLOPS             | 120 GBps         | 14.75        | 24.66        |
+| M1       | 51.2 GFLOPS  (4 cores)       | 2.6 TFLOPS (8 cores)   | 68.3 GBps        | 8.53         | 14.42        |
+| M1 Pro   | 102.4 GFLOPS  (8 cores)      | 5.2 TFLOPS (16 cores)  | 204.8 GBps       | 24.51        | 40.27        |
+| M1 Max   | 102.4 GFLOPS  (8 cores)      | 10.4 TFLOPS (32 cores) | 409.6 GBps       | 43.56        | 66.78        |
+| M1 Ultra | 204.8 GFLOPS (16 cores)      | 21 TFLOPS (64 cores)   | 819.2 GBps       | 87.12        | 133.56       |
+| M2       | 56 GFLOPS (4 cores)          | 3.6 TFLOPS (10 cores)  | 102.4 GBps       | 12.39        | 20.50        |
+| M2 Pro   | 112 GFLOPS (8 cores)         | 6.8 TFLOPS (19 cores)  | 204.8 GBps       | 24.78        | 41.00        |
+| M2 Max   | 112 GFLOPS (8 cores)         | 13.6 TFLOPS (38 cores) | 409.6 GBps       | 44.41        | 68.79        |
+| M2 Ultra | 224 GFLOPS (16 cores)        | 27.2 TFLOPS (76 cores) | 819.2 GBps       | 88.81        | 137.59       |
+| M3       | 64.96 GFLOPS (4 cores)       | 4.1 TFLOPS (10 cores)  | 102.4 GBps       | 12.59        | 21.06        |
+| M3 Pro   | 97.44 GFLOPS (6 cores)       | 7.4 TFLOPS (18 cores)  | 153.6 GBps       | 18.89        | 31.59        |
+| M3 Max   | 194.88 GFLOPS (12 cores)     | 16.4 TFLOPS (40 cores) | 409.6 GBps       | 48.71        | 79.71        |
+| M4       | 70.56 GFLOPS (4 cores)       | 4.1 TFLOPS             | 120 GBps         | 14.64        | 24.35        |
 
 > References:
 > - https://www.cpu-monkey.com/en/cpu_family-apple_m_series
@@ -746,9 +746,9 @@ and estimate the maximum tokens per second for three Apple Mac Studio devices co
 
 | Device                        | CPU FLOPS (Performance Core) | iGPU FLOPS             | (V)RAM Bandwidth | Thunderbolt Bandwidth | Role       |
 |-------------------------------|------------------------------|------------------------|------------------|-----------------------|------------|
-| Apple Mac Studio (M2 Ultra) 0 | 224 GFLOPS (16 cores)        | 27.2 TFLOPS (76 cores) | 819.2 GBps       | 5000 MBps             | Main       |
-| Apple Mac Studio (M2 Ultra) 1 | 224 GFLOPS (16 cores)        | 27.2 TFLOPS (76 cores) | 819.2 GBps       | 5000 MBps             | RPC Server |
-| Apple Mac Studio (M2 Ultra) 2 | 224 GFLOPS (16 cores)        | 27.2 TFLOPS (76 cores) | 819.2 GBps       | 5000 MBps             | RPC Server |
+| Apple Mac Studio (M2 Ultra) 0 | 224 GFLOPS (16 cores)        | 27.2 TFLOPS (76 cores) | 819.2 GBps       | 40 Gbps               | Main       |
+| Apple Mac Studio (M2 Ultra) 1 | 224 GFLOPS (16 cores)        | 27.2 TFLOPS (76 cores) | 819.2 GBps       | 40 Gbps               | RPC Server |
+| Apple Mac Studio (M2 Ultra) 2 | 224 GFLOPS (16 cores)        | 27.2 TFLOPS (76 cores) | 819.2 GBps       | 40 Gbps               | RPC Server |
 
 Get the maximum tokens per second with the following command:
 
@@ -758,16 +758,16 @@ $ gguf-parser --hf-repo leafspark/Meta-Llama-3.1-405B-Instruct-GGUF --hf-file Ll
   -c 512 \
   --device-metric "224GFLOPS;819.2GBps,27.2TFLOPS;819.2GBps" \
   --rpc host1:port,host2:port \
-  --device-metric "27.2TFLOPS;819.2GBps;5000MBps" \
-  --device-metric "27.2TFLOPS;819.2GBps;5000MBps" \
+  --device-metric "27.2TFLOPS;819.2GBps;40Gbps" \
+  --device-metric "27.2TFLOPS;819.2GBps;40Gbps" \
   --tensor-split "<Proportions>"
 ```
 
 | Tensor Split | Apple Mac Studio 0 (V)RAM Usage | Apple Mac Studio 1 (V)RAM Usage | Apple Mac Studio 2 (V)RAM Usage | Q4_0 Max TPS |
 |--------------|---------------------------------|---------------------------------|---------------------------------|--------------|
-| 5,1,1        | 761.53 MiB                      | 30.45 GiB                       | 30.36 GiB                       | 3.03         |
-| 10,1,1       | 821.53 MiB                      | 18.61 GiB                       | 16.83 GiB                       | 3.03         |
-| 20,1,1       | 861.53 MiB                      | 10.15 GiB                       | 8.37 GiB                        | 3.03         |
+| 5,1,1        | 761.53 MiB                      | 30.45 GiB                       | 30.36 GiB                       | 3.01         |
+| 10,1,1       | 821.53 MiB                      | 18.61 GiB                       | 16.83 GiB                       | 3.01         |
+| 20,1,1       | 861.53 MiB                      | 10.15 GiB                       | 8.37 GiB                        | 3.01         |
 
 #### Full Layers Offload (default)
 
