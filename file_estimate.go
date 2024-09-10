@@ -2,6 +2,7 @@ package gguf_parser
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/gpustack/gguf-parser-go/util/anyx"
@@ -65,6 +66,12 @@ type (
 		// Remote is the flag to indicate whether the device is remote,
 		// true for remote.
 		Remote bool `json:"remote"`
+		// Position is the relative position of the device,
+		// starts from 0.
+		//
+		// If Remote is true, Position is the position of the remote devices,
+		// Otherwise, Position is the position of the device in the local devices.
+		Position int `json:"position"`
 		// Footprint is the memory footprint for bootstrapping.
 		Footprint GGUFBytesScalar `json:"footprint"`
 		// Parameter is the running parameters that the device processes.
@@ -378,7 +385,12 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 					j = slicex.UpperBound(o.TensorSplitFraction, x)
 					e.Devices[j+1].HandleLayers += 1
 					e.Devices[j+1].HandleLastLayer = i
-					e.Devices[j+1].Remote = len(o.TensorSplitFraction)-len(o.RPCServers) <= j
+					e.Devices[j+1].Remote = j < len(o.RPCServers)
+					if e.Devices[j+1].Remote {
+						e.Devices[j+1].Position = j
+					} else {
+						e.Devices[j+1].Position = j - len(o.RPCServers)
+					}
 					e.Devices[j+1].Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
 					e.Devices[j+1].Parameter.Compute += GGUFParametersScalar(tfLs[i].Elements())
 				}
@@ -617,19 +629,28 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 
 	// Maximum tokens per second.
 	if ds, dmss := e.Devices, o.DeviceMetrics; len(dmss) != 0 {
+		ltss := make([]float64, len(dmss))
 		bs := anyx.Number[float64](*o.LogicalBatchSize) / float64(nBatch)
-		var lt float64
 		for i, dm := range dmss {
 			fl, upbw, dwbw := float64(max(dm.FLOPS, 1)), float64(max(dm.UpBandwidth, 1)), float64(max(dm.DownBandwidth, 1))
-			cmpops := (float64(ds[i].Parameter.Compute)*2 /* FMA */ + float64(ds[i].Parameter.Input+ds[i].Parameter.Output)) * bs
+			cmpops := float64(ds[i].Parameter.Compute)*2 /* FMA */ *bs + float64(ds[i].Parameter.Input) + float64(ds[i].Parameter.Output)
 			cmps := float64(ds[i].Weight.Sum())
 			cmplat := max(cmpops/fl, cmps/upbw)
-			kvcops := float64(ds[i].Parameter.KVCache) * 2 /* FMA */
-			kvcs := float64(ds[i].KVCache.Sum())
+			kvcops := float64(ds[i].Parameter.KVCache) * 2 /* FMA */ * bs
+			kvcs := float64(ds[i].KVCache.Sum()) * bs
 			kvclat := max(kvcops/fl, kvcs/upbw)
-			ffs := GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingLength, nBatch})
-			fflat := float64(ffs) / dwbw
-			lt += cmplat + kvclat + fflat
+			ffs := float64(GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingLength, nBatch}))
+			ffslat := ffs / dwbw
+			lays := float64(ds[i].HandleLayers)
+			if ds[i].HandleOutputLayer {
+				lays += 1
+			}
+			ltss[i] = (cmplat + kvclat + ffslat) * lays / float64(a.BlockCount+2)
+		}
+		lt := float64(0)
+		ltmax := slices.Max(ltss)
+		for i := range ltss {
+			lt += ltss[i] / ltmax * ltss[i]
 		}
 		e.MaximumTokensPerSecond = ptr.To(GGUFTokensPerSecondScalar(1 / lt))
 	}
@@ -699,6 +720,12 @@ type (
 		// Remote is the flag to indicate whether the device is remote,
 		// true for remote.
 		Remote bool `json:"remote"`
+		// Position is the relative position of the device,
+		// starts from 0.
+		//
+		// If Remote is true, Position is the position of the remote devices,
+		// Otherwise, Position is the position of the device in the local devices.
+		Position int `json:"position"`
 		// UMA represents the usage of Unified Memory Architecture.
 		UMA GGUFBytesScalar `json:"uma"`
 		// NonUMA represents the usage of Non-Unified Memory Architecture.
@@ -724,7 +751,6 @@ func (e LLaMACppRunEstimate) SummarizeItem(mmap bool, nonUMARamFootprint, nonUMA
 		emi.RAM.HandleLayers = e.Devices[0].HandleLayers
 		emi.RAM.HandleLastLayer = e.Devices[0].HandleLastLayer
 		emi.RAM.HandleOutputLayer = e.Devices[0].HandleOutputLayer
-		emi.RAM.Remote = e.Devices[0].Remote
 
 		// UMA.
 		emi.RAM.UMA = fp + wg + kv + cp
@@ -752,19 +778,20 @@ func (e LLaMACppRunEstimate) SummarizeItem(mmap bool, nonUMARamFootprint, nonUMA
 			emi.VRAMs[i].HandleLastLayer = v.HandleLastLayer
 			emi.VRAMs[i].HandleOutputLayer = v.HandleOutputLayer
 			emi.VRAMs[i].Remote = v.Remote
+			emi.VRAMs[i].Position = v.Position
 
 			// UMA.
 			emi.VRAMs[i].UMA = fp + wg + kv + /* cp */ 0
 			if !e.NoMMap && mmap {
 				emi.VRAMs[i].UMA -= wg
-				if i > 0 && v.HandleLastLayer >= 0 || v.Remote {
+				if v.Remote || v.Position > 0 && v.HandleLastLayer >= 0 {
 					emi.VRAMs[i].UMA += wg
 				}
 			}
 
 			// NonUMA.
 			emi.VRAMs[i].NonUMA = GGUFBytesScalar(nonUMAVramFootprint) + fp + wg + kv + cp
-			if i > 0 && v.HandleLastLayer < 0 {
+			if !v.Remote && v.Position > 0 && v.HandleLastLayer < 0 {
 				emi.VRAMs[i].NonUMA -= wg + cp
 			}
 		}

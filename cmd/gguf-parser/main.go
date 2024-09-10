@@ -1337,8 +1337,14 @@ func mainAction(c *cli.Context) error {
 		}
 		hds[0] = append(hds[0], "RAM", "RAM", "RAM")
 		hds[1] = append(hds[1], "Layers (I + T + O)", "UMA", "NonUMA")
-		for i := range es.Items[0].VRAMs {
-			hds[0] = append(hds[0], fmt.Sprintf("VRAM %d", i), fmt.Sprintf("VRAM %d", i), fmt.Sprintf("VRAM %d", i))
+		for _, v := range es.Items[0].VRAMs {
+			var hd string
+			if v.Remote {
+				hd = fmt.Sprintf("RPC %d (V)RAM", v.Position)
+			} else {
+				hd = fmt.Sprintf("VRAM %d", v.Position)
+			}
+			hds[0] = append(hds[0], hd, hd, hd)
 			hds[1] = append(hds[1], "Layers (T + O)", "UMA", "NonUMA")
 		}
 

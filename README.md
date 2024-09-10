@@ -53,27 +53,23 @@ download it.
 
 ## Notes
 
-- Since v0.10.0, GGUF Parser supports to estimate the maximum tokens per second(`Max TPS`) for a model.
-- The table result `I`/`T`/`O` means the count for input layers, transformer
-  layers, and output layers. Input layers are not offloaded at present.
-- Since v0.8.1, GGUF Parser supports to estimate the usage with LoRA/ControlVector adapters.
-- Since v0.8.0, GGUF Parser distinguishes the remote devices from `--tensor-split` via `--rpc`.
+- GGUF Parser estimates the maximum tokens per second(`MAX TPS`) for a model (experimental).
+- GGUF Parser distinguishes the remote devices from `--tensor-split` via `--rpc`.
     + For one host multiple GPU devices, you can use `--tensor-split` to get the estimated memory usage of each GPU.
     + For multiple hosts multiple GPU devices, you can use `--tensor-split` and `--rpc` to get the estimated memory
-      usage of each GPU.
-- The table result `DISTRIBUTABLE` indicates the GGUF file supports distribution inference or not,
-  if the file doesn't support distribution inference, you can not offload it
-  with [RPC servers](https://github.com/ggerganov/llama.cpp/tree/master/examples/rpc).
-- Since v0.7.2, GGUF Parser supports retrieving the GGUF file's metadata via split file,
-  which suffixes with something like `-00001-of-00009.gguf`.
-- The `UMA` column indicates the memory usage of Apple macOS only. To estimate the macOS memory usage,
-  you can sum the `UMA` results of `RAM` and `VRAM 0` columns.
-- Since v0.7.0, GGUF Parser supports estimating the usage of multiple GPU devices.
-    + The table result `RAM` means the system memory usage when
-      running [LLaMA.Cpp](https://github.com/ggerganov/llama.cpp) or LLaMA.Cpp like application.
-    + The `VRAM 0` columns means the first visible GPU memory usage when serving the GGUF file.
-    + For example, `--tensor-split=1,1,1` means the GGUF file loading will be split into 3 parts with 33% each,
-      and results in `VRAM 0`, `VRAM 1` and `VRAM 2` columns.
+      usage of each GPU. Since v0.11.0, `--rpc` flag masks the devices specified by `--tensor-split` in front.
+- Table result usage:
+    + `I`/`T`/`O` indicates the count for input layers, transformer layers, and output layers. Input layers are not
+      offloaded at present.
+    + `DISTRIBUTABLE` indicates the GGUF file supports distribution inference or not, if the file doesn't support
+      distribution inference, you can not offload it
+      with [RPC servers](https://github.com/ggerganov/llama.cpp/tree/master/examples/rpc).
+    + `RAM` indicates the system memory usage when running [LLaMA.Cpp](https://github.com/ggerganov/llama.cpp) or
+      LLaMA.Cpp like application.
+    + `VRAM *` indicates the local GPU memory usage when serving the GGUF file.
+    + `RPC * (V)RAM` indicates the remote GPU memory usage when serving the GGUF file.
+    + `UMA` indicates the memory usage of Apple macOS only. `NONUMA` adapts to other cases, including none GPU
+      devices.
 
 ## Installation
 
@@ -567,15 +563,15 @@ flowchart TD
 
 ```shell
 $ gguf-parser --hf-repo="hierholzer/Llama-3.1-70B-Instruct-GGUF" --hf-file="Llama-3.1-70B-Instruct-Q4_K_M.gguf" --skip-metadata --skip-architecture --skip-tokenizer --ctx-size=1024 --tensor-split="8,10,12,6" --rpc="host1:50052,host1:50053,host2:50052,host3:50052" --in-short
-+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
-| ESTIMATE                                                                                                                                                                                                     |
-+----------------------------------------------+--------------------------------------+----------------------------------------+----------------------------------------+--------------------------------------+
-|                      RAM                     |                VRAM 0                |                 VRAM 1                 |                 VRAM 2                 |                VRAM 3                |
-+--------------------+------------+------------+----------------+----------+----------+----------------+-----------+-----------+----------------+-----------+-----------+----------------+----------+----------+
-| LAYERS (I + T + O) |     UMA    |   NONUMA   | LAYERS (T + O) |    UMA   |  NONUMA  | LAYERS (T + O) |    UMA    |   NONUMA  | LAYERS (T + O) |    UMA    |   NONUMA  | LAYERS (T + O) |    UMA   |  NONUMA  |
-+--------------------+------------+------------+----------------+----------+----------+----------------+-----------+-----------+----------------+-----------+-----------+----------------+----------+----------+
-|      1 + 0 + 0     | 238.08 MiB | 388.08 MiB |     18 + 0     | 8.85 GiB | 9.28 GiB |     23 + 0     | 10.88 GiB | 11.32 GiB |     27 + 0     | 12.75 GiB | 13.19 GiB |     12 + 1     | 6.87 GiB | 7.38 GiB |
-+--------------------+------------+------------+----------------+----------+----------+----------------+-----------+-----------+----------------+-----------+-----------+----------------+----------+----------+
++------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ESTIMATE                                                                                                                                                                                                                                 |
++----------------------------------------------+----------------------------------------------+----------------------------------------------+----------------------------------------------+----------------------------------------------+
+|                      RAM                     |                 RPC 0 (V)RAM                 |                 RPC 1 (V)RAM                 |                 RPC 2 (V)RAM                 |                 RPC 3 (V)RAM                 |
++--------------------+------------+------------+----------------+--------------+--------------+----------------+--------------+--------------+----------------+--------------+--------------+----------------+--------------+--------------+
+| LAYERS (I + T + O) |     UMA    |   NONUMA   | LAYERS (T + O) |      UMA     |    NONUMA    | LAYERS (T + O) |      UMA     |    NONUMA    | LAYERS (T + O) |      UMA     |    NONUMA    | LAYERS (T + O) |      UMA     |    NONUMA    |
++--------------------+------------+------------+----------------+--------------+--------------+----------------+--------------+--------------+----------------+--------------+--------------+----------------+--------------+--------------+
+|      1 + 0 + 0     | 238.08 MiB | 388.08 MiB |     18 + 0     |   8.85 GiB   |   9.28 GiB   |     23 + 0     |   10.88 GiB  |   11.32 GiB  |     27 + 0     |   12.75 GiB  |   13.19 GiB  |     12 + 1     |   6.87 GiB   |   7.38 GiB   |
++--------------------+------------+------------+----------------+--------------+--------------+----------------+--------------+--------------+----------------+--------------+--------------+----------------+--------------+--------------+
 
 ```
 
@@ -618,16 +614,16 @@ flowchart TD
 ```
 
 ```shell
-$ gguf-parser --hf-repo="hierholzer/Llama-3.1-70B-Instruct-GGUF" --hf-file="Llama-3.1-70B-Instruct-Q4_K_M.gguf" --skip-metadata --skip-architecture --skip-tokenizer --ctx-size=1024 --tensor-split="6,11,12,8,10" --rpc="host4:50052,host2:50052,host1:50052,host1:50053" --in-short
-+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
-| ESTIMATE                                                                                                                                                                                                                                    |
-+----------------------------------------------+----------------------------------+--------------------------------------+--------------------------------------+--------------------------------------+--------------------------------------+
-|                      RAM                     |              VRAM 0              |                VRAM 1                |                VRAM 2                |                VRAM 3                |                VRAM 4                |
-+--------------------+------------+------------+----------------+--------+--------+----------------+----------+----------+----------------+----------+----------+----------------+----------+----------+----------------+----------+----------+
-| LAYERS (I + T + O) |     UMA    |   NONUMA   | LAYERS (T + O) |   UMA  | NONUMA | LAYERS (T + O) |    UMA   |  NONUMA  | LAYERS (T + O) |    UMA   |  NONUMA  | LAYERS (T + O) |    UMA   |  NONUMA  | LAYERS (T + O) |    UMA   |  NONUMA  |
-+--------------------+------------+------------+----------------+--------+--------+----------------+----------+----------+----------------+----------+----------+----------------+----------+----------+----------------+----------+----------+
-|      1 + 0 + 0     | 238.08 MiB | 388.08 MiB |     11 + 0     | 44 MiB |  6 GiB |     19 + 0     | 8.96 GiB | 9.39 GiB |     20 + 0     | 9.47 GiB | 9.90 GiB |     14 + 0     | 6.63 GiB | 7.07 GiB |     16 + 1     | 8.74 GiB | 9.25 GiB |
-+--------------------+------------+------------+----------------+--------+--------+----------------+----------+----------+----------------+----------+----------+----------------+----------+----------+----------------+----------+----------+
+$ gguf-parser --hf-repo="hierholzer/Llama-3.1-70B-Instruct-GGUF" --hf-file="Llama-3.1-70B-Instruct-Q4_K_M.gguf" --skip-metadata --skip-architecture --skip-tokenizer --ctx-size=1024 --tensor-split="11,12,8,10,6" --rpc="host4:50052,host2:50052,host1:50052,host1:50053" --in-short
++----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ESTIMATE                                                                                                                                                                                                                                                                         |
++----------------------------------------------+----------------------------------------------+----------------------------------------------+----------------------------------------------+----------------------------------------------+---------------------------------------+
+|                      RAM                     |                 RPC 0 (V)RAM                 |                 RPC 1 (V)RAM                 |                 RPC 2 (V)RAM                 |                 RPC 3 (V)RAM                 |                 VRAM 0                |
++--------------------+------------+------------+----------------+--------------+--------------+----------------+--------------+--------------+----------------+--------------+--------------+----------------+--------------+--------------+----------------+-----------+----------+
+| LAYERS (I + T + O) |     UMA    |   NONUMA   | LAYERS (T + O) |      UMA     |    NONUMA    | LAYERS (T + O) |      UMA     |    NONUMA    | LAYERS (T + O) |      UMA     |    NONUMA    | LAYERS (T + O) |      UMA     |    NONUMA    | LAYERS (T + O) |    UMA    |  NONUMA  |
++--------------------+------------+------------+----------------+--------------+--------------+----------------+--------------+--------------+----------------+--------------+--------------+----------------+--------------+--------------+----------------+-----------+----------+
+|      1 + 0 + 0     | 238.08 MiB | 388.08 MiB |     19 + 0     |   9.36 GiB   |   9.79 GiB   |     21 + 0     |   9.92 GiB   |   10.36 GiB  |     14 + 0     |   6.57 GiB   |   7.01 GiB   |     17 + 0     |   8.11 GiB   |   8.54 GiB   |      9 + 1     | 36.52 MiB | 5.91 GiB |
++--------------------+------------+------------+----------------+--------------+--------------+----------------+--------------+--------------+----------------+--------------+--------------+----------------+--------------+--------------+----------------+-----------+----------+
 
 ```
 
@@ -637,11 +633,11 @@ following resource consumption:
 | Host                  | Available RAM | Request RAM | Available VRAM | Request VRAM | Result     |
 |-----------------------|---------------|-------------|----------------|--------------|------------|
 | host3 (Apple M1 Max)  | ENOUGH        | 238.08 MiB  |                |              | :thumbsup: |
-| host3 (Apple M1 Max)  |               |             | 6 GiB          | 44 MiB       | :thumbsup: |
-| host4                 | 11 GiB        | 9.39 GiB    |                |              | :thumbsup: |
-| host1 (NVIDIA 4080 1) |               |             | 12 GiB         | 9.90 GiB     | :thumbsup: |
-| host2 (NVIDIA 4080 0) |               |             | 8 GiB          | 7.07 GiB     | :thumbsup: |
-| host3 (NVIDIA 4080 1) |               |             | 10 GiB         | 9.25 GiB     | :thumbsup: |
+| host4                 | 11 GiB        | 9.79 GiB    |                |              | :thumbsup: |
+| host2 (NVIDIA 4090)   |               |             | 12 GiB         | 10.36 GiB    | :thumbsup: |
+| host1 (NVIDIA 4080 0) |               |             | 8 GiB          | 7.01 GiB     | :thumbsup: |
+| host1 (NVIDIA 4080 1) |               |             | 10 GiB         | 8.54 GiB     | :thumbsup: |
+| host3 (Apple M1 Max)  |               |             | 6 GiB          | 36.52 MiB    | :thumbsup: |
 
 Now, the model can be successfully served on `host3`, with all layers offloaded to `host1`, `host2`, and `host4`.
 
@@ -714,18 +710,18 @@ $ gguf-parser --hf-repo TheBloke/LLaMA-7b-GGUF --hf-file llama-7b.Q4_0.gguf --sk
 
 | Variant  | CPU FLOPS (Performance Core) | iGPU FLOPS             | (V)RAM Bandwidth | Q8_0 Max TPS | Q4_0 Max TPS |
 |----------|------------------------------|------------------------|------------------|--------------|--------------|
-| M1       | 51.2 GFLOPS  (4 cores)       | 2.6 TFLOPS (8 cores)   | 68.3 GBps        | 8.53         | 14.42        |
-| M1 Pro   | 102.4 GFLOPS  (8 cores)      | 5.2 TFLOPS (16 cores)  | 204.8 GBps       | 24.51        | 40.27        |
-| M1 Max   | 102.4 GFLOPS  (8 cores)      | 10.4 TFLOPS (32 cores) | 409.6 GBps       | 43.56        | 66.78        |
-| M1 Ultra | 204.8 GFLOPS (16 cores)      | 21 TFLOPS (64 cores)   | 819.2 GBps       | 87.12        | 133.56       |
-| M2       | 56 GFLOPS (4 cores)          | 3.6 TFLOPS (10 cores)  | 102.4 GBps       | 12.39        | 20.50        |
-| M2 Pro   | 112 GFLOPS (8 cores)         | 6.8 TFLOPS (19 cores)  | 204.8 GBps       | 24.78        | 41.00        |
-| M2 Max   | 112 GFLOPS (8 cores)         | 13.6 TFLOPS (38 cores) | 409.6 GBps       | 44.41        | 68.79        |
-| M2 Ultra | 224 GFLOPS (16 cores)        | 27.2 TFLOPS (76 cores) | 819.2 GBps       | 88.81        | 137.59       |
-| M3       | 64.96 GFLOPS (4 cores)       | 4.1 TFLOPS (10 cores)  | 102.4 GBps       | 12.59        | 21.06        |
-| M3 Pro   | 97.44 GFLOPS (6 cores)       | 7.4 TFLOPS (18 cores)  | 153.6 GBps       | 18.89        | 31.59        |
-| M3 Max   | 194.88 GFLOPS (12 cores)     | 16.4 TFLOPS (40 cores) | 409.6 GBps       | 48.71        | 79.71        |
-| M4       | 70.56 GFLOPS (4 cores)       | 4.1 TFLOPS             | 120 GBps         | 14.64        | 24.35        |
+| M1       | 51.2 GFLOPS  (4 cores)       | 2.6 TFLOPS (8 cores)   | 68.3 GBps        | 8.68         | 14.56        |
+| M1 Pro   | 102.4 GFLOPS  (8 cores)      | 5.2 TFLOPS (16 cores)  | 204.8 GBps       | 26.04        | 43.66        |
+| M1 Max   | 102.4 GFLOPS  (8 cores)      | 10.4 TFLOPS (32 cores) | 409.6 GBps       | 52.08        | 87.31        |
+| M1 Ultra | 204.8 GFLOPS (16 cores)      | 21 TFLOPS (64 cores)   | 819.2 GBps       | 104.16       | 174.62       |
+| M2       | 56 GFLOPS (4 cores)          | 3.6 TFLOPS (10 cores)  | 102.4 GBps       | 13.02        | 21.83        |
+| M2 Pro   | 112 GFLOPS (8 cores)         | 6.8 TFLOPS (19 cores)  | 204.8 GBps       | 26.04        | 43.66        |
+| M2 Max   | 112 GFLOPS (8 cores)         | 13.6 TFLOPS (38 cores) | 409.6 GBps       | 52.08        | 87.31        |
+| M2 Ultra | 224 GFLOPS (16 cores)        | 27.2 TFLOPS (76 cores) | 819.2 GBps       | 104.16       | 174.62       |
+| M3       | 64.96 GFLOPS (4 cores)       | 4.1 TFLOPS (10 cores)  | 102.4 GBps       | 13.02        | 21.83        |
+| M3 Pro   | 97.44 GFLOPS (6 cores)       | 7.4 TFLOPS (18 cores)  | 153.6 GBps       | 19.53        | 32.74        |
+| M3 Max   | 194.88 GFLOPS (12 cores)     | 16.4 TFLOPS (40 cores) | 409.6 GBps       | 52.08        | 87.31        |
+| M4       | 70.56 GFLOPS (4 cores)       | 4.1 TFLOPS             | 120 GBps         | 15.26        | 25.58        |
 
 > References:
 > - https://www.cpu-monkey.com/en/cpu_family-apple_m_series
@@ -755,6 +751,7 @@ Get the maximum tokens per second with the following command:
 ```shell
 $ # Estimate full offloaded Q4_K_M model.
 $ gguf-parser --hf-repo leafspark/Meta-Llama-3.1-405B-Instruct-GGUF --hf-file Llama-3.1-405B-Instruct.Q4_0.gguf/Llama-3.1-405B-Instruct.Q4_0-00001-of-00012.gguf --skip-metadata --skip-architecture --skip-tokenizer --in-short \
+  --no-mmap \
   -c 512 \
   --device-metric "224GFLOPS;819.2GBps,27.2TFLOPS;819.2GBps" \
   --rpc host1:port,host2:port \
@@ -763,11 +760,12 @@ $ gguf-parser --hf-repo leafspark/Meta-Llama-3.1-405B-Instruct-GGUF --hf-file Ll
   --tensor-split "<Proportions>"
 ```
 
-| Tensor Split | Apple Mac Studio 0 (V)RAM Usage | Apple Mac Studio 1 (V)RAM Usage | Apple Mac Studio 2 (V)RAM Usage | Q4_0 Max TPS |
-|--------------|---------------------------------|---------------------------------|---------------------------------|--------------|
-| 5,1,1        | 761.53 MiB                      | 30.45 GiB                       | 30.36 GiB                       | 3.01         |
-| 10,1,1       | 821.53 MiB                      | 18.61 GiB                       | 16.83 GiB                       | 3.01         |
-| 20,1,1       | 861.53 MiB                      | 10.15 GiB                       | 8.37 GiB                        | 3.01         |
+| Tensor Split | Apple Mac Studio 0 RAM | Apple Mac Studio 1 VRAM (RPC 0) | Apple Mac Studio 2 VRAM  (RPC 1) | Apple Mac Studio 0 VRAM | Q4_0 Max TPS |
+|--------------|------------------------|---------------------------------|----------------------------------|-------------------------|--------------|
+| 1,1,1        | 1.99 GiB               | 72.74 GiB                       | 71.04 GiB                        | 70.96 GiB               | 10.26        |
+| 2,1,1        | 1.99 GiB               | 108.26 GiB                      | 54.13 GiB                        | 52.35 GiB               | 12.27        |
+| 3,1,1        | 1.99 GiB               | 130.25 GiB                      | 42.29 GiB                        | 42.20 GiB               | 9.41         |
+| 4,1,1        | 1.99 GiB               | 143.78 GiB                      | 35.52 GiB                        | 35.44 GiB               | 7.86         |
 
 #### Full Layers Offload (default)
 
