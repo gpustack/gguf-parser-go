@@ -105,6 +105,8 @@ const (
 	GGUFFileTypeMostlyQ4_0_4_4                     // Q4_0_4x4
 	GGUFFileTypeMostlyQ4_0_4_8                     // Q4_0_4x8
 	GGUFFileTypeMostlyQ4_0_8_8                     // Q4_0_8x8
+	GGUFFileTypeMostlyTQ1_0                        // TQ1_0
+	GGUFFileTypeMostlyTQ2_0                        // TQ2_0
 	_GGUFFileTypeCount                             // Unknown
 )
 
@@ -257,6 +259,10 @@ func (t GGUFFileType) GGMLType() GGMLType {
 		return GGMLTypeQ4_0_4_8
 	case GGUFFileTypeMostlyQ4_0_8_8:
 		return GGMLTypeQ4_0_8_8
+	case GGUFFileTypeMostlyTQ1_0:
+		return GGMLTypeTQ1_0
+	case GGUFFileTypeMostlyTQ2_0:
+		return GGMLTypeTQ2_0
 	default:
 	}
 	return _GGMLTypeCount
@@ -364,6 +370,10 @@ func (gf *GGUFFile) guessFileType() GGUFFileType {
 		return GGUFFileTypeMostlyQ4_0_4_8
 	case GGMLTypeQ4_0_8_8:
 		return GGUFFileTypeMostlyQ4_0_8_8
+	case GGMLTypeTQ1_0:
+		return GGUFFileTypeMostlyTQ1_0
+	case GGMLTypeTQ2_0:
+		return GGUFFileTypeMostlyTQ2_0
 	default:
 	}
 	return _GGUFFileTypeCount

@@ -9,11 +9,11 @@ import (
 // Types for GGMLType.
 type (
 	// GGMLType is a type of GGML tensor,
-	// see https://github.com/ggerganov/llama.cpp/blob/278d0e18469aacf505be18ce790a63c7cc31be26/ggml/include/ggml.h#L354-L390.
+	// see https://github.com/ggerganov/llama.cpp/blob/b34e02348064c2f0cef1f89b44d9bee4eb15b9e7/ggml/include/ggml.h#L363-L401.
 	GGMLType uint32
 
 	// GGMLTypeTrait holds the trait of a GGMLType,
-	// see https://github.com/ggerganov/llama.cpp/blob/278d0e18469aacf505be18ce790a63c7cc31be26/ggml/src/ggml.c#L547-L942.
+	// see https://github.com/ggerganov/llama.cpp/blob/b34e02348064c2f0cef1f89b44d9bee4eb15b9e7/ggml/src/ggml.c#L663-L1082.
 	GGMLTypeTrait struct {
 		BlockSize uint64 // Original is int, in order to reduce conversion, here we use uint64.
 		TypeSize  uint64 // Original is uint32, in order to reduce conversion, here we use uint64.
@@ -59,6 +59,8 @@ const (
 	GGMLTypeQ4_0_4_4
 	GGMLTypeQ4_0_4_8
 	GGMLTypeQ4_0_8_8
+	GGMLTypeTQ1_0
+	GGMLTypeTQ2_0
 	_GGMLTypeCount // Unknown
 )
 
@@ -98,6 +100,8 @@ var _GGMLTypeTraits = map[GGMLType]GGMLTypeTrait{
 	GGMLTypeQ4_0_4_4: {BlockSize: 32, TypeSize: 18, Quantized: true},
 	GGMLTypeQ4_0_4_8: {BlockSize: 32, TypeSize: 18, Quantized: true},
 	GGMLTypeQ4_0_8_8: {BlockSize: 32, TypeSize: 18, Quantized: true},
+	GGMLTypeTQ1_0:    {BlockSize: 256, TypeSize: 54, Quantized: true},
+	GGMLTypeTQ2_0:    {BlockSize: 256, TypeSize: 66, Quantized: true},
 }
 
 // Trait returns the GGMLTypeTrait of the GGMLType.
