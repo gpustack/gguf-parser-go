@@ -1,0 +1,34 @@
+name: close
+
+permissions:
+  pull-requests: write
+  issues: write
+
+defaults:
+  run:
+    shell: bash
+
+on:
+  workflow_dispatch: { }
+  schedule:
+    - cron: "0 0 * * *" # every day at 00:00 UTC
+
+jobs:
+  close:
+    timeout-minutes: 5
+    runs-on: ubuntu-22.04
+    continue-on-error: true
+    steps:
+      - name: Close Stale Issues and Pull Requests
+        uses: actions/stale@v9
+        with:
+          days-before-stale: 15
+          days-before-close: 14
+          exempt-issue-labels: "help wanted,good first issue,bug,bug-qa,enhancement"
+          stale-issue-label: "stale"
+          close-issue-message: "This issue was closed because it has been inactive for 14 days since being marked as stale."
+          exempt-pr-labels: "bug,bug-qa,enhancement"
+          exempt-draft-pr: true
+          stale-pr-label: "stale"
+          close-pr-message: "This pull request was closed because it has been inactive for 14 days since being marked as stale."
+          operations-per-run: 10000
