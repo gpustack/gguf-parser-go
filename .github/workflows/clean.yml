@@ -50,8 +50,8 @@ jobs:
                 }
                 continue
               }
-              ${{ github.event.schedule && '' || '// clean main branch caches' }}
-              ${{ github.event.schedule && '' || 'deleteCaches.push(c)' }}
+              ${{ github.event_name == 'schedule' && '' || '// clean main branch caches' }}
+              ${{ github.event_name == 'schedule' && '' || 'deleteCaches.push(c)' }}
             }
             
             // delete 
