@@ -20,6 +20,8 @@ on:
       - "**.mdx"
       - "**.png"
       - "**.jpg"
+      - ".github/workflows/clean.yml"
+      - ".github/workflows/close.yml"
     tags:
       - "v*.*.*"
 
