@@ -749,23 +749,67 @@ and estimate the maximum tokens per second for three Apple Mac Studio devices co
 Get the maximum tokens per second with the following command:
 
 ```shell
-$ # Estimate full offloaded Q4_K_M model.
+$ # Explain the command:
+$ # --device-metric "224GFLOPS;819.2GBps"         <-- Apple Mac Studio 0 CPU FLOPS and RAM Bandwidth
+$ # --device-metric "27.2TFLOPS;819.2GBps;40Gbps" <-- Apple Mac Studio 1 (RPC 0) iGPU FLOPS, VRAM Bandwidth, and Thunderbolt Bandwidth
+$ # --device-metric "27.2TFLOPS;819.2GBps;40Gbps" <-- Apple Mac Studio 2 (RPC 1) iGPU FLOPS, VRAM Bandwidth, and Thunderbolt Bandwidth
+$ # --device-metric "27.2TFLOPS;819.2GBps"        <-- Apple Mac Studio 0 iGPU FLOPS and VRAM Bandwidth
 $ gguf-parser --hf-repo leafspark/Meta-Llama-3.1-405B-Instruct-GGUF --hf-file Llama-3.1-405B-Instruct.Q4_0.gguf/Llama-3.1-405B-Instruct.Q4_0-00001-of-00012.gguf --skip-metadata --skip-architecture --skip-tokenizer --in-short \
   --no-mmap \
   -c 512 \
-  --device-metric "224GFLOPS;819.2GBps,27.2TFLOPS;819.2GBps" \
   --rpc host1:port,host2:port \
+  --tensor-split "<Proportions>" \
+  --device-metric "224GFLOPS;819.2GBps" \
   --device-metric "27.2TFLOPS;819.2GBps;40Gbps" \
   --device-metric "27.2TFLOPS;819.2GBps;40Gbps" \
-  --tensor-split "<Proportions>"
+  --device-metric "27.2TFLOPS;819.2GBps"
 ```
 
 | Tensor Split | Apple Mac Studio 0 RAM | Apple Mac Studio 1 VRAM (RPC 0) | Apple Mac Studio 2 VRAM  (RPC 1) | Apple Mac Studio 0 VRAM | Q4_0 Max TPS |
 |--------------|------------------------|---------------------------------|----------------------------------|-------------------------|--------------|
-| 1,1,1        | 1.99 GiB               | 72.74 GiB                       | 71.04 GiB                        | 70.96 GiB               | 10.26        |
-| 2,1,1        | 1.99 GiB               | 108.26 GiB                      | 54.13 GiB                        | 52.35 GiB               | 12.27        |
-| 3,1,1        | 1.99 GiB               | 130.25 GiB                      | 42.29 GiB                        | 42.20 GiB               | 9.41         |
-| 4,1,1        | 1.99 GiB               | 143.78 GiB                      | 35.52 GiB                        | 35.44 GiB               | 7.86         |
+| 1,1,1        | 1.99 GiB               | 72.74 GiB                       | 71.04 GiB                        | 70.96 GiB               | 10.71        |
+| 2,1,1        | 1.99 GiB               | 108.26 GiB                      | 54.13 GiB                        | 52.35 GiB               | 11.96        |
+| 3,1,1        | 1.99 GiB               | 130.25 GiB                      | 42.29 GiB                        | 42.20 GiB               | 9.10         |
+| 4,1,1        | 1.99 GiB               | 143.78 GiB                      | 35.52 GiB                        | 35.44 GiB               | 7.60         |
+
+##### Run Qwen2.5-72B-Instruct with NVIDIA RTX 4080 and remote RPC by Apple Mac Studio (M2)
+
+Example by [Qwen/Qwen2.5-72B-Instruct-GGUF](https://huggingface.co/Qwen/Qwen2.5-72B-Instruct-GGUF) and estimate the
+maximum tokens per second for NVIDIA RTX 4080.
+
+| Hardware                                    | FLOPS        | Bandwidth  |
+|---------------------------------------------|--------------|------------|
+| Intel i5-14600k                             | 510.4 GFLOPS |            |
+| 2 x Corsair Vengeance RGB DDR5-6000 (32GiB) |              | 96 GBps    |
+| 2 x NVIDIA GeForce RTX 4080                 | 48.74 TFLOPS | 736.3 GBps |
+| Apple Mac Studio (M2)                       | 27.2 TFLOPS  | 819.2 GBps |
+
+```shell
+$ # Explain the command:
+$ # --tensor-split 20369,12935,13325               <-- Available Memory in MiB for each device
+$ # --device-metric "510.4GFLOPS;96GBps"           <-- Intel i5-14600k CPU FLOPS and RAM Bandwidth
+$ # --device-metric "27.2TFLOPS;819.2GBps;40Gbps"  <-- Apple Mac Studio (M2) (RPC 0) iGPU FLOPS, VRAM Bandwidth, and Thunderbolt Bandwidth
+$ # --device-metric "48.74TFLOPS;736.3GBps;64GBps" <-- NVIDIA GeForce RTX 0 4080 GPU FLOPS, VRAM Bandwidth, and PCIe 5.0 x16 Bandwidth
+$ # --device-metric "48.74TFLOPS;736.3GBps;8GBps"  <-- NVIDIA GeForce RTX 1 4080 GPU FLOPS, VRAM Bandwidth, and PCIe 4.0 x4 Bandwidth
+$ gguf-parser --hf-repo Qwen/Qwen2.5-72B-Instruct-GGUF --hf-file qwen2.5-72b-instruct-q4_k_m-00001-of-00012.gguf --skip-metadata --skip-architecture --skip-tokenizer --in-short \
+  --no-mmap \
+  -c 8192 \
+  --rpc host:port \
+  --tensor-split 20369,12935,13325 \
+  --device-metric "510.4GFLOPS;96GBps" \
+  --device-metric "27.2TFLOPS;819.2GBps;40Gbps" \
+  --device-metric "48.74TFLOPS;736.3GBps;64GBps" \
+  --device-metric "48.74TFLOPS;736.3GBps;8GBps"
++------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ESTIMATE                                                                                                                                                                           |
++-----------+------------------------------------------+----------------------------------------------+----------------------------------------+-------------------------------------+
+|  MAX TPS  |                    RAM                   |                 RPC 0 (V)RAM                 |                 VRAM 0                 |                VRAM 1               |
+|           +--------------------+----------+----------+----------------+--------------+--------------+----------------+-----------+-----------+----------------+-----------+--------+
+|           | LAYERS (I + T + O) |    UMA   |  NONUMA  | LAYERS (T + O) |      UMA     |    NONUMA    | LAYERS (T + O) |    UMA    |   NONUMA  | LAYERS (T + O) |    UMA    | NONUMA |
++-----------+--------------------+----------+----------+----------------+--------------+--------------+----------------+-----------+-----------+----------------+-----------+--------+
+| 51.82 tps |      1 + 0 + 0     | 1.19 GiB | 1.34 GiB |     36 + 0     |   18.85 GiB  |   20.20 GiB  |     22 + 0     | 11.34 GiB | 12.69 GiB |     22 + 1     | 12.65 GiB | 14 GiB |
++-----------+--------------------+----------+----------+----------------+--------------+--------------+----------------+-----------+-----------+----------------+-----------+--------+
+```
 
 #### Full Layers Offload (default)
 
