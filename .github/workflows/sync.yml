@@ -17,7 +17,6 @@ on:
 jobs:
   sync:
     runs-on: ubuntu-22.04
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
