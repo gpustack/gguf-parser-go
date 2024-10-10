@@ -1,0 +1,113 @@
+name: sync
+
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+
+defaults:
+  run:
+    shell: bash
+
+on:
+  workflow_dispatch: { }
+  schedule:
+    - cron: "0 */12 * * *" # every 12 hours
+
+jobs:
+  sync:
+    runs-on: ubuntu-22.04
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Sync Gitee
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY_NAME: ${{ github.event.repository.name }}
+          GITEE_TOKEN: ${{ secrets.CI_GITEE_TOKEN }}
+        run: |
+          #!/usr/bin/env bash
+          
+          info() {
+            echo "[INFO] $*"
+          }
+          warn() {
+            echo "[WARN] $*"
+          }
+          error() {
+            echo "[ERRO] $*"
+          }
+          fatal() {
+            echo "[FATA] $*"
+            exit 1
+          }
+          
+          shopt -s expand_aliases
+          alias gh="gh --repo ${GITHUB_REPOSITORY}"
+          alias curl="curl --insecure --silent --retry 3 --header 'Accept: application/json;charset=utf-8'"
+          alias jq="jq -c"
+          
+          info "Syncing Gitee repository..."
+          # create gitee remote if not exists
+          if [[ "$(curl -o /dev/null -w %{http_code} -I https://gitee.com/api/v5/repos/${GITHUB_REPOSITORY})" == "404" ]]; then
+            info "Creating Gitee repository ${GITHUB_REPOSITORY}..."
+            if [[ ! "$(curl -o /dev/null -w %{http_code} -X POST -F "access_token=${GITEE_TOKEN}" -F "name=${GITHUB_REPOSITORY_NAME}" -F "private=false" -F "has_wiki=false" https://gitee.com/api/v5/orgs/${GITHUB_REPOSITORY_OWNER}/repos)" =~ 20* ]]; then
+              fatal "Failed to create Gitee repository ${GITHUB_REPOSITORY}."
+            fi
+            info "Gitee repository ${GITHUB_REPOSITORY} created."
+          else
+            info "Gitee repository ${GITHUB_REPOSITORY} already exists."
+          fi
+          
+          info "Pushing to Gitee repository..."
+          # add gitee remote
+          git remote add gitee https://gpustack-ai:${GITEE_TOKEN}@gitee.com/${GITHUB_REPOSITORY}.git
+          # push to gitee
+          git push gitee --all --force
+          git push gitee --tags --force
+          
+          info "Releasing to Gitee repository..."
+          # create gitee release if not exists
+          gh release list --json name,tagName,isPrerelease,isDraft --order desc --limit 3 | jq -r 'reverse | .[]' | while read -r release; do
+            RELEASE_IS_PRERELEASE=$(echo "${release}" | jq -r '.isPrerelease')
+            RELEASE_NAME=$(echo "${release}" | jq -r '.name')
+            RELEASE_TAG_NAME=$(echo "${release}" | jq -r '.tagName')
+            if [[ "$(echo "${release}" | jq -r '.isDraft')" == "true" ]]; then
+              warn "  Skipped creating invalid release ${RELEASE_TAG_NAME}, continue..."
+              continue
+            fi
+            if [[ "$(curl -X GET https://gitee.com/api/v5/repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG_NAME}\?access_token=${GITEE_TOKEN})" == "null" ]]; then
+              gh release view ${RELEASE_TAG_NAME} --json assets,targetCommitish > /tmp/resp-view-release.json
+              RELEASE_TARGET_COMMITISH=$(cat /tmp/resp-view-release.json | jq -r '.targetCommitish')
+              # create gitee release
+              info "  Creating Gitee release ${RELEASE_TAG_NAME}..."
+              if [[ ! "$(curl -o /dev/null -w %{http_code} -X POST -F "access_token=${GITEE_TOKEN}" -F "name=${RELEASE_NAME}" -F "tag_name=${RELEASE_TAG_NAME}" -F "body=Synced from github.com/${GITHUB_REPOSITORY_OWNER}/releases/tag/${RELEASE_NAME}." -F "prerelease=${RELEASE_IS_PRERELEASE}" -F "target_commitish=${RELEASE_TARGET_COMMITISH}" https://gitee.com/api/v5/repos/${GITHUB_REPOSITORY}/releases)" =~ 20* ]]; then
+                error "  Failed to create Gitee release ${RELEASE_TAG_NAME}, continue..."
+                continue
+              fi
+              RELEASE_ID="$(curl -X GET https://gitee.com/api/v5/repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG_NAME}\?access_token=${GITEE_TOKEN} | jq -r '.id')"
+              info "  Gitee release ${RELEASE_TAG_NAME} created, id ${RELEASE_ID}."
+              # download assets
+              info "    Downloading assets..."
+              gh release download ${RELEASE_TAG_NAME} --dir /tmp/${RELEASE_TAG_NAME} >/dev/null && ls -lh /tmp/${RELEASE_TAG_NAME}/*
+              # upload assets to gitee
+              info "    Uploading assets..."
+              cat /tmp/resp-view-release.json | jq -r '.assets[]' | while read -r asset; do
+                ASSET_NAME=$(echo "${asset}" | jq -r '.name')
+                info "      Uploading asset ${ASSET_NAME}..."
+                if [[ ! "$(curl -o /dev/null -w %{http_code} -X POST -F "access_token=${GITEE_TOKEN}" -F "file=@/tmp/${RELEASE_TAG_NAME}/${ASSET_NAME}" https://gitee.com/api/v5/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/attach_files)" =~ 20* ]]; then
+                  error "      Failed to upload asset ${ASSET_NAME}, continue..."
+                  continue
+                fi
+              done
+              # cleanup
+              rm -rf /tmp/${RELEASE_TAG_NAME}
+              info "Gitee release ${RELEASE_TAG_NAME} assets uploaded."
+            else
+              info "Gitee release ${RELEASE_TAG_NAME} already exists."
+            fi
+          done
