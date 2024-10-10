@@ -25,9 +25,10 @@ jobs:
           persist-credentials: false
       - name: Sync Gitee
         env:
-          GITHUB_TOKEN: ${{ github.token }}
-          GITHUB_REPOSITORY_NAME: ${{ github.event.repository.name }}
-          GITEE_TOKEN: ${{ secrets.CI_GITEE_TOKEN }}
+          GITHUB_TOKEN: "${{ github.token }}"
+          GITHUB_REPOSITORY_NAME: "${{ github.event.repository.name }}"
+          GITEE_USERNAME: "${{ secrets.CI_GITEE_USERNAME }}"
+          GITEE_TOKEN: "${{ secrets.CI_GITEE_TOKEN }}"
         run: |
           #!/usr/bin/env bash
           
@@ -53,8 +54,8 @@ jobs:
           info "Syncing Gitee repository..."
           # create gitee remote if not exists
           if [[ "$(curl -o /dev/null -w %{http_code} -I https://gitee.com/api/v5/repos/${GITHUB_REPOSITORY})" == "404" ]]; then
-            info "Creating Gitee repository ${GITHUB_REPOSITORY}..."
-            if [[ ! "$(curl -o /dev/null -w %{http_code} -X POST -F "access_token=${GITEE_TOKEN}" -F "name=${GITHUB_REPOSITORY_NAME}" -F "private=false" -F "has_wiki=false" https://gitee.com/api/v5/orgs/${GITHUB_REPOSITORY_OWNER}/repos)" =~ 20* ]]; then
+            info "Creating Gitee repository ${GITHUB_REPOSITORY_OWNER}/${GITHUB_REPOSITORY_NAME}..."
+            if [[ ! "$(curl -o /dev/null -w %{http_code} -X POST -F "access_token=${GITEE_TOKEN}" -F "name=${GITHUB_REPOSITORY_NAME}" -F "private=false" -F "has_wiki=false" https://gitee.com/api/v5/orgs/${GITHUB_REPOSITORY_OWNER}/repos)" =~ ^20.* ]]; then
               fatal "Failed to create Gitee repository ${GITHUB_REPOSITORY}."
             fi
             info "Gitee repository ${GITHUB_REPOSITORY} created."
@@ -64,7 +65,7 @@ jobs:
           
           info "Pushing to Gitee repository..."
           # add gitee remote
-          git remote add gitee https://gpustack-ai:${GITEE_TOKEN}@gitee.com/${GITHUB_REPOSITORY}.git
+          git remote add gitee https://${GITEE_USERNAME}:${GITEE_TOKEN}@gitee.com/${GITHUB_REPOSITORY}.git
           # push to gitee
           git push gitee --all --force
           git push gitee --tags --force
@@ -84,7 +85,7 @@ jobs:
               RELEASE_TARGET_COMMITISH=$(cat /tmp/resp-view-release.json | jq -r '.targetCommitish')
               # create gitee release
               info "  Creating Gitee release ${RELEASE_TAG_NAME}..."
-              if [[ ! "$(curl -o /dev/null -w %{http_code} -X POST -F "access_token=${GITEE_TOKEN}" -F "name=${RELEASE_NAME}" -F "tag_name=${RELEASE_TAG_NAME}" -F "body=Synced from github.com/${GITHUB_REPOSITORY_OWNER}/releases/tag/${RELEASE_NAME}." -F "prerelease=${RELEASE_IS_PRERELEASE}" -F "target_commitish=${RELEASE_TARGET_COMMITISH}" https://gitee.com/api/v5/repos/${GITHUB_REPOSITORY}/releases)" =~ 20* ]]; then
+              if [[ ! "$(curl -o /dev/null -w %{http_code} -X POST -F "access_token=${GITEE_TOKEN}" -F "name=${RELEASE_NAME}" -F "tag_name=${RELEASE_TAG_NAME}" -F "body=Synced from github.com/${GITHUB_REPOSITORY_OWNER}/releases/tag/${RELEASE_NAME}." -F "prerelease=${RELEASE_IS_PRERELEASE}" -F "target_commitish=${RELEASE_TARGET_COMMITISH}" https://gitee.com/api/v5/repos/${GITHUB_REPOSITORY}/releases)" =~ ^20.* ]]; then
                 error "  Failed to create Gitee release ${RELEASE_TAG_NAME}, continue..."
                 continue
               fi
@@ -98,7 +99,7 @@ jobs:
               cat /tmp/resp-view-release.json | jq -r '.assets[]' | while read -r asset; do
                 ASSET_NAME=$(echo "${asset}" | jq -r '.name')
                 info "      Uploading asset ${ASSET_NAME}..."
-                if [[ ! "$(curl -o /dev/null -w %{http_code} -X POST -F "access_token=${GITEE_TOKEN}" -F "file=@/tmp/${RELEASE_TAG_NAME}/${ASSET_NAME}" https://gitee.com/api/v5/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/attach_files)" =~ 20* ]]; then
+                if [[ ! "$(curl -o /dev/null -w %{http_code} -X POST -F "access_token=${GITEE_TOKEN}" -F "file=@/tmp/${RELEASE_TAG_NAME}/${ASSET_NAME}" https://gitee.com/api/v5/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/attach_files)" =~ ^20.* ]]; then
                   error "      Failed to upload asset ${ASSET_NAME}, continue..."
                   continue
                 fi
