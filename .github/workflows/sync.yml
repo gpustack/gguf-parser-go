@@ -17,7 +17,7 @@ on:
 jobs:
   sync-gitee:
     runs-on: ubuntu-22.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -88,10 +88,10 @@ jobs:
               RELEASE_TARGET_COMMITISH=$(cat /tmp/resp-view-release.json | jq -r '.targetCommitish')
               # create gitee release
               info "  Creating Gitee release ${RELEASE_TAG_NAME}..."
-              if [[ ! "$(curl -o /tmp/error.log -w %{http_code} -X POST -F "access_token=${GITEE_TOKEN}" -F "name=${RELEASE_NAME}" -F "tag_name=${RELEASE_TAG_NAME}" -F "body=Synced from github.com/${GITHUB_REPOSITORY_OWNER}/releases/tag/${RELEASE_NAME}." -F "prerelease=${RELEASE_IS_PRERELEASE}" -F "target_commitish=${RELEASE_TARGET_COMMITISH}" https://gitee.com/api/v5/repos/${GITHUB_REPOSITORY}/releases)" =~ ^20.* ]]; then
-                error "  Failed to create Gitee release ${RELEASE_TAG_NAME}: $(cat /tmp/error.log), continue..."
-                continue
-              fi
+              while [[ ! "$(curl -o /tmp/error.log -w %{http_code} -X POST -F "access_token=${GITEE_TOKEN}" -F "name=${RELEASE_NAME}" -F "tag_name=${RELEASE_TAG_NAME}" -F "body=Synced from github.com/${GITHUB_REPOSITORY_OWNER}/releases/tag/${RELEASE_NAME}." -F "prerelease=${RELEASE_IS_PRERELEASE}" -F "target_commitish=${RELEASE_TARGET_COMMITISH}" https://gitee.com/api/v5/repos/${GITHUB_REPOSITORY}/releases)" =~ ^20.* ]]; do
+                error "  Failed to create Gitee release ${RELEASE_TAG_NAME}: $(cat /tmp/error.log), retrying after 10s..."
+                sleep 10
+              done
               RELEASE_ID="$(curl -X GET https://gitee.com/api/v5/repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG_NAME}\?access_token=${GITEE_TOKEN} | jq -r '.id')"
               info "  Gitee release ${RELEASE_TAG_NAME} created, id ${RELEASE_ID}."
               # download assets
@@ -103,9 +103,10 @@ jobs:
                 ASSET_NAME=$(basename "${asset}")
                 info "      Uploading asset ${ASSET_NAME}..."
                 while [[ ! "$(curl -o /tmp/error.log -w %{http_code} -X POST -F "access_token=${GITEE_TOKEN}" -F "file=@${asset}" https://gitee.com/api/v5/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/attach_files)" =~ ^20.* ]]; do
-                  error "      Failed to upload asset ${ASSET_NAME}: $(cat /tmp/error.log), retrying..."
-                  sleep 5
+                  error "      Failed to upload asset ${ASSET_NAME}: $(cat /tmp/error.log), retrying after 10s..."
+                  sleep 10
                 done
+                sleep 10
               done
               # cleanup
               rm -rf /tmp/${RELEASE_TAG_NAME}
@@ -119,7 +120,7 @@ jobs:
 
   sync-gitcode:
     runs-on: ubuntu-22.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -226,9 +227,10 @@ jobs:
             "size": ${ASSET_SIZE}
           }
           EOF
-                if [[ ! "$(curl -b /tmp/login.cookie -o /tmp/resp-create-upload-url.json -w %{http_code} -X POST -H "Content-Type: application/json" -d @/tmp/req-create-upload-url.json https://web-api.gitcode.com/api/v2/projects/${GITHUB_REPOSITORY_URLENCODED}/releases/upload)" =~ ^20.* ]]; then
-                  fatal "      Failed to create upload url for asset ${ASSET_NAME}: $(cat /tmp/resp-create-upload-url.json)."
-                fi
+                while [[ ! "$(curl -b /tmp/login.cookie -o /tmp/resp-create-upload-url.json -w %{http_code} -X POST -H "Content-Type: application/json" -d @/tmp/req-create-upload-url.json https://web-api.gitcode.com/api/v2/projects/${GITHUB_REPOSITORY_URLENCODED}/releases/upload)" =~ ^20.* ]]; do
+                  error "      Failed to create upload url for asset ${ASSET_NAME}: $(cat /tmp/resp-create-upload-url.json), retrying after 5m..."
+                  sleep 300
+                done
                 # update upload url
                 ASSET_UPLOAD_URL=$(cat /tmp/resp-create-upload-url.json | jq -r 'keys[0]')
                 ASSET_UPLOAD_X_OBS_ACL=$(cat /tmp/resp-create-upload-url.json | jq -r '.[keys[0]] | ."x-obs-acl"')
@@ -237,18 +239,18 @@ jobs:
                 ASSET_UPLOAD_ATTACHMENT_ID=$(cat /tmp/resp-create-upload-url.json | jq -r '.[keys[0]] | .attachment_id')
                 ASSET_UPLOAD_CDN_ADDR=$(cat /tmp/resp-create-upload-url.json | jq -r '.[keys[0]] | ."cdn-addr"')
                 while [[ ! "$(curl -o /tmp/error.log -w %{http_code} -H "X-Obs-Acl: ${ASSET_UPLOAD_X_OBS_ACL}" -H "X-Obs-Callback: ${ASSET_UPLOAD_X_OBS_CALLBACK}" -H "X-Obs-Meta-Project-Id: ${ASSET_UPLOAD_X_OBS_META_PROJECT_ID}" -X PUT -H "Content-Type: application/octet-stream" --data-binary @/tmp/${RELEASE_TAG_NAME}/${ASSET_NAME} ${ASSET_UPLOAD_URL})" =~ ^20.* ]]; do
-                  error "      Failed to upload asset ${ASSET_NAME}: $(cat /tmp/error.log), retrying..."
-                  sleep 5
+                  error "      Failed to upload asset ${ASSET_NAME}: $(cat /tmp/error.log), retrying after 10s..."
+                  sleep 10
                 done
                 cat /tmp/req-create-release.json | jq --argjson link "{\"action\":\"create\",\"attachment_id\":\"${ASSET_UPLOAD_ATTACHMENT_ID}\",\"url\":\"${ASSET_UPLOAD_CDN_ADDR}\",\"name\":\"${ASSET_NAME}\"}" '.links += [$link]' > /tmp/req-create-release.json.2 && mv -f /tmp/req-create-release.json.2 /tmp/req-create-release.json
-                sleep 5
+                sleep 10
               done
               # create gitcode release
               info "  Creating GitCode release ${RELEASE_TAG_NAME}..."
-              if [[ ! "$(curl -b /tmp/login.cookie -o /tmp/error.log -w %{http_code} -X POST -H "Content-Type: application/json" -d @/tmp/req-create-release.json https://web-api.gitcode.com/api/v2/projects/${GITHUB_REPOSITORY_URLENCODED}/releases)" =~ ^20.* ]]; then
-                error "  Failed to create GitCode release ${RELEASE_TAG_NAME}: $(cat /tmp/error.log), continue..."
-                continue
-              fi
+              while [[ ! "$(curl -b /tmp/login.cookie -o /tmp/error.log -w %{http_code} -X POST -H "Content-Type: application/json" -d @/tmp/req-create-release.json https://web-api.gitcode.com/api/v2/projects/${GITHUB_REPOSITORY_URLENCODED}/releases)" =~ ^20.* ]]; do
+                error "  Failed to create GitCode release ${RELEASE_TAG_NAME}: $(cat /tmp/error.log), retrying after 10s..."
+                sleep 10
+              done
               info "  GitCode release ${RELEASE_TAG_NAME} created."
               # cleanup
               rm -rf /tmp/${RELEASE_TAG_NAME}
