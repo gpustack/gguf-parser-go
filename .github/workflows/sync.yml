@@ -15,7 +15,7 @@ on:
       max_releases:
         description: "Maximum number of releases to sync"
         required: false
-        default: 2
+        default: 1
         type: number
   schedule:
     - cron: "0 */12 * * *" # every 12 hours
@@ -23,7 +23,7 @@ on:
 env:
   GITHUB_TOKEN: "${{ github.token }}"
   GITHUB_REPOSITORY_NAME: "${{ github.event.repository.name }}"
-  MAX_RELEASES: "${{ inputs.max_releases && inputs.max_releases || '2' }}"
+  MAX_RELEASES: "${{ inputs.max_releases && inputs.max_releases || '1' }}"
 
 jobs:
   gitee:
