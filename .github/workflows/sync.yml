@@ -100,7 +100,7 @@ jobs:
             info "  Creating Gitee release ${RELEASE_TAG_NAME}..."
             gh release view ${RELEASE_TAG_NAME} --json assets,targetCommitish > /tmp/resp-view-release.json
             RELEASE_TARGET_COMMITISH=$(cat /tmp/resp-view-release.json | jq -r '.targetCommitish')
-            while [[ ! "$(curl -o /tmp/error.log -w %{http_code} -X POST -F "access_token=${GITEE_TOKEN}" -F "name=${RELEASE_NAME}" -F "tag_name=${RELEASE_TAG_NAME}" -F "body=Synced from github.com/${GITHUB_REPOSITORY_OWNER}/releases/tag/${RELEASE_NAME}." -F "prerelease=${RELEASE_IS_PRERELEASE}" -F "target_commitish=${RELEASE_TARGET_COMMITISH}" https://gitee.com/api/v5/repos/${GITHUB_REPOSITORY}/releases)" =~ ^20.* ]]; do
+            while [[ ! "$(curl -o /tmp/error.log -w %{http_code} -X POST -F "access_token=${GITEE_TOKEN}" -F "name=${RELEASE_NAME}" -F "tag_name=${RELEASE_TAG_NAME}" -F "body=Synced from github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_NAME}." -F "prerelease=${RELEASE_IS_PRERELEASE}" -F "target_commitish=${RELEASE_TARGET_COMMITISH}" https://gitee.com/api/v5/repos/${GITHUB_REPOSITORY}/releases)" =~ ^20.* ]]; do
               error "  Failed to create Gitee release ${RELEASE_TAG_NAME}: $(cat /tmp/error.log), retrying after 10s..."
               sleep 10
             done
@@ -216,7 +216,7 @@ jobs:
             "links": [],
             "name": "${RELEASE_NAME}",
             "tag_name": "${RELEASE_TAG_NAME}",
-            "description": "Synced from github.com/${GITHUB_REPOSITORY_OWNER}/releases/tag/${RELEASE_NAME}.",
+            "description": "Synced from github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_NAME}.",
             "prerelease": ${RELEASE_IS_PRERELEASE},
             "ref": "${RELEASE_TARGET_COMMITISH}"
           }
