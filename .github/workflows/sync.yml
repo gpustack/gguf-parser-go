@@ -120,7 +120,7 @@ jobs:
 
   sync-gitcode:
     runs-on: ubuntu-22.04
-    timeout-minutes: 120
+    timeout-minutes: 240
     steps:
       - name: Checkout
         uses: actions/checkout@v4
