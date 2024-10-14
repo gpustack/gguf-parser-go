@@ -168,6 +168,7 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 		for i, j := 0, len(o.DeviceMetrics)-1; i < len(o.TensorSplitFraction)-j; i++ {
 			o.DeviceMetrics = append(o.DeviceMetrics, o.DeviceMetrics[j])
 		}
+		o.DeviceMetrics = o.DeviceMetrics[:len(o.TensorSplitFraction)+1]
 	}
 
 	// Devices.
