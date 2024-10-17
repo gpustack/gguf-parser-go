@@ -34,6 +34,9 @@ type (
 		// EmbeddingOnly is the flag to indicate whether the model is used for embedding only,
 		// true for embedding only.
 		EmbeddingOnly bool `json:"embeddingOnly"`
+		// Reranking is the flag to indicate whether the model is used for reranking,
+		// true for reranking.
+		Reranking bool `json:"reranking"`
 		// Distributable is the flag to indicate whether the model is distributable,
 		// true for distributable.
 		Distributable bool `json:"distributable"`
@@ -215,6 +218,10 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 	if a.Type == "model" && !a.AttentionCausal {
 		e.EmbeddingOnly = true
 		o.PhysicalBatchSize = o.LogicalBatchSize
+		// Reranking.
+		if _, found := gf.TensorInfos.Index([]string{"cls.bias", "cls.weight"}); found > 0 {
+			e.Reranking = true
+		}
 	}
 
 	// Distributable,
@@ -357,6 +364,9 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 	ls := gf.Layers()
 	ioLs, tfLs, _ := ls.Cut([]string{
 		"token_embd.weight",
+		"token_embd_norm.weight",
+		"token_embd_norm.bias",
+		"token_types.weight",
 		"output.weight",
 		"output.bias",
 		"output_norm.weight",
@@ -364,6 +374,9 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 	})
 	ipLs, opLs, _ := ioLs.Cut([]string{
 		"token_embd.weight",
+		"token_embd_norm.weight",
+		"token_embd_norm.bias",
+		"token_types.weight",
 	})
 
 	// Weight.
@@ -685,6 +698,9 @@ type (
 		// EmbeddingOnly is the flag to indicate whether the model is used for embedding only,
 		// true for embedding only.
 		EmbeddingOnly bool `json:"embeddingOnly"`
+		// Reranking is the flag to indicate whether the model is used for reranking,
+		// true for reranking.
+		Reranking bool `json:"reranking"`
 		// Distributable is the flag to indicate whether the model is distributable,
 		// true for distributable.
 		Distributable bool `json:"distributable"`
@@ -848,6 +864,7 @@ func (e LLaMACppRunEstimate) Summarize(mmap bool, nonUMARamFootprint, nonUMAVram
 	es.FlashAttention = e.FlashAttention
 	es.NoMMap = e.NoMMap
 	es.EmbeddingOnly = e.EmbeddingOnly
+	es.Reranking = e.Reranking
 	es.LogicalBatchSize = e.LogicalBatchSize
 	es.PhysicalBatchSize = e.PhysicalBatchSize
 	es.Distributable = e.Distributable
