@@ -12,12 +12,12 @@ defaults:
 on:
   workflow_dispatch:
     inputs:
-      max-releases:
+      max_releases:
         description: "Maximum number of releases to sync"
         required: false
         default: 1
         type: number
-      dry-run:
+      dry_run:
         description: "Skip the actual sync"
         required: false
         default: false
@@ -41,8 +41,8 @@ jobs:
           gitcode-username: "${{ secrets.CI_GITCODE_USERNAME }}"
           gitcode-password: "${{ secrets.CI_GITCODE_PASSWORD }}"
           gitcode-token: "${{ secrets.CI_GITCODE_TOKEN }}"
-          max-releases: "${{ inputs.max-releases && inputs.max-releases || '1' }}"
-          dry-run: "${{ inputs.dry-run && inputs.dry-run || 'false' }}"
+          max-releases: "${{ inputs.max_releases && inputs.max_releases || '1' }}"
+          dry-run: "${{ inputs.dry_run && inputs.dry_run || 'false' }}"
 
   gitee:
     runs-on: ubuntu-22.04
@@ -58,17 +58,13 @@ jobs:
         with:
           gitee-username: "${{ secrets.CI_GITEE_USERNAME }}"
           gitee-token: "${{ secrets.CI_GITEE_TOKEN }}"
-          max-releases: "${{ inputs.max-releases && inputs.max-releases || '1' }}"
-          dry-run: "${{ inputs.dry-run && inputs.dry-run || 'false' }}"
+          max-releases: "${{ inputs.max_releases && inputs.max_releases || '1' }}"
+          dry-run: "${{ inputs.dry_run && inputs.dry_run || 'false' }}"
 
   tencent-cos:
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     steps:
-      - name: Sync
-        env:
-          TENCENTCOS_REGION: "ap-guangzhou"
-          TENCENTCOS_BUCKET: "gpustack-1303613262"
       - name: Sync
         uses: gpustack/.github/actions/mirror-release-tencent-cos@main
         with:
@@ -76,5 +72,5 @@ jobs:
           tencent-secret-key: "${{ secrets.CI_TECENTCOS_SECRET_KEY }}"
           tencent-cos-region: "ap-guangzhou"
           tencent-cos-bucket: "gpustack-1303613262"
-          max-releases: "${{ inputs.max-releases && inputs.max-releases || '1' }}"
-          dry-run: "${{ inputs.dry-run && inputs.dry-run || 'false' }}"
+          max-releases: "${{ inputs.max_releases && inputs.max_releases || '1' }}"
+          dry-run: "${{ inputs.dry_run && inputs.dry_run || 'false' }}"
