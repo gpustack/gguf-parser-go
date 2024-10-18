@@ -12,119 +12,20 @@ defaults:
 on:
   workflow_dispatch:
     inputs:
-      max_releases:
+      max-releases:
         description: "Maximum number of releases to sync"
         required: false
         default: 1
         type: number
+      dry-run:
+        description: "Skip the actual sync"
+        required: false
+        default: false
+        type: boolean
   schedule:
     - cron: "0 */12 * * *" # every 12 hours
 
-env:
-  GITHUB_TOKEN: "${{ github.token }}"
-  GITHUB_REPOSITORY_NAME: "${{ github.event.repository.name }}"
-  MAX_RELEASES: "${{ inputs.max_releases && inputs.max_releases || '1' }}"
-
 jobs:
-  gitee:
-    runs-on: ubuntu-22.04
-    timeout-minutes: 120
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Sync
-        env:
-          GITEE_USERNAME: "${{ secrets.CI_GITEE_USERNAME }}"
-          GITEE_TOKEN: "${{ secrets.CI_GITEE_TOKEN }}"
-        run: |
-          #!/usr/bin/env bash
-          
-          set -e
-          
-          shopt -s expand_aliases
-          alias gh="gh --repo ${GITHUB_REPOSITORY}"
-          alias curl="curl --insecure --silent --retry 3 --header 'Accept: application/json' --header 'Referer: https://gitee.com' --user-agent 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36'"
-          alias jq="jq -c"
-          
-          info() {
-            echo "[INFO] $*"
-          }
-          warn() {
-            echo "[WARN] $*"
-          }
-          error() {
-            echo "[ERRO] $*"
-          }
-          fatal() {
-            echo "[FATA] $*"
-            exit 1
-          }
-          
-          info "Syncing Gitee repository..."
-          # create gitee remote if not exists
-          if [[ "$(curl -o /dev/null -w %{http_code} -I https://gitee.com/api/v5/repos/${GITHUB_REPOSITORY}\?access_token=${GITEE_TOKEN})" == "404" ]]; then
-            info "Creating Gitee repository ${GITHUB_REPOSITORY_OWNER}/${GITHUB_REPOSITORY_NAME}..."
-            if [[ ! "$(curl -o /tmp/error.log -w %{http_code} -X POST -F "access_token=${GITEE_TOKEN}" -F "name=${GITHUB_REPOSITORY_NAME}" -F "private=false" -F "has_wiki=false" https://gitee.com/api/v5/orgs/${GITHUB_REPOSITORY_OWNER}/repos)" =~ ^20.* ]]; then
-              fatal "Failed to create Gitee repository ${GITHUB_REPOSITORY}: $(cat /tmp/error.log)."
-            fi
-            info "Gitee repository ${GITHUB_REPOSITORY} created."
-          else
-            info "Gitee repository ${GITHUB_REPOSITORY} already exists."
-          fi
-          
-          info "Pushing to Gitee repository..."
-          # add gitee remote
-          git remote add gitee https://${GITEE_USERNAME}:${GITEE_TOKEN}@gitee.com/${GITHUB_REPOSITORY}.git
-          # push to gitee
-          git push gitee --all --force
-          git push gitee --tags --force
-          
-          info "Releasing to Gitee repository..."
-          # create gitee release if not exists
-          gh release list --json name,tagName,isPrerelease,isDraft --order desc --limit ${MAX_RELEASES} | jq -r 'reverse | .[]' | while read -r release; do
-            RELEASE_IS_PRERELEASE=$(echo "${release}" | jq -r '.isPrerelease')
-            RELEASE_NAME=$(echo "${release}" | jq -r '.name')
-            RELEASE_TAG_NAME=$(echo "${release}" | jq -r '.tagName')
-            if [[ "$(echo "${release}" | jq -r '.isDraft')" == "true" ]]; then
-              warn "  Skipped creating invalid release ${RELEASE_TAG_NAME}, continue..."
-              continue
-            fi
-            if [[ "$(curl -X GET https://gitee.com/api/v5/repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG_NAME}\?access_token=${GITEE_TOKEN})" != "null" ]]; then
-              info "Gitee release ${RELEASE_TAG_NAME} already exists."
-              continue
-            fi
-            # create gitee release
-            info "  Creating Gitee release ${RELEASE_TAG_NAME}..."
-            gh release view ${RELEASE_TAG_NAME} --json assets,targetCommitish > /tmp/resp-view-release.json
-            RELEASE_TARGET_COMMITISH=$(cat /tmp/resp-view-release.json | jq -r '.targetCommitish')
-            while [[ ! "$(curl -o /tmp/error.log -w %{http_code} -X POST -F "access_token=${GITEE_TOKEN}" -F "name=${RELEASE_NAME}" -F "tag_name=${RELEASE_TAG_NAME}" -F "body=Synced from github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_NAME}." -F "prerelease=${RELEASE_IS_PRERELEASE}" -F "target_commitish=${RELEASE_TARGET_COMMITISH}" https://gitee.com/api/v5/repos/${GITHUB_REPOSITORY}/releases)" =~ ^20.* ]]; do
-              error "  Failed to create Gitee release ${RELEASE_TAG_NAME}: $(cat /tmp/error.log), retrying after 10s..."
-              sleep 10
-            done
-            RELEASE_ID="$(curl -X GET https://gitee.com/api/v5/repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG_NAME}\?access_token=${GITEE_TOKEN} | jq -r '.id')"
-            info "  Gitee release ${RELEASE_TAG_NAME} created, id ${RELEASE_ID}."
-            # download assets
-            info "    Downloading assets..."
-            gh release download ${RELEASE_TAG_NAME} --dir /tmp/${RELEASE_TAG_NAME} >/dev/null && ls -lh /tmp/${RELEASE_TAG_NAME}/*
-            # upload assets to gitee
-            info "    Uploading assets that do not exceeds 100MB..."
-            find /tmp/${RELEASE_TAG_NAME} -type f -exec du -h {} + | awk '$1 ~ /[0-9]+G|[0-9]+M/ && $1+0 <= 100 {print $2}' | while read -r asset; do
-              ASSET_NAME=$(basename "${asset}")
-              info "      Uploading asset ${ASSET_NAME}..."
-              while [[ ! "$(curl -o /tmp/error.log -w %{http_code} -X POST -F "access_token=${GITEE_TOKEN}" -F "file=@${asset}" https://gitee.com/api/v5/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/attach_files)" =~ ^20.* ]]; do
-                error "      Failed to upload asset ${ASSET_NAME}: $(cat /tmp/error.log), retrying after 10s..."
-                sleep 10
-              done
-              sleep 10
-            done
-            # cleanup
-            rm -rf /tmp/${RELEASE_TAG_NAME}
-            info "Gitee release ${RELEASE_TAG_NAME} assets uploaded."
-          done
-
   gitcode:
     runs-on: ubuntu-22.04
     timeout-minutes: 240
@@ -135,136 +36,30 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Sync
-        env:
-          GITCODE_USERNAME: "${{ secrets.CI_GITCODE_USERNAME }}"
-          GITCODE_PASSWORD: "${{ secrets.CI_GITCODE_PASSWORD }}"
-          GITCODE_TOKEN: "${{ secrets.CI_GITCODE_TOKEN }}"
-        run: |
-          #!/usr/bin/env bash
-          
-          set -e
-          
-          shopt -s expand_aliases
-          alias gh="gh --repo ${GITHUB_REPOSITORY}"
-          alias curl="curl --insecure --silent --retry 3 --header 'Accept: application/json' --header 'Referer: https://gitcode.com' --user-agent 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36'"
-          alias jq="jq -c"
-          
-          info() {
-            echo "[INFO] $*"
-          }
-          warn() {
-            echo "[WARN] $*"
-          }
-          error() {
-            echo "[ERRO] $*"
-          }
-          fatal() {
-            echo "[FATA] $*"
-            exit 1
-          }
-          
-          info "Syncing GitCode repository..."
-          # create gitcode remote if not exists
-          if [[ "$(curl -o /dev/null -w %{http_code} -I https://api.gitcode.com/api/v5/repos/${GITHUB_REPOSITORY}\?access_token=${GITCODE_TOKEN})" == "404" ]]; then
-            info "Creating GitCode repository ${GITHUB_REPOSITORY_OWNER}/${GITHUB_REPOSITORY_NAME}..."
-            if [[ ! "$(curl -o /tmp/error.log -w %{http_code} -X POST -F "access_token=${GITCODE_TOKEN}" -F "name=${GITHUB_REPOSITORY_NAME}" -F "private=false" -F "has_wiki=false" https://api.gitcode.com/api/v5/orgs/${GITHUB_REPOSITORY_OWNER}/repos)" =~ ^20.* ]]; then
-              fatal "Failed to create GitCode repository ${GITHUB_REPOSITORY}: $(cat /tmp/error.log)."
-            fi
-            info "GitCode repository ${GITHUB_REPOSITORY} created."
-          else
-            info "GitCode repository ${GITHUB_REPOSITORY} already exists."
-          fi
-          
-          info "Pushing to GitCode repository..."
-          # add gitcode remote
-          git remote add gitcode https://${GITCODE_USERNAME}:${GITCODE_TOKEN}@gitcode.com/${GITHUB_REPOSITORY}.git
-          # push to gitcode
-          git push gitcode --all --force
-          git push gitcode --tags --force
-          
-          info "Releasing to GitCode repository..."
-          # oauth login to get token
-          info "  Logging in to GitCode..."
-          if [[ ! "$(curl -c /tmp/login.cookie -o /tmp/error.log -w %{http_code} -X POST -F "username=${GITCODE_USERNAME}" -F "password=${GITCODE_PASSWORD}" https://web-api.gitcode.com/uc/api/v1/user/oauth/login)" =~ ^20.* ]]; then
-              fatal "  Failed to login to GitCode: $(/tmp/error.log)."
-          fi
-          # create gitcode release if not exists
-          gh release list --json name,tagName,isPrerelease,isDraft --order desc --limit ${MAX_RELEASES} | jq -r 'reverse | .[]' | while read -r release; do
-            RELEASE_IS_PRERELEASE=$(echo "${release}" | jq -r '.isPrerelease')
-            RELEASE_NAME=$(echo "${release}" | jq -r '.name')
-            RELEASE_TAG_NAME=$(echo "${release}" | jq -r '.tagName')
-            if [[ "$(echo "${release}" | jq -r '.isDraft')" == "true" ]]; then
-              warn "  Skipped creating invalid release ${RELEASE_TAG_NAME}, continue..."
-              continue
-            fi
-            GITHUB_REPOSITORY_URLENCODED=$(echo "${GITHUB_REPOSITORY}" | sed 's/\//%2F/g')
-            if [[ "$(curl -b /tmp/login.cookie -o /dev/null -w %{http_code} -X GET https://web-api.gitcode.com/api/v2/projects/${GITHUB_REPOSITORY_URLENCODED}/releases/${RELEASE_TAG_NAME})" != "404" ]]; then
-              info "GitCode release ${RELEASE_TAG_NAME} already exists."
-              continue
-            fi
-          
-            info "  Creating GitCode release ${RELEASE_TAG_NAME}..."
-            gh release view ${RELEASE_TAG_NAME} --json assets,targetCommitish > /tmp/resp-view-release.json
-            RELEASE_TARGET_COMMITISH=$(cat /tmp/resp-view-release.json | jq -r '.targetCommitish')
-            # download assets
-            info "    Downloading assets..."
-            gh release download ${RELEASE_TAG_NAME} --dir /tmp/${RELEASE_TAG_NAME} >/dev/null && ls -lh /tmp/${RELEASE_TAG_NAME}/*
-            cat <<EOF > /tmp/req-create-release.json
-          {
-            "repoId": "${GITHUB_REPOSITORY_URLENCODED}",
-            "assets": [],
-            "links": [],
-            "name": "${RELEASE_NAME}",
-            "tag_name": "${RELEASE_TAG_NAME}",
-            "description": "Synced from github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_NAME}.",
-            "prerelease": ${RELEASE_IS_PRERELEASE},
-            "ref": "${RELEASE_TARGET_COMMITISH}"
-          }
-          EOF
-            # upload assets to gitcode
-            info "    Uploading assets..."
-            cat /tmp/resp-view-release.json | jq -r '.assets[]' | while read -r asset; do
-              ASSET_NAME=$(echo "${asset}" | jq -r '.name')
-              ASSET_SIZE=$(echo "${asset}" | jq -r '.size')
-              info "      Uploading asset ${ASSET_NAME}..."
-              # create upload url
-              cat <<EOF > /tmp/req-create-upload-url.json
-          {
-            "project_id": "${GITHUB_REPOSITORY_URLENCODED}",
-            "type": "RELEASE",
-            "content_type": "",
-            "file_name": "${ASSET_NAME}",
-            "size": ${ASSET_SIZE}
-          }
-          EOF
-              while [[ ! "$(curl -b /tmp/login.cookie -o /tmp/resp-create-upload-url.json -w %{http_code} -X POST -H "Content-Type: application/json" -d @/tmp/req-create-upload-url.json https://web-api.gitcode.com/api/v2/projects/${GITHUB_REPOSITORY_URLENCODED}/releases/upload)" =~ ^20.* ]]; do
-                error "      Failed to create upload url for asset ${ASSET_NAME}: $(cat /tmp/resp-create-upload-url.json), retrying after 5m..."
-                sleep 300
-              done
-              # update upload url
-              ASSET_UPLOAD_URL=$(cat /tmp/resp-create-upload-url.json | jq -r 'keys[0]')
-              ASSET_UPLOAD_X_OBS_ACL=$(cat /tmp/resp-create-upload-url.json | jq -r '.[keys[0]] | ."x-obs-acl"')
-              ASSET_UPLOAD_X_OBS_CALLBACK=$(cat /tmp/resp-create-upload-url.json | jq -r '.[keys[0]] | ."x-obs-callback"')
-              ASSET_UPLOAD_X_OBS_META_PROJECT_ID=$(cat /tmp/resp-create-upload-url.json | jq -r '.[keys[0]] | ."x-obs-meta-project-id"')
-              ASSET_UPLOAD_ATTACHMENT_ID=$(cat /tmp/resp-create-upload-url.json | jq -r '.[keys[0]] | .attachment_id')
-              ASSET_UPLOAD_CDN_ADDR=$(cat /tmp/resp-create-upload-url.json | jq -r '.[keys[0]] | ."cdn-addr"')
-              while [[ ! "$(curl -o /tmp/error.log -w %{http_code} -H "X-Obs-Acl: ${ASSET_UPLOAD_X_OBS_ACL}" -H "X-Obs-Callback: ${ASSET_UPLOAD_X_OBS_CALLBACK}" -H "X-Obs-Meta-Project-Id: ${ASSET_UPLOAD_X_OBS_META_PROJECT_ID}" -X PUT -H "Content-Type: application/octet-stream" --data-binary @/tmp/${RELEASE_TAG_NAME}/${ASSET_NAME} ${ASSET_UPLOAD_URL})" =~ ^20.* ]]; do
-                error "      Failed to upload asset ${ASSET_NAME}: $(cat /tmp/error.log), retrying after 10s..."
-                sleep 10
-              done
-              cat /tmp/req-create-release.json | jq --argjson link "{\"action\":\"create\",\"attachment_id\":\"${ASSET_UPLOAD_ATTACHMENT_ID}\",\"url\":\"${ASSET_UPLOAD_CDN_ADDR}\",\"name\":\"${ASSET_NAME}\"}" '.links += [$link]' > /tmp/req-create-release.json.2 && mv -f /tmp/req-create-release.json.2 /tmp/req-create-release.json
-              sleep 10
-            done
-            # create gitcode release
-            while [[ ! "$(curl -b /tmp/login.cookie -o /tmp/error.log -w %{http_code} -X POST -H "Content-Type: application/json" -d @/tmp/req-create-release.json https://web-api.gitcode.com/api/v2/projects/${GITHUB_REPOSITORY_URLENCODED}/releases)" =~ ^20.* ]]; do
-              error "  Failed to create GitCode release ${RELEASE_TAG_NAME}: $(cat /tmp/error.log), retrying after 10s..."
-              sleep 10
-            done
-            info "  GitCode release ${RELEASE_TAG_NAME} created."
-            # cleanup
-            rm -rf /tmp/${RELEASE_TAG_NAME}
-            info "GitCode release ${RELEASE_TAG_NAME} assets uploaded."
-          done
+        uses: gpustack/.github/actions/mirror-release-gitcode@main
+        with:
+          gitcode-username: "${{ secrets.CI_GITCODE_USERNAME }}"
+          gitcode-password: "${{ secrets.CI_GITCODE_PASSWORD }}"
+          gitcode-token: "${{ secrets.CI_GITCODE_TOKEN }}"
+          max-releases: "${{ inputs.max-releases && inputs.max-releases || '1' }}"
+          dry-run: "${{ inputs.dry-run && inputs.dry-run || 'false' }}"
+
+  gitee:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Sync
+        uses: gpustack/.github/actions/mirror-release-gitee@main
+        with:
+          gitee-username: "${{ secrets.CI_GITEE_USERNAME }}"
+          gitee-token: "${{ secrets.CI_GITEE_TOKEN }}"
+          max-releases: "${{ inputs.max-releases && inputs.max-releases || '1' }}"
+          dry-run: "${{ inputs.dry-run && inputs.dry-run || 'false' }}"
 
   tencent-cos:
     runs-on: ubuntu-22.04
@@ -274,53 +69,12 @@ jobs:
         env:
           TENCENTCOS_REGION: "ap-guangzhou"
           TENCENTCOS_BUCKET: "gpustack-1303613262"
-          TENCENTCOS_SECRET_ID: "${{ secrets.CI_TECENTCOS_SECRET_ID }}"
-          TENCENTCOS_SECRET_KEY: "${{ secrets.CI_TECENTCOS_SECRET_KEY }}"
-        run: |
-          #!/usr/bin/env bash
-          
-          set -e
-          
-          shopt -s expand_aliases
-          alias gh="gh --repo ${GITHUB_REPOSITORY}"
-          alias curl="curl --insecure --silent --retry 3"
-          alias jq="jq -c"
-          
-          info() {
-            echo "[INFO] $*"
-          }
-          warn() {
-            echo "[WARN] $*"
-          }
-          error() {
-            echo "[ERRO] $*"
-          }
-          fatal() {
-            echo "[FATA] $*"
-            exit 1
-          }
-          
-          info "Configuring TencentCOS CLI..."
-          curl -o /tmp/coscli -L -X GET https://github.com/tencentyun/coscli/releases/download/v1.0.1/coscli-v1.0.1-linux-amd64 && chmod a+x /tmp/coscli
-          export PATH="/tmp:${PATH}"
-          coscli config set --secret_id "${TENCENTCOS_SECRET_ID}" --secret_key "${TENCENTCOS_SECRET_KEY}" --init-skip || true
-          coscli config add -b "${TENCENTCOS_BUCKET}" -r "${TENCENTCOS_REGION}" --init-skip || true
-          
-          info "Releasing to TencentCOS bucket..."
-          # create tencentcos release if not exists
-          gh release list --json name,tagName,isPrerelease,isDraft --order desc --limit ${MAX_RELEASES} | jq -r 'reverse | .[]' | while read -r release; do
-            RELEASE_IS_PRERELEASE=$(echo "${release}" | jq -r '.isPrerelease')
-            RELEASE_TAG_NAME=$(echo "${release}" | jq -r '.tagName')
-            if [[ "$(echo "${release}" | jq -r '.isDraft')" == "true" ]]; then
-              warn "  Skipped creating invalid release ${RELEASE_TAG_NAME}, continue..."
-              continue
-            fi
-            info "  Syncing TencentCOS release ${RELEASE_TAG_NAME}..."
-            info "    Downloading assets..."
-            gh release download ${RELEASE_TAG_NAME} --dir /tmp/${RELEASE_TAG_NAME} >/dev/null && ls -lh /tmp/${RELEASE_TAG_NAME}/*
-            info "    Syncing assets..."
-            coscli sync /tmp/${RELEASE_TAG_NAME}/ cos://${TENCENTCOS_BUCKET}/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG_NAME}/ --err-retry-num 3 --err-retry-interval 3 --recursive
-            # cleanup
-            rm -rf /tmp/${RELEASE_TAG_NAME}
-            info "  TencentCOS release ${RELEASE_TAG_NAME} synced."
-          done
+      - name: Sync
+        uses: gpustack/.github/actions/mirror-release-tencent-cos@main
+        with:
+          tencent-secret-id: "${{ secrets.CI_TECENTCOS_SECRET_ID }}"
+          tencent-secret-key: "${{ secrets.CI_TECENTCOS_SECRET_KEY }}"
+          tencent-cos-region: "ap-guangzhou"
+          tencent-cos-bucket: "gpustack-1303613262"
+          max-releases: "${{ inputs.max-releases && inputs.max-releases || '1' }}"
+          dry-run: "${{ inputs.dry-run && inputs.dry-run || 'false' }}"
