@@ -1,0 +1,32 @@
+name: prune
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+  issues: write
+
+defaults:
+  run:
+    shell: bash
+
+on:
+  workflow_dispatch:
+    inputs:
+      prune:
+        description: 'Prune all caches'
+        required: false
+        type: boolean
+        default: false
+  schedule:
+    - cron: "0 0 * * *" # every day at 00:00 UTC
+
+jobs:
+  close-stale-issues-and-prs:
+    uses: gpustack/.github/.github/workflows/close-stale-issues-and-prs.yml@main
+
+  clean-stale-caches:
+    uses: gpustack/.github/.github/workflows/clean-stale-caches.yml@main
+    with:
+      # allow to prune all caches on demand
+      prune: ${{ github.event_name != 'schedule' && inputs.prune || false }}

@@ -36,7 +36,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Sync
-        uses: gpustack/.github/actions/mirror-release-gitcode@main
+        uses: gpustack/.github/.github/actions/mirror-release-gitcode@main
         with:
           gitcode-username: "${{ secrets.CI_GITCODE_USERNAME }}"
           gitcode-password: "${{ secrets.CI_GITCODE_PASSWORD }}"
@@ -54,7 +54,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Sync
-        uses: gpustack/.github/actions/mirror-release-gitee@main
+        uses: gpustack/.github/.github/actions/mirror-release-gitee@main
         with:
           gitee-username: "${{ secrets.CI_GITEE_USERNAME }}"
           gitee-token: "${{ secrets.CI_GITEE_TOKEN }}"
@@ -66,7 +66,7 @@ jobs:
     timeout-minutes: 120
     steps:
       - name: Sync
-        uses: gpustack/.github/actions/mirror-release-tencent-cos@main
+        uses: gpustack/.github/.github/actions/mirror-release-tencent-cos@main
         with:
           tencent-secret-id: "${{ secrets.CI_TECENTCOS_SECRET_ID }}"
           tencent-secret-key: "${{ secrets.CI_TECENTCOS_SECRET_KEY }}"
