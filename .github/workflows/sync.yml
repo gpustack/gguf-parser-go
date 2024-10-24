@@ -13,10 +13,15 @@ on:
   workflow_dispatch:
     inputs:
       max_releases:
-        description: "Maximum number of releases to sync"
+        description: "Maximum number of latest releases to sync"
         required: false
         default: 1
         type: number
+      specific_release_tag:
+        description: "Specific release tag to sync"
+        required: false
+        default: ""
+        type: string
       dry_run:
         description: "Skip the actual sync"
         required: false
@@ -27,6 +32,7 @@ on:
 
 jobs:
   gitcode:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-22.04
     timeout-minutes: 240
     steps:
@@ -42,9 +48,11 @@ jobs:
           gitcode-password: "${{ secrets.CI_GITCODE_PASSWORD }}"
           gitcode-token: "${{ secrets.CI_GITCODE_TOKEN }}"
           max-releases: "${{ inputs.max_releases && inputs.max_releases || '1' }}"
+          specific-release-tag: "${{ inputs.specific_release_tag && inputs.specific_release_tag || '' }}"
           dry-run: "${{ inputs.dry_run && inputs.dry_run || 'false' }}"
 
   gitee:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     steps:
@@ -59,6 +67,7 @@ jobs:
           gitee-username: "${{ secrets.CI_GITEE_USERNAME }}"
           gitee-token: "${{ secrets.CI_GITEE_TOKEN }}"
           max-releases: "${{ inputs.max_releases && inputs.max_releases || '1' }}"
+          specific-release-tag: "${{ inputs.specific_release_tag && inputs.specific_release_tag || '' }}"
           dry-run: "${{ inputs.dry_run && inputs.dry_run || 'false' }}"
 
   tencent-cos:
@@ -73,4 +82,5 @@ jobs:
           tencent-cos-region: "ap-guangzhou"
           tencent-cos-bucket: "gpustack-1303613262"
           max-releases: "${{ inputs.max_releases && inputs.max_releases || '1' }}"
+          specific-release-tag: "${{ inputs.specific_release_tag && inputs.specific_release_tag || '' }}"
           dry-run: "${{ inputs.dry_run && inputs.dry_run || 'false' }}"
