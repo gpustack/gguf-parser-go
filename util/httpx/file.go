@@ -191,7 +191,8 @@ func (f *SeekerFile) sync(off int64, reset bool) error {
 		f.b.Reset()
 		f.c = off
 	}
-	_, err = io.CopyBuffer(f.b, resp.Body, buf)
+
+	_, err = io.CopyBuffer(_WriterOnly{w: f.b}, resp.Body, buf)
 	if err != nil {
 		return err
 	}
@@ -212,4 +213,14 @@ func (f *SeekerFile) skip(dif int64) error {
 		return err
 	}
 	return nil
+}
+
+// _WriterOnly is a wrapper to expose the io.Writer method only,
+// which to avoid calling the io.ReaderFrom method.
+type _WriterOnly struct {
+	w io.Writer
+}
+
+func (w _WriterOnly) Write(p []byte) (int, error) {
+	return w.w.Write(p)
 }
