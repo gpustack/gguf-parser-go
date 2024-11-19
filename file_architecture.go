@@ -1,127 +1,205 @@
 package gguf_parser
 
-// GGUFArchitecture represents the architecture metadata of a GGUF file.
-type GGUFArchitecture struct {
-	/* Basic */
+import (
+	"regexp"
+	"strings"
+)
 
-	// Type describes the type of the file,
-	// default is "model".
-	Type string `json:"type"`
-	// Architecture describes what architecture this model implements.
-	//
-	// All lowercase ASCII, with only [a-z0-9]+ characters allowed.
-	Architecture string `json:"architecture"`
-	// MaximumContextLength(n_ctx_train) is the maximum context length of the model.
-	//
-	// For most architectures, this is the hard limit on the length of the input.
-	// Architectures, like RWKV,
-	// that are not reliant on transformer-style attention may be able to handle larger inputs,
-	// but this is not guaranteed.
-	MaximumContextLength uint64 `json:"maximumContextLength,omitempty"`
-	// EmbeddingLength(n_embd) is the length of the embedding layer.
-	EmbeddingLength uint64 `json:"embeddingLength,omitempty"`
-	// BlockCount(n_layer) is the number of blocks of attention and feed-forward layers,
-	// i.e. the bulk of the LLM.
-	// This does not include the input or embedding layers.
-	BlockCount uint64 `json:"blockCount,omitempty"`
-	// FeedForwardLength(n_ff) is the length of the feed-forward layer.
-	FeedForwardLength uint64 `json:"feedForwardLength,omitempty"`
-	// ExpertFeedForwardLength(expert_feed_forward_length) is the length of the feed-forward layer in the expert model.
-	ExpertFeedForwardLength uint64 `json:"expertFeedForwardLength,omitempty"`
-	// ExpertSharedFeedForwardLength(expert_shared_feed_forward_length) is the length of the shared feed-forward layer in the expert model.
-	ExpertSharedFeedForwardLength uint64 `json:"expertSharedFeedForwardLength,omitempty"`
-	// ExpertCount(n_expert) is the number of experts in MoE models.
-	ExpertCount uint32 `json:"expertCount,omitempty"`
-	// ExpertUsedCount(n_expert_used) is the number of experts used during each token evaluation in MoE models.
-	ExpertUsedCount uint32 `json:"expertUsedCount,omitempty"`
-	// AttentionHeadCount(n_head) is the number of attention heads.
-	AttentionHeadCount uint64 `json:"attentionHeadCount,omitempty"`
-	// AttentionHeadCountKV(n_head_kv) is the number of attention heads per group used in Grouped-Query-Attention.
-	//
-	// If not provided or equal to AttentionHeadCount,
-	// the model does not use Grouped-Query-Attention.
-	AttentionHeadCountKV uint64 `json:"attentionHeadCountKV,omitempty"`
-	// AttentionMaxALiBIBias is the maximum bias to use for ALiBI.
-	AttentionMaxALiBIBias float32 `json:"attentionMaxALiBIBias,omitempty"`
-	// AttentionClampKQV describes a value `C`,
-	// which is used to clamp the values of the `Q`, `K` and `V` tensors between `[-C, C]`.
-	AttentionClampKQV float32 `json:"attentionClampKQV,omitempty"`
-	// AttentionLayerNormEpsilon is the epsilon value used in the LayerNorm(Layer Normalization).
-	AttentionLayerNormEpsilon float32 `json:"attentionLayerNormEpsilon,omitempty"`
-	// AttentionLayerNormRMSEpsilon is the epsilon value used in the RMSNorm(root Mean Square Layer Normalization),
-	// which is a simplification of the original LayerNorm.
-	AttentionLayerNormRMSEpsilon float32 `json:"attentionLayerNormRMSEpsilon,omitempty"`
-	// AttentionKeyLength(n_embd_head_k) is the size of a key head.
-	//
-	// Defaults to `EmbeddingLength / AttentionHeadCount`.
-	AttentionKeyLength uint32 `json:"attentionKeyLength,omitempty"`
-	// AttentionValueLength(n_embd_head_v) is the size of a value head.
-	//
-	// Defaults to `EmbeddingLength / AttentionHeadCount`.
-	AttentionValueLength uint32 `json:"attentionValueLength,omitempty"`
-	// AttentionCausal is true if the attention is causal.
-	AttentionCausal bool `json:"attentionCausal,omitempty"`
-	// RoPEDimensionCount is the number of dimensions in the RoPE(Rotary Positional Encoding).
-	RoPEDimensionCount uint64 `json:"ropeDimensionCount,omitempty"`
-	// RoPEFrequencyBase is the base frequency of the RoPE.
-	RoPEFrequencyBase float32 `json:"ropeFrequencyBase,omitempty"`
-	// RoPEFrequencyScale is the frequency scale of the RoPE.
-	RoPEScalingType string `json:"ropeScalingType,omitempty"`
-	// RoPEScalingFactor is the scaling factor of the RoPE.
-	RoPEScalingFactor float32 `json:"ropeScalingFactor,omitempty"`
-	// RoPEScalingOriginalContextLength is the original context length of the RoPE scaling.
-	RoPEScalingOriginalContextLength uint64 `json:"ropeScalingOriginalContextLength,omitempty"`
-	// RoPEScalingFinetuned is true if the RoPE scaling is fine-tuned.
-	RoPEScalingFinetuned bool `json:"ropeScalingFinetuned,omitempty"`
-	// SSMConvolutionKernel is the size of the convolution kernel used in the SSM(Selective State Space Model).
-	SSMConvolutionKernel uint32 `json:"ssmConvolutionKernel,omitempty"`
-	// SSMInnerSize is the embedding size of the state in SSM.
-	SSMInnerSize uint32 `json:"ssmInnerSize,omitempty"`
-	// SSMStateSize is the size of the recurrent state in SSM.
-	SSMStateSize uint32 `json:"ssmStateSize,omitempty"`
-	// SSMTimeStepRank is the rank of the time steps in SSM.
-	SSMTimeStepRank uint32 `json:"ssmTimeStepRank,omitempty"`
-	// VocabularyLength is the size of the vocabulary.
-	//
-	// VocabularyLength is the same as the tokenizer's token size.
-	VocabularyLength uint64 `json:"vocabularyLength,omitempty"`
+// Types for the architecture metadata of a GGUF file.
+type (
+	// GGUFArchitecture represents the architecture metadata of a GGUF file.
+	GGUFArchitecture struct {
+		/* Basic */
 
-	/* Appendix */
+		// Type describes the type of the file,
+		// default is "model".
+		Type string `json:"type"`
+		// Architecture describes what architecture this model implements.
+		//
+		// All lowercase ASCII.
+		Architecture string `json:"architecture"`
+		// MaximumContextLength(n_ctx_train) is the maximum context length of the model.
+		//
+		// For most architectures, this is the hard limit on the length of the input.
+		// Architectures, like RWKV,
+		// that are not reliant on transformer-style attention may be able to handle larger inputs,
+		// but this is not guaranteed.
+		MaximumContextLength uint64 `json:"maximumContextLength,omitempty"`
+		// EmbeddingLength(n_embd) is the length of the embedding layer.
+		EmbeddingLength uint64 `json:"embeddingLength,omitempty"`
+		// BlockCount(n_layer) is the number of blocks of attention and feed-forward layers,
+		// i.e. the bulk of the LLM.
+		// This does not include the input or embedding layers.
+		BlockCount uint64 `json:"blockCount,omitempty"`
+		// FeedForwardLength(n_ff) is the length of the feed-forward layer.
+		FeedForwardLength uint64 `json:"feedForwardLength,omitempty"`
+		// ExpertFeedForwardLength(expert_feed_forward_length) is the length of the feed-forward layer in the expert model.
+		ExpertFeedForwardLength uint64 `json:"expertFeedForwardLength,omitempty"`
+		// ExpertSharedFeedForwardLength(expert_shared_feed_forward_length) is the length of the shared feed-forward layer in the expert model.
+		ExpertSharedFeedForwardLength uint64 `json:"expertSharedFeedForwardLength,omitempty"`
+		// ExpertCount(n_expert) is the number of experts in MoE models.
+		ExpertCount uint32 `json:"expertCount,omitempty"`
+		// ExpertUsedCount(n_expert_used) is the number of experts used during each token evaluation in MoE models.
+		ExpertUsedCount uint32 `json:"expertUsedCount,omitempty"`
+		// AttentionHeadCount(n_head) is the number of attention heads.
+		AttentionHeadCount uint64 `json:"attentionHeadCount,omitempty"`
+		// AttentionHeadCountKV(n_head_kv) is the number of attention heads per group used in Grouped-Query-Attention.
+		//
+		// If not provided or equal to AttentionHeadCount,
+		// the model does not use Grouped-Query-Attention.
+		AttentionHeadCountKV uint64 `json:"attentionHeadCountKV,omitempty"`
+		// AttentionMaxALiBIBias is the maximum bias to use for ALiBI.
+		AttentionMaxALiBIBias float32 `json:"attentionMaxALiBIBias,omitempty"`
+		// AttentionClampKQV describes a value `C`,
+		// which is used to clamp the values of the `Q`, `K` and `V` tensors between `[-C, C]`.
+		AttentionClampKQV float32 `json:"attentionClampKQV,omitempty"`
+		// AttentionLayerNormEpsilon is the epsilon value used in the LayerNorm(Layer Normalization).
+		AttentionLayerNormEpsilon float32 `json:"attentionLayerNormEpsilon,omitempty"`
+		// AttentionLayerNormRMSEpsilon is the epsilon value used in the RMSNorm(root Mean Square Layer Normalization),
+		// which is a simplification of the original LayerNorm.
+		AttentionLayerNormRMSEpsilon float32 `json:"attentionLayerNormRMSEpsilon,omitempty"`
+		// AttentionKeyLength(n_embd_head_k) is the size of a key head.
+		//
+		// Defaults to `EmbeddingLength / AttentionHeadCount`.
+		AttentionKeyLength uint32 `json:"attentionKeyLength,omitempty"`
+		// AttentionValueLength(n_embd_head_v) is the size of a value head.
+		//
+		// Defaults to `EmbeddingLength / AttentionHeadCount`.
+		AttentionValueLength uint32 `json:"attentionValueLength,omitempty"`
+		// AttentionCausal is true if the attention is causal.
+		AttentionCausal bool `json:"attentionCausal,omitempty"`
+		// RoPEDimensionCount is the number of dimensions in the RoPE(Rotary Positional Encoding).
+		RoPEDimensionCount uint64 `json:"ropeDimensionCount,omitempty"`
+		// RoPEFrequencyBase is the base frequency of the RoPE.
+		RoPEFrequencyBase float32 `json:"ropeFrequencyBase,omitempty"`
+		// RoPEFrequencyScale is the frequency scale of the RoPE.
+		RoPEScalingType string `json:"ropeScalingType,omitempty"`
+		// RoPEScalingFactor is the scaling factor of the RoPE.
+		RoPEScalingFactor float32 `json:"ropeScalingFactor,omitempty"`
+		// RoPEScalingOriginalContextLength is the original context length of the RoPE scaling.
+		RoPEScalingOriginalContextLength uint64 `json:"ropeScalingOriginalContextLength,omitempty"`
+		// RoPEScalingFinetuned is true if the RoPE scaling is fine-tuned.
+		RoPEScalingFinetuned bool `json:"ropeScalingFinetuned,omitempty"`
+		// SSMConvolutionKernel is the size of the convolution kernel used in the SSM(Selective State Space Model).
+		SSMConvolutionKernel uint32 `json:"ssmConvolutionKernel,omitempty"`
+		// SSMInnerSize is the embedding size of the state in SSM.
+		SSMInnerSize uint32 `json:"ssmInnerSize,omitempty"`
+		// SSMStateSize is the size of the recurrent state in SSM.
+		SSMStateSize uint32 `json:"ssmStateSize,omitempty"`
+		// SSMTimeStepRank is the rank of the time steps in SSM.
+		SSMTimeStepRank uint32 `json:"ssmTimeStepRank,omitempty"`
+		// VocabularyLength is the size of the vocabulary.
+		//
+		// VocabularyLength is the same as the tokenizer's token size.
+		VocabularyLength uint64 `json:"vocabularyLength,omitempty"`
 
-	// EmbeddingGGQA is the GQA of the embedding layer.
-	EmbeddingGQA uint64 `json:"embeddingGQA,omitempty"`
-	// EmbeddingKeyGQA is the number of key GQA in the embedding layer.
-	EmbeddingKeyGQA uint64 `json:"embeddingKeyGQA,omitempty"`
-	// EmbeddingValueGQA is the number of value GQA in the embedding layer.
-	EmbeddingValueGQA uint64 `json:"embeddingValueGQA,omitempty"`
+		/* Appendix */
 
-	// ClipHasTextEncoder indicates whether the clip model has text encoder or not.
-	//
-	// Only used when Architecture is "clip".
-	ClipHasTextEncoder bool `json:"clipHasTextEncoder,omitempty"`
-	// ClipHasVisionEncoder indicates whether the clip model has vision encoder or not.
-	//
-	// Only used when Architecture is "clip".
-	ClipHasVisionEncoder bool `json:"clipHasVisionEncoder,omitempty"`
-	// ClipProjectorType is the type of the projector used in the clip model.
-	//
-	// Only used when Architecture is "clip".
-	ClipProjectorType string `json:"clipProjectorType,omitempty"`
+		// EmbeddingGGQA is the GQA of the embedding layer.
+		EmbeddingGQA uint64 `json:"embeddingGQA,omitempty"`
+		// EmbeddingKeyGQA is the number of key GQA in the embedding layer.
+		EmbeddingKeyGQA uint64 `json:"embeddingKeyGQA,omitempty"`
+		// EmbeddingValueGQA is the number of value GQA in the embedding layer.
+		EmbeddingValueGQA uint64 `json:"embeddingValueGQA,omitempty"`
 
-	// AdapterType is the type of the adapter.
-	AdapterType string `json:"adapterType,omitempty"`
-	// AdapterLoRAAlpha is the alpha value of the LoRA adapter.
-	//
-	// Only used when AdapterType is "lora".
-	AdapterLoRAAlpha float32 `json:"adapterLoRAAlpha,omitempty"`
-	// AdapterControlVectorLayerCount is the number of layers in the control vector.
-	//
-	// Only used when Architecture is "control_vector".
-	AdapterControlVectorLayerCount uint32 `json:"adapterControlVectorLayerCount,omitempty"`
+		// ClipHasTextEncoder indicates whether the clip model has text encoder or not.
+		//
+		// Only used when Architecture is "clip".
+		ClipHasTextEncoder bool `json:"clipHasTextEncoder,omitempty"`
+		// ClipHasVisionEncoder indicates whether the clip model has vision encoder or not.
+		//
+		// Only used when Architecture is "clip".
+		ClipHasVisionEncoder bool `json:"clipHasVisionEncoder,omitempty"`
+		// ClipProjectorType is the type of the projector used in the clip model.
+		//
+		// Only used when Architecture is "clip".
+		ClipProjectorType string `json:"clipProjectorType,omitempty"`
+
+		// AdapterType is the type of the adapter.
+		AdapterType string `json:"adapterType,omitempty"`
+		// AdapterLoRAAlpha is the alpha value of the LoRA adapter.
+		//
+		// Only used when AdapterType is "lora".
+		AdapterLoRAAlpha float32 `json:"adapterLoRAAlpha,omitempty"`
+		// AdapterControlVectorLayerCount is the number of layers in the control vector.
+		//
+		// Only used when Architecture is "control_vector".
+		AdapterControlVectorLayerCount uint32 `json:"adapterControlVectorLayerCount,omitempty"`
+
+		// DiffusionArchitecture is the actual architecture of the diffusion model.
+		//
+		// Only used when Architecture is "diffusion".
+		DiffusionArchitecture string `json:"diffusionArchitecture,omitempty"`
+		// DiffusionConditioners is the list of diffusion conditioners.
+		//
+		// Only used when Architecture is "diffusion".
+		DiffusionConditioners GGUFArchitectureDiffusionConditioners `json:"diffusionConditioners,omitempty"`
+		// DiffusionAutoencoder represents the autoencoder of the diffusion model.
+		//
+		// Only used when Architecture is "diffusion".
+		DiffusionAutoencoder *GGUFArchitectureDiffusionAutoencoder `json:"diffusionAutoencoder,omitempty"`
+	}
+
+	// GGUFArchitectureDiffusionConditioners is the list of GGUFArchitectureDiffusionConditioner.
+	GGUFArchitectureDiffusionConditioners []GGUFArchitectureDiffusionConditioner
+
+	// GGUFArchitectureDiffusionConditioner represents the conditioner metadata of the diffusion architecture.
+	GGUFArchitectureDiffusionConditioner struct {
+		// Architecture is the architecture of the diffusion conditioner.
+		Architecture string `json:"architecture"`
+
+		// FileType describes the type of the majority of the tensors in the GGUF file.
+		FileType GGUFFileType `json:"fileType"`
+	}
+
+	// GGUFArchitectureDiffusionAutoencoder represents the autoencoder metadata of the diffusion architecture.
+	GGUFArchitectureDiffusionAutoencoder struct {
+		// Architecture is the architecture of the diffusion autoencoder.
+		//
+		// Currently, only "VAE" is supported.
+		Architecture string `json:"architecture"`
+
+		// FileType describes the type of the majority of the tensors in the GGUF file.
+		FileType GGUFFileType `json:"fileType"`
+	}
+)
+
+// DiffusionHasConditioners returns true if the diffusion model has conditioners.
+func (ga GGUFArchitecture) DiffusionHasConditioners() bool {
+	return len(ga.DiffusionConditioners) > 0
+}
+
+// DiffusionHasAutoencoder returns true if the diffusion model has an autoencoder.
+func (ga GGUFArchitecture) DiffusionHasAutoencoder() bool {
+	return ga.DiffusionAutoencoder != nil && ga.DiffusionAutoencoder.Architecture != ""
+}
+
+func (gacs GGUFArchitectureDiffusionConditioners) String() string {
+	var sb strings.Builder
+	for i, gac := range gacs {
+		if i > 0 {
+			sb.WriteString(", ")
+		}
+		sb.WriteString(gac.String())
+	}
+	return sb.String()
+}
+
+func (gac GGUFArchitectureDiffusionConditioner) String() string {
+	return gac.Architecture + " (" + gac.FileType.String() + ")"
+}
+
+func (gaa GGUFArchitectureDiffusionAutoencoder) String() string {
+	return gaa.Architecture + " (" + gaa.FileType.String() + ")"
 }
 
 // Architecture returns the architecture metadata of the GGUF file.
 func (gf *GGUFFile) Architecture() (ga GGUFArchitecture) {
+	if gf.TensorInfos.Match(regexp.MustCompile(`^model\.diffusion_model\..*`)) ||
+		gf.TensorInfos.Match(regexp.MustCompile(`^double_blocks\..*`)) {
+		return gf.diffuserArchitecture()
+	}
+
 	var (
 		generalTypeKey         = "general.type"
 		generalArchitectureKey = "general.architecture"
@@ -156,7 +234,126 @@ func (gf *GGUFFile) Architecture() (ga GGUFArchitecture) {
 	case typ == "adapter":
 		return gf.adapterArchitecture(arch)
 	}
-	return gf.modelArchitecture(arch)
+	return gf.transformerArchitecture(arch)
+}
+
+func (gf *GGUFFile) diffuserArchitecture() (ga GGUFArchitecture) {
+	const (
+		// Diffusion
+
+		sdKey          = "model.diffusion_model.output_blocks.11.1.transformer_blocks.0.attn2.to_v.weight" // SD 1.x/2.x
+		sdXlKey        = "model.diffusion_model.output_blocks.5.1.transformer_blocks.1.attn1.to_v.weight"  // SD XL
+		sdXlRefinerKey = "model.diffusion_model.output_blocks.8.1.transformer_blocks.1.attn1.to_v.weight"  // SD XL Refiner
+		sd3MediumKey   = "model.diffusion_model.joint_blocks.23.x_block.attn.proj.weight"                  // SD 3 Medium
+		sd3_5MediumKey = "model.diffusion_model.joint_blocks.23.x_block.attn.ln_k.weight"                  // SD 3.5 Medium
+		sd3_5LargeKey  = "model.diffusion_model.joint_blocks.37.x_block.attn.ln_k.weight"                  // SD 3.5 Large
+
+		fluxKey     = "model.diffusion_model.double_blocks.18.txt_attn.proj.weight" // FLUX.1-schnell
+		fluxKey2    = "double_blocks.18.txt_attn.proj.weight"
+		fluxDevKey  = "model.diffusion_model.guidance_in.in_layer.weight" // FLUX.1-dev
+		fluxDevKey2 = "guidance_in.in_layer.weight"
+
+		// Conditioner
+
+		openAiClipVitL14Key = "cond_stage_model.transformer.text_model.encoder.layers.11.self_attn.k_proj.weight"   // OpenAI CLIP ViT-L/14
+		openClipVitH14Key   = "cond_stage_model.transformer.text_model.encoder.layers.22.self_attn.k_proj.weight"   // OpenCLIP ViT-H/14
+		openClipVitG14Key   = "cond_stage_model.1.transformer.text_model.encoder.layers.31.self_attn.k_proj.weight" // OpenCLIP ViT-G/14
+		t5xxlKey            = "cond_stage_model.1.transformer.encoder.block.23.layer.0.SelfAttention.k.weight"      // Google T5-xxl
+		t5xxlKey2           = "cond_stage_model.2.transformer.encoder.block.23.layer.0.SelfAttention.k.weight"
+	)
+
+	tis, _ := gf.TensorInfos.Index([]string{
+		sdKey,
+		sdXlKey,
+		sdXlRefinerKey,
+		sd3MediumKey,
+		sd3_5MediumKey,
+		sd3_5LargeKey,
+		fluxKey,
+		fluxKey2,
+		fluxDevKey,
+		fluxDevKey2,
+
+		openAiClipVitL14Key,
+		openClipVitH14Key,
+		openClipVitG14Key,
+		t5xxlKey,
+		t5xxlKey2,
+	})
+
+	ga.Type = "model"
+	ga.Architecture = "diffusion"
+
+	if ti, ok := tis[sdKey]; ok {
+		ga.DiffusionArchitecture = "Stable Diffusion 1.x"
+		if ti.Dimensions[0] == 1024 {
+			ga.DiffusionArchitecture = "Stable Diffusion 2.x"
+		}
+	} else if _, ok := tis[sdXlKey]; ok {
+		ga.DiffusionArchitecture = "Stable Diffusion XL"
+		if _, ok = tis[sdXlRefinerKey]; ok {
+			ga.DiffusionArchitecture = "Stable Diffusion XL Refiner"
+		}
+	} else if _, ok := tis[sd3MediumKey]; ok {
+		ga.DiffusionArchitecture = "Stable Diffusion 3 Medium"
+		if _, ok = tis[sd3_5MediumKey]; ok {
+			ga.DiffusionArchitecture = "Stable Diffusion 3.5 Medium"
+			if _, ok = tis[sd3_5LargeKey]; ok {
+				ga.DiffusionArchitecture = "Stable Diffusion 3.5 Large"
+			}
+		}
+	}
+	if _, ok := tis[fluxKey]; ok {
+		ga.DiffusionArchitecture = "FLUX.1-schnell"
+		if _, ok = tis[fluxDevKey]; ok {
+			ga.DiffusionArchitecture = "FLUX.1-dev"
+		}
+	} else if _, ok := tis[fluxKey2]; ok {
+		ga.DiffusionArchitecture = "FLUX.1-schnell"
+		if _, ok = tis[fluxDevKey2]; ok {
+			ga.DiffusionArchitecture = "FLUX.1-dev"
+		}
+	}
+
+	if ti, ok := tis[openAiClipVitL14Key]; ok {
+		cond := GGUFArchitectureDiffusionConditioner{
+			Architecture: "OpenAI CLIP ViT-L/14",
+			FileType:     ti.GetFileType(),
+		}
+		if ti, ok = tis[openClipVitH14Key]; ok {
+			cond = GGUFArchitectureDiffusionConditioner{
+				Architecture: "OpenCLIP ViT-H/14",
+				FileType:     ti.GetFileType(),
+			}
+		}
+		ga.DiffusionConditioners = append(ga.DiffusionConditioners, cond)
+	}
+	if ti, ok := tis[openClipVitG14Key]; ok {
+		ga.DiffusionConditioners = append(ga.DiffusionConditioners, GGUFArchitectureDiffusionConditioner{
+			Architecture: "OpenCLIP ViT-G/14",
+			FileType:     ti.GetFileType(),
+		})
+	}
+	if ti, ok := tis[t5xxlKey]; ok {
+		ga.DiffusionConditioners = append(ga.DiffusionConditioners, GGUFArchitectureDiffusionConditioner{
+			Architecture: "Google T5-xxl",
+			FileType:     ti.GetFileType(),
+		})
+	} else if ti, ok = tis[t5xxlKey2]; ok {
+		ga.DiffusionConditioners = append(ga.DiffusionConditioners, GGUFArchitectureDiffusionConditioner{
+			Architecture: "Google T5-xxl",
+			FileType:     ti.GetFileType(),
+		})
+	}
+
+	if tis := gf.TensorInfos.Search(regexp.MustCompile(`^first_stage_model\..*`)); len(tis) != 0 {
+		ga.DiffusionAutoencoder = &GGUFArchitectureDiffusionAutoencoder{
+			Architecture: ga.DiffusionArchitecture + " VAE",
+			FileType:     GGUFTensorInfos(tis).GetFileType(),
+		}
+	}
+
+	return ga
 }
 
 func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
@@ -295,7 +492,7 @@ func (gf *GGUFFile) adapterArchitecture(arch string) (ga GGUFArchitecture) {
 	return ga
 }
 
-func (gf *GGUFFile) modelArchitecture(arch string) (ga GGUFArchitecture) {
+func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 	var (
 		contextLengthKey     = arch + ".context_length"
 		embeddingLengthKey   = arch + ".embedding_length"

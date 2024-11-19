@@ -24,3 +24,13 @@ func CutFromRight(s, sep string) (before, after string, found bool) {
 	}
 	return s, "", false
 }
+
+// ReplaceAllFunc is similar to strings.ReplaceAll,
+// but it replaces each rune in s with the result of f(r).
+func ReplaceAllFunc(s string, f func(rune) rune) string {
+	var b strings.Builder
+	for _, r := range s {
+		b.WriteRune(f(r))
+	}
+	return b.String()
+}

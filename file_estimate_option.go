@@ -7,30 +7,41 @@ import (
 )
 
 type (
-	_LLaMACppRunEstimateOptions struct {
-		Architecture        *GGUFArchitecture
-		Tokenizer           *GGUFTokenizer
-		ContextSize         *int32
-		InMaxContextSize    bool
-		LogicalBatchSize    *int32
-		PhysicalBatchSize   *int32
+	_GGUFRunEstimateOptions struct {
+		// Common
 		ParallelSize        *int32
-		CacheKeyType        *GGMLType
-		CacheValueType      *GGMLType
-		OffloadKVCache      *bool
-		OffloadLayers       *uint64
 		FlashAttention      bool
-		SplitMode           LLaMACppSplitMode
-		TensorSplitFraction []float64
 		MainGPUIndex        int
 		RPCServers          []string
-		Projector           *LLaMACppRunEstimate
-		Drafter             *LLaMACppRunEstimate
-		Adapters            []LLaMACppRunEstimate
-		DeviceMetrics       []LLaMACppRunDeviceMetric
+		TensorSplitFraction []float64
+		DeviceMetrics       []GGUFRunDeviceMetric
+
+		// LLaMACpp (LMC) specific
+		LMCContextSize       *int32
+		LMCInMaxContextSize  bool
+		LMCLogicalBatchSize  *int32
+		LMCPhysicalBatchSize *int32
+		LMCCacheKeyType      *GGMLType
+		LMCCacheValueType    *GGMLType
+		LMCOffloadKVCache    *bool
+		LMCOffloadLayers     *uint64
+		LMCSplitMode         LLaMACppSplitMode
+		LMCProjector         *LLaMACppRunEstimate
+		LMCDrafter           *LLaMACppRunEstimate
+		LMCAdapters          []LLaMACppRunEstimate
+
+		// StableDiffusionCpp (SDC) specific
+		SDCBatchCount         *int32
+		SDCHeight             *uint32
+		SDCWidth              *uint32
+		SDCOffloadConditioner *bool
+		SDCOffloadAutoencoder *bool
+		SDCAutoencoderTiling  *bool
+		SDCUpscaler           *StableDiffusionCppRunEstimate
+		SDCControlNet         *StableDiffusionCppRunEstimate
 	}
 
-	// LLaMACppRunDeviceMetric holds the device metric for the estimate.
+	// GGUFRunDeviceMetric holds the device metric for the estimate.
 	//
 	// When the device represents a CPU,
 	// FLOPS refers to the floating-point operations per second of that CPU,
@@ -45,7 +56,7 @@ type (
 	// When the device represents a specific node,
 	// FLOPS depends on whether a CPU or GPU is being used,
 	// while UpBandwidth refers to the network bandwidth between nodes.
-	LLaMACppRunDeviceMetric struct {
+	GGUFRunDeviceMetric struct {
 		// FLOPS is the floating-point operations per second of the device.
 		FLOPS FLOPSScalar
 		// UpBandwidth is the bandwidth of the device to transmit data to calculate,
@@ -56,69 +67,13 @@ type (
 		DownBandwidth BytesPerSecondScalar
 	}
 
-	// LLaMACppRunEstimateOption is the options for the estimate.
-	LLaMACppRunEstimateOption func(*_LLaMACppRunEstimateOptions)
+	// GGUFRunEstimateOption is the options for the estimate.
+	GGUFRunEstimateOption func(*_GGUFRunEstimateOptions)
 )
 
-// WithArchitecture sets the architecture for the estimate.
-//
-// Allows reusing the same GGUFArchitecture for multiple estimates.
-func WithArchitecture(arch GGUFArchitecture) LLaMACppRunEstimateOption {
-	return func(o *_LLaMACppRunEstimateOptions) {
-		o.Architecture = &arch
-	}
-}
-
-// WithTokenizer sets the tokenizer for the estimate.
-//
-// Allows reusing the same GGUFTokenizer for multiple estimates.
-func WithTokenizer(tokenizer GGUFTokenizer) LLaMACppRunEstimateOption {
-	return func(o *_LLaMACppRunEstimateOptions) {
-		o.Tokenizer = &tokenizer
-	}
-}
-
-// WithContextSize sets the context size for the estimate.
-func WithContextSize(size int32) LLaMACppRunEstimateOption {
-	return func(o *_LLaMACppRunEstimateOptions) {
-		if size <= 0 {
-			return
-		}
-		o.ContextSize = &size
-	}
-}
-
-// WithinMaxContextSize limits the context size to the maximum,
-// if the context size is over the maximum.
-func WithinMaxContextSize() LLaMACppRunEstimateOption {
-	return func(o *_LLaMACppRunEstimateOptions) {
-		o.InMaxContextSize = true
-	}
-}
-
-// WithLogicalBatchSize sets the logical batch size for the estimate.
-func WithLogicalBatchSize(size int32) LLaMACppRunEstimateOption {
-	return func(o *_LLaMACppRunEstimateOptions) {
-		if size <= 0 {
-			return
-		}
-		o.LogicalBatchSize = &size
-	}
-}
-
-// WithPhysicalBatchSize sets the physical batch size for the estimate.
-func WithPhysicalBatchSize(size int32) LLaMACppRunEstimateOption {
-	return func(o *_LLaMACppRunEstimateOptions) {
-		if size <= 0 {
-			return
-		}
-		o.PhysicalBatchSize = &size
-	}
-}
-
 // WithParallelSize sets the (decoding sequences) parallel size for the estimate.
-func WithParallelSize(size int32) LLaMACppRunEstimateOption {
-	return func(o *_LLaMACppRunEstimateOptions) {
+func WithParallelSize(size int32) GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
 		if size <= 0 {
 			return
 		}
@@ -126,71 +81,32 @@ func WithParallelSize(size int32) LLaMACppRunEstimateOption {
 	}
 }
 
-// _GGUFEstimateCacheTypeAllowList is the allow list of cache key and value types.
-var _GGUFEstimateCacheTypeAllowList = []GGMLType{
-	GGMLTypeF32,
-	GGMLTypeF16,
-	GGMLTypeQ8_0,
-	GGMLTypeQ4_0, GGMLTypeQ4_1,
-	GGMLTypeIQ4_NL,
-	GGMLTypeQ5_0, GGMLTypeQ5_1,
-}
-
-// WithCacheKeyType sets the cache key type for the estimate.
-func WithCacheKeyType(t GGMLType) LLaMACppRunEstimateOption {
-	return func(o *_LLaMACppRunEstimateOptions) {
-		if slices.Contains(_GGUFEstimateCacheTypeAllowList, t) {
-			o.CacheKeyType = &t
-		}
-	}
-}
-
-// WithCacheValueType sets the cache value type for the estimate.
-func WithCacheValueType(t GGMLType) LLaMACppRunEstimateOption {
-	return func(o *_LLaMACppRunEstimateOptions) {
-		if slices.Contains(_GGUFEstimateCacheTypeAllowList, t) {
-			o.CacheValueType = &t
-		}
-	}
-}
-
-// WithoutOffloadKVCache disables offloading the KV cache.
-func WithoutOffloadKVCache() LLaMACppRunEstimateOption {
-	return func(o *_LLaMACppRunEstimateOptions) {
-		o.OffloadKVCache = ptr.To(false)
-	}
-}
-
-// WithOffloadLayers sets the number of layers to offload.
-func WithOffloadLayers(layers uint64) LLaMACppRunEstimateOption {
-	return func(o *_LLaMACppRunEstimateOptions) {
-		o.OffloadLayers = &layers
-	}
-}
-
 // WithFlashAttention sets the flash attention flag.
-func WithFlashAttention() LLaMACppRunEstimateOption {
-	return func(o *_LLaMACppRunEstimateOptions) {
+func WithFlashAttention() GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
 		o.FlashAttention = true
 	}
 }
 
-// LLaMACppSplitMode is the split mode for LLaMACpp.
-type LLaMACppSplitMode uint
+// WithMainGPUIndex sets the main device for the estimate.
+//
+// When split mode is LLaMACppSplitModeNone, the main device is the only device.
+// When split mode is LLaMACppSplitModeRow, the main device handles the intermediate results and KV.
+//
+// WithMainGPUIndex needs to combine with WithTensorSplitFraction.
+func WithMainGPUIndex(di int) GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
+		o.MainGPUIndex = di
+	}
+}
 
-const (
-	LLaMACppSplitModeLayer LLaMACppSplitMode = iota
-	LLaMACppSplitModeRow
-	LLaMACppSplitModeNone
-	_LLAMACppSplitModeMax
-)
-
-// WithSplitMode sets the split mode for the estimate.
-func WithSplitMode(mode LLaMACppSplitMode) LLaMACppRunEstimateOption {
-	return func(o *_LLaMACppRunEstimateOptions) {
-		if mode < _LLAMACppSplitModeMax {
-			o.SplitMode = mode
+// WithRPCServers sets the RPC servers for the estimate.
+func WithRPCServers(srvs []string) GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
+		if len(srvs) == 0 {
+			return
 		}
+		o.RPCServers = srvs
 	}
 }
 
@@ -201,8 +117,8 @@ func WithSplitMode(mode LLaMACppSplitMode) LLaMACppRunEstimateOption {
 // and the last fraction must be 1.
 //
 // For example, WithTensorSplitFraction(0.2, 0.4, 0.6, 0.8, 1) will split the tensor into five parts with 20% each.
-func WithTensorSplitFraction(fractions []float64) LLaMACppRunEstimateOption {
-	return func(o *_LLaMACppRunEstimateOptions) {
+func WithTensorSplitFraction(fractions []float64) GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
 		if len(fractions) == 0 {
 			return
 		}
@@ -218,58 +134,200 @@ func WithTensorSplitFraction(fractions []float64) LLaMACppRunEstimateOption {
 	}
 }
 
-// WithMainGPUIndex sets the main device for the estimate.
-//
-// When split mode is LLaMACppSplitModeNone, the main device is the only device.
-// When split mode is LLaMACppSplitModeRow, the main device handles the intermediate results and KV.
-//
-// WithMainGPUIndex only works when TensorSplitFraction is set.
-func WithMainGPUIndex(di int) LLaMACppRunEstimateOption {
-	return func(o *_LLaMACppRunEstimateOptions) {
-		o.MainGPUIndex = di
-	}
-}
-
-// WithRPCServers sets the RPC servers for the estimate.
-func WithRPCServers(srvs []string) LLaMACppRunEstimateOption {
-	return func(o *_LLaMACppRunEstimateOptions) {
-		if len(srvs) == 0 {
-			return
-		}
-		o.RPCServers = srvs
-	}
-}
-
-// WithDrafter sets the drafter estimate usage.
-func WithDrafter(dft *LLaMACppRunEstimate) LLaMACppRunEstimateOption {
-	return func(o *_LLaMACppRunEstimateOptions) {
-		o.Drafter = dft
-	}
-}
-
-// WithProjector sets the multimodal projector estimate usage.
-func WithProjector(prj *LLaMACppRunEstimate) LLaMACppRunEstimateOption {
-	return func(o *_LLaMACppRunEstimateOptions) {
-		o.Projector = prj
-	}
-}
-
-// WithAdapters sets the adapters estimate usage.
-func WithAdapters(adp []LLaMACppRunEstimate) LLaMACppRunEstimateOption {
-	return func(o *_LLaMACppRunEstimateOptions) {
-		if len(adp) == 0 {
-			return
-		}
-		o.Adapters = adp
-	}
-}
-
 // WithDeviceMetrics sets the device metrics for the estimate.
-func WithDeviceMetrics(metrics []LLaMACppRunDeviceMetric) LLaMACppRunEstimateOption {
-	return func(o *_LLaMACppRunEstimateOptions) {
+func WithDeviceMetrics(metrics []GGUFRunDeviceMetric) GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
 		if len(metrics) == 0 {
 			return
 		}
 		o.DeviceMetrics = metrics
+	}
+}
+
+// WithLLaMACppContextSize sets the context size for the estimate.
+func WithLLaMACppContextSize(size int32) GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
+		if size <= 0 {
+			return
+		}
+		o.LMCContextSize = &size
+	}
+}
+
+// WithinLLaMACppMaxContextSize limits the context size to the maximum,
+// if the context size is over the maximum.
+func WithinLLaMACppMaxContextSize() GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
+		o.LMCInMaxContextSize = true
+	}
+}
+
+// WithLLaMACppLogicalBatchSize sets the logical batch size for the estimate.
+func WithLLaMACppLogicalBatchSize(size int32) GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
+		if size <= 0 {
+			return
+		}
+		o.LMCLogicalBatchSize = &size
+	}
+}
+
+// WithLLaMACppPhysicalBatchSize sets the physical batch size for the estimate.
+func WithLLaMACppPhysicalBatchSize(size int32) GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
+		if size <= 0 {
+			return
+		}
+		o.LMCPhysicalBatchSize = &size
+	}
+}
+
+// _GGUFEstimateCacheTypeAllowList is the allow list of cache key and value types.
+var _GGUFEstimateCacheTypeAllowList = []GGMLType{
+	GGMLTypeF32,
+	GGMLTypeF16,
+	GGMLTypeQ8_0,
+	GGMLTypeQ4_0, GGMLTypeQ4_1,
+	GGMLTypeIQ4_NL,
+	GGMLTypeQ5_0, GGMLTypeQ5_1,
+}
+
+// WithLLaMACppCacheKeyType sets the cache key type for the estimate.
+func WithLLaMACppCacheKeyType(t GGMLType) GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
+		if slices.Contains(_GGUFEstimateCacheTypeAllowList, t) {
+			o.LMCCacheKeyType = &t
+		}
+	}
+}
+
+// WithLLaMACppCacheValueType sets the cache value type for the estimate.
+func WithLLaMACppCacheValueType(t GGMLType) GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
+		if slices.Contains(_GGUFEstimateCacheTypeAllowList, t) {
+			o.LMCCacheValueType = &t
+		}
+	}
+}
+
+// WithoutLLaMACppOffloadKVCache disables offloading the KV cache.
+func WithoutLLaMACppOffloadKVCache() GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
+		o.LMCOffloadKVCache = ptr.To(false)
+	}
+}
+
+// WithLLaMACppOffloadLayers sets the number of layers to offload.
+func WithLLaMACppOffloadLayers(layers uint64) GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
+		o.LMCOffloadLayers = &layers
+	}
+}
+
+// LLaMACppSplitMode is the split mode for LLaMACpp.
+type LLaMACppSplitMode uint
+
+const (
+	LLaMACppSplitModeLayer LLaMACppSplitMode = iota
+	LLaMACppSplitModeRow
+	LLaMACppSplitModeNone
+	_LLAMACppSplitModeMax
+)
+
+// WithLLaMACppSplitMode sets the split mode for the estimate.
+func WithLLaMACppSplitMode(mode LLaMACppSplitMode) GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
+		if mode < _LLAMACppSplitModeMax {
+			o.LMCSplitMode = mode
+		}
+	}
+}
+
+// WithLLaMACppDrafter sets the drafter estimate usage.
+func WithLLaMACppDrafter(dft *LLaMACppRunEstimate) GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
+		o.LMCDrafter = dft
+	}
+}
+
+// WithLLaMACppProjector sets the multimodal projector estimate usage.
+func WithLLaMACppProjector(prj *LLaMACppRunEstimate) GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
+		o.LMCProjector = prj
+	}
+}
+
+// WithLLaMACppAdapters sets the adapters estimate usage.
+func WithLLaMACppAdapters(adp []LLaMACppRunEstimate) GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
+		if len(adp) == 0 {
+			return
+		}
+		o.LMCAdapters = adp
+	}
+}
+
+// WithStableDiffusionCppBatchCount sets the batch count for the estimate.
+func WithStableDiffusionCppBatchCount(count int32) GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
+		if count == 0 {
+			return
+		}
+		o.SDCBatchCount = ptr.To(count)
+	}
+}
+
+// WithStableDiffusionCppHeight sets the image height for the estimate.
+func WithStableDiffusionCppHeight(height uint32) GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
+		if height == 0 {
+			return
+		}
+		o.SDCHeight = ptr.To(height)
+	}
+}
+
+// WithStableDiffusionCppWidth sets the image width for the estimate.
+func WithStableDiffusionCppWidth(width uint32) GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
+		if width == 0 {
+			return
+		}
+		o.SDCWidth = ptr.To(width)
+	}
+}
+
+// WithoutStableDiffusionCppOffloadConditioner disables offloading the conditioner(text encoder).
+func WithoutStableDiffusionCppOffloadConditioner() GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
+		o.SDCOffloadConditioner = ptr.To(false)
+	}
+}
+
+// WithoutStableDiffusionCppOffloadAutoencoder disables offloading the autoencoder.
+func WithoutStableDiffusionCppOffloadAutoencoder() GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
+		o.SDCOffloadAutoencoder = ptr.To(false)
+	}
+}
+
+// WithStableDiffusionCppAutoencoderTiling enables tiling for the autoencoder.
+func WithStableDiffusionCppAutoencoderTiling() GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
+		o.SDCAutoencoderTiling = ptr.To(true)
+	}
+}
+
+// WithStableDiffusionCppUpscaler sets the upscaler estimate usage.
+func WithStableDiffusionCppUpscaler(ups *StableDiffusionCppRunEstimate) GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
+		o.SDCUpscaler = ups
+	}
+}
+
+// WithStableDiffusionCppControlNet sets the control net estimate usage.
+func WithStableDiffusionCppControlNet(cn *StableDiffusionCppRunEstimate) GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
+		o.SDCControlNet = cn
 	}
 }

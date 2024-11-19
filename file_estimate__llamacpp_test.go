@@ -80,12 +80,12 @@ func TestGGUFFile_EstimateLLaMACppRun_ContextSize(t *testing.T) {
 
 	cases := []struct {
 		name string
-		opts []LLaMACppRunEstimateOption
+		opts []GGUFRunEstimateOption
 	}{
-		{"1024(fp16)", []LLaMACppRunEstimateOption{WithContextSize(1024)}},
-		{"1024(fp32)", []LLaMACppRunEstimateOption{WithContextSize(1024), WithCacheKeyType(GGMLTypeF32), WithCacheValueType(GGMLTypeF32)}},
-		{"4096(fp16)", []LLaMACppRunEstimateOption{WithContextSize(4096)}},
-		{"4096(fp32)", []LLaMACppRunEstimateOption{WithContextSize(4096), WithCacheKeyType(GGMLTypeF32), WithCacheValueType(GGMLTypeF32)}},
+		{"1024(fp16)", []GGUFRunEstimateOption{WithLLaMACppContextSize(1024)}},
+		{"1024(fp32)", []GGUFRunEstimateOption{WithLLaMACppContextSize(1024), WithLLaMACppCacheKeyType(GGMLTypeF32), WithLLaMACppCacheValueType(GGMLTypeF32)}},
+		{"4096(fp16)", []GGUFRunEstimateOption{WithLLaMACppContextSize(4096)}},
+		{"4096(fp32)", []GGUFRunEstimateOption{WithLLaMACppContextSize(4096), WithLLaMACppCacheKeyType(GGMLTypeF32), WithLLaMACppCacheValueType(GGMLTypeF32)}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -109,13 +109,13 @@ func TestGGUFFile_EstimateLLaMACppRun_OffloadLayers(t *testing.T) {
 
 	cases := []struct {
 		name string
-		opts []LLaMACppRunEstimateOption
+		opts []GGUFRunEstimateOption
 	}{
-		{"offload 0 layer", []LLaMACppRunEstimateOption{WithOffloadLayers(0)}},
-		{"offload 1 layer", []LLaMACppRunEstimateOption{WithOffloadLayers(1)}},
-		{"offload 10 layers", []LLaMACppRunEstimateOption{WithOffloadLayers(10)}},
-		{"offload all layers", []LLaMACppRunEstimateOption{}},
-		{"offload 33 layers", []LLaMACppRunEstimateOption{WithOffloadLayers(33)}}, // exceeds the number of layers
+		{"offload 0 layer", []GGUFRunEstimateOption{WithLLaMACppOffloadLayers(0)}},
+		{"offload 1 layer", []GGUFRunEstimateOption{WithLLaMACppOffloadLayers(1)}},
+		{"offload 10 layers", []GGUFRunEstimateOption{WithLLaMACppOffloadLayers(10)}},
+		{"offload all layers", []GGUFRunEstimateOption{}},
+		{"offload 33 layers", []GGUFRunEstimateOption{WithLLaMACppOffloadLayers(33)}}, // exceeds the number of layers
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

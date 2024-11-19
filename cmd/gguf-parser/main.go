@@ -104,6 +104,28 @@ func main() {
 				Usage:       "Path where the GGUF file to load for the Control Vector adapter, optional.",
 			},
 			&cli.StringFlag{
+				Destination: &upscalePath,
+				Value:       upscalePath,
+				Category:    "Model/Local",
+				Name:        "upscale-path",
+				Aliases: []string{
+					"upscale-model",       // StableDiffusionCpp compatibility
+					"image-upscale-model", // LLaMABox compatibility
+				},
+				Usage: "Path where the GGUF file to load for the Upscale model, optional.",
+			},
+			&cli.StringFlag{
+				Destination: &controlNetPath,
+				Value:       controlNetPath,
+				Category:    "Model/Local",
+				Name:        "control-net-path",
+				Aliases: []string{
+					"control-net",             // StableDiffusionCpp compatibility
+					"image-control-net-model", // LLaMABox compatibility
+				},
+				Usage: "Path where the GGUF file to load for the Control Net model, optional.",
+			},
+			&cli.StringFlag{
 				Destination: &url,
 				Value:       url,
 				Category:    "Model/Remote",
@@ -142,6 +164,20 @@ func main() {
 				Category:    "Model/Remote",
 				Name:        "control-vector-url",
 				Usage:       "Url where the GGUF file to load for the Control Vector adapter, optional.",
+			},
+			&cli.StringFlag{
+				Destination: &upscaleUrl,
+				Value:       upscaleUrl,
+				Category:    "Model/Remote",
+				Name:        "upscale-url",
+				Usage:       "Url where the GGUF file to load for the Upscale model, optional.",
+			},
+			&cli.StringFlag{
+				Destination: &controlNetUrl,
+				Value:       controlNetUrl,
+				Category:    "Model/Remote",
+				Name:        "control-net-url",
+				Usage:       "Url where the GGUF file to load for the Control Net model, optional.",
 			},
 			&cli.StringFlag{
 				Destination: &token,
@@ -205,6 +241,36 @@ func main() {
 				Usage:       "Control Vector adapter file below the \"--hf-repo\".",
 			},
 			&cli.StringFlag{
+				Destination: &hfUpscaleRepo,
+				Value:       hfUpscaleRepo,
+				Category:    "Model/Remote/HuggingFace",
+				Name:        "hf-upscale-repo",
+				Usage: "Repository of HuggingFace which the GGUF file store for the Upscale model, optional, " +
+					"works with \"--hf-upscale-file\".",
+			},
+			&cli.StringFlag{
+				Destination: &hfUpscaleFile,
+				Value:       hfUpscaleFile,
+				Category:    "Model/Remote/HuggingFace",
+				Name:        "hf-upscale-file",
+				Usage:       "Model file below the \"--hf-upscale-repo\", optional.",
+			},
+			&cli.StringFlag{
+				Destination: &hfControlNetRepo,
+				Value:       hfControlNetRepo,
+				Category:    "Model/Remote/HuggingFace",
+				Name:        "hf-control-net-repo",
+				Usage: "Repository of HuggingFace which the GGUF file store for the Control Net model, optional, " +
+					"works with \"--hf-control-net-file\".",
+			},
+			&cli.StringFlag{
+				Destination: &hfControlNetFile,
+				Value:       hfControlNetFile,
+				Category:    "Model/Remote/HuggingFace",
+				Name:        "hf-control-net-file",
+				Usage:       "Model file below the \"--hf-control-net-repo\", optional.",
+			},
+			&cli.StringFlag{
 				Destination: &hfToken,
 				Value:       hfToken,
 				Category:    "Model/Remote/HuggingFace",
@@ -264,6 +330,36 @@ func main() {
 				Category:    "Model/Remote/ModelScope",
 				Name:        "ms-control-vector-file",
 				Usage:       "Control Vector adapter file below the \"--ms-repo\".",
+			},
+			&cli.StringFlag{
+				Destination: &msUpscaleRepo,
+				Value:       msUpscaleRepo,
+				Category:    "Model/Remote/ModelScope",
+				Name:        "ms-upscale-repo",
+				Usage: "Repository of ModelScope which the GGUF file store for the Upscale model, optional, " +
+					"works with \"--ms-upscale-file\".",
+			},
+			&cli.StringFlag{
+				Destination: &msUpscaleFile,
+				Value:       msUpscaleFile,
+				Category:    "Model/Remote/ModelScope",
+				Name:        "ms-upscale-file",
+				Usage:       "Model file below the \"--ms-upscale-repo\", optional.",
+			},
+			&cli.StringFlag{
+				Destination: &msControlNetRepo,
+				Value:       msControlNetRepo,
+				Category:    "Model/Remote/ModelScope",
+				Name:        "ms-control-net-repo",
+				Usage: "Repository of ModelScope which the GGUF file store for the Control Net model, optional, " +
+					"works with \"--ms-control-net-file\".",
+			},
+			&cli.StringFlag{
+				Destination: &msControlNetFile,
+				Value:       msControlNetFile,
+				Category:    "Model/Remote/ModelScope",
+				Name:        "ms-control-net-file",
+				Usage:       "Model file below the \"--ms-control-net-repo\", optional.",
 			},
 			&cli.StringFlag{
 				Destination: &msToken,
@@ -360,42 +456,6 @@ func main() {
 					"default is caching the read result.",
 			},
 			&cli.IntFlag{
-				Destination: &ctxSize,
-				Value:       ctxSize,
-				Category:    "Estimate",
-				Name:        "ctx-size",
-				Aliases:     []string{"c"},
-				Usage: "Specify the size of prompt context, " +
-					"which is used to estimate the usage, " +
-					"default is equal to the model's maximum context size.",
-			},
-			&cli.BoolFlag{
-				Destination: &inMaxCtxSize,
-				Value:       inMaxCtxSize,
-				Category:    "Estimate",
-				Name:        "in-max-ctx-size",
-				Usage: "Limit the context size to the maximum context size of the model, " +
-					"if the context size is larger than the maximum context size.",
-			},
-			&cli.IntFlag{
-				Destination: &logicalBatchSize,
-				Value:       logicalBatchSize,
-				Category:    "Estimate",
-				Name:        "batch-size",
-				Aliases:     []string{"b"},
-				Usage: "Specify the logical batch size, " +
-					"which is used to estimate the usage.",
-			},
-			&cli.IntFlag{
-				Destination: &physicalBatchSize,
-				Value:       physicalBatchSize,
-				Category:    "Estimate",
-				Name:        "ubatch-size",
-				Aliases:     []string{"ub"},
-				Usage: "Specify the physical maximum batch size, " +
-					"which is used to estimate the usage.",
-			},
-			&cli.IntFlag{
 				Destination: &parallelSize,
 				Value:       parallelSize,
 				Category:    "Estimate",
@@ -403,34 +463,6 @@ func main() {
 				Aliases:     []string{"parallel", "np"},
 				Usage: "Specify the number of parallel sequences to decode, " +
 					"which is used to estimate the usage.",
-			},
-			&cli.StringFlag{
-				Destination: &cacheKeyType,
-				Value:       cacheKeyType,
-				Category:    "Estimate",
-				Name:        "cache-type-k",
-				Aliases:     []string{"ctk"},
-				Usage: "Specify the type of Key cache, " +
-					"which is used to estimate the usage, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1].",
-			},
-			&cli.StringFlag{
-				Destination: &cacheValueType,
-				Value:       cacheValueType,
-				Category:    "Estimate",
-				Name:        "cache-type-v",
-				Aliases:     []string{"ctv"},
-				Usage: "Specify the type of Value cache, " +
-					"which is used to estimate the usage, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1].",
-			},
-			&cli.BoolFlag{
-				Destination: &noKVOffload,
-				Value:       noKVOffload,
-				Category:    "Estimate",
-				Name:        "no-kv-offload",
-				Aliases:     []string{"nkvo"},
-				Usage: "Specify disabling Key-Value offloading, " +
-					"which is used to estimate the usage. " +
-					"Disable Key-Value offloading can reduce the usage of VRAM.",
 			},
 			&cli.BoolFlag{
 				Destination: &flashAttention,
@@ -441,40 +473,6 @@ func main() {
 				Usage: "Specify enabling Flash Attention, " +
 					"which is used to estimate the usage. " +
 					"Flash Attention can reduce the usage of RAM/VRAM.",
-			},
-			&cli.StringFlag{
-				Destination: &splitMode,
-				Value:       splitMode,
-				Category:    "Estimate",
-				Name:        "split-mode",
-				Aliases:     []string{"sm"},
-				Usage: "Specify how to split the model across multiple devices, " +
-					"which is used to estimate the usage, select from [layer, row, none]. " +
-					"Since gguf-parser always estimates the usage of VRAM, " +
-					"\"none\" is meaningless here, keep for compatibility.",
-			},
-			&cli.StringFlag{
-				Destination: &tensorSplit,
-				Value:       tensorSplit,
-				Category:    "Estimate",
-				Name:        "tensor-split",
-				Aliases:     []string{"ts"},
-				Usage: "Specify the fraction of the model to offload to each device, " +
-					"which is used to estimate the usage, " +
-					"it is a comma-separated list of integer. " +
-					"Since gguf-parser cannot recognize the host GPU devices or RPC servers, " +
-					"must explicitly set \"--tensor-split\" to indicate how many devices are used. " +
-					"To declare the devices belong to RPC servers, set \"--rpc\" please.",
-			},
-			&cli.StringFlag{
-				Destination: &rpcServers,
-				Value:       rpcServers,
-				Category:    "Estimate",
-				Name:        "rpc",
-				Usage: "Specify the RPC servers, " +
-					"which is used to estimate the usage, " +
-					"it is a comma-separated list of host:port. " +
-					"Woks with \"--tensor-split\".",
 			},
 			&cli.UintFlag{
 				Destination: &mainGPU,
@@ -489,6 +487,45 @@ func main() {
 					"\"--main-gpu\" only works when \"--tensor-split\" is set.",
 			},
 			&cli.StringFlag{
+				Destination: &rpcServers,
+				Value:       rpcServers,
+				Category:    "Estimate",
+				Name:        "rpc",
+				Usage: "Specify the RPC servers, " +
+					"which is used to estimate the usage, " +
+					"it is a comma-separated list of host:port. " +
+					"Woks with \"--tensor-split\".",
+			},
+			&cli.StringFlag{
+				Destination: &tensorSplit,
+				Value:       tensorSplit,
+				Category:    "Estimate",
+				Name:        "tensor-split",
+				Aliases:     []string{"ts"},
+				Usage: "Specify the fraction of the model to offload to each device, " +
+					"which is used to estimate the usage, " +
+					"it is a comma-separated list of integer. " +
+					"Since gguf-parser cannot recognize the host GPU devices or RPC servers, " +
+					"must explicitly set \"--tensor-split\" to indicate how many devices are used. " +
+					"To declare the devices belong to RPC servers, set \"--rpc\" please.",
+			},
+			&cli.StringSliceFlag{
+				Destination: &deviceMetrics,
+				Category:    "Estimate",
+				Name:        "device-metric",
+				Usage: "Specify the device metrics, " +
+					"which is used to estimate the throughput, in form of \"FLOPS;Up Bandwidth[;Down Bandwidth]\". " +
+					"The FLOPS unit, select from [PFLOPS, TFLOPS, GFLOPS, MFLOPS, KFLOPS]. " +
+					"The Up/Down Bandwidth unit, select from [PiBps, TiBps, GiBps, MiBps, KiBps, PBps, TBps, GBps, MBps, KBps, Pbps, Tbps, Gbps, Mbps, Kbps]. " +
+					"Up Bandwidth usually indicates the bandwidth to transmit the data to calculate, " +
+					"and Down Bandwidth indicates the bandwidth to transmit the calculated result to next layer. " +
+					"For example, \"--device-metric 10TFLOPS;400GBps\" means the device has 10 TFLOPS and 400 GBps Up/Down bandwidth, " +
+					"\"--device-metric 10TFLOPS;400GBps;5000MBps\" means the device has 5000MBps Down bandwidth. " +
+					"If the quantity specified by \"--device-metric\" is less than the number of estimation devices(" +
+					"determined by \"--tensor-split\" and \"--rpc\" to infer the device count), " +
+					"then replicate the last \"--device-metric\" to meet the required number of evaluation devices.",
+			},
+			&cli.StringFlag{
 				Destination: &platformFootprint,
 				Value:       platformFootprint,
 				Category:    "Estimate",
@@ -500,19 +537,94 @@ func main() {
 					"for example, within CUDA, \"cudaMemGetInfo\" would occupy some RAM and VRAM, " +
 					"see https://stackoverflow.com/questions/64854862/free-memory-occupied-by-cudamemgetinfo.",
 			},
+			&cli.IntFlag{
+				Destination: &lmcCtxSize,
+				Value:       lmcCtxSize,
+				Category:    "Estimate/LLaMACpp",
+				Name:        "ctx-size",
+				Aliases:     []string{"c"},
+				Usage: "Specify the size of prompt context, " +
+					"which is used to estimate the usage, " +
+					"default is equal to the model's maximum context size.",
+			},
 			&cli.BoolFlag{
-				Destination: &noMMap,
-				Value:       noMMap,
-				Category:    "Estimate",
+				Destination: &lmcInMaxCtxSize,
+				Value:       lmcInMaxCtxSize,
+				Category:    "Estimate/LLaMACpp",
+				Name:        "in-max-ctx-size",
+				Usage: "Limit the context size to the maximum context size of the model, " +
+					"if the context size is larger than the maximum context size.",
+			},
+			&cli.IntFlag{
+				Destination: &lmcLogicalBatchSize,
+				Value:       lmcLogicalBatchSize,
+				Category:    "Estimate/LLaMACpp",
+				Name:        "batch-size",
+				Aliases:     []string{"b"},
+				Usage: "Specify the logical batch size, " +
+					"which is used to estimate the usage.",
+			},
+			&cli.IntFlag{
+				Destination: &lmcPhysicalBatchSize,
+				Value:       lmcPhysicalBatchSize,
+				Category:    "Estimate/LLaMACpp",
+				Name:        "ubatch-size",
+				Aliases:     []string{"ub"},
+				Usage: "Specify the physical maximum batch size, " +
+					"which is used to estimate the usage.",
+			},
+			&cli.StringFlag{
+				Destination: &lmcCacheKeyType,
+				Value:       lmcCacheKeyType,
+				Category:    "Estimate/LLaMACpp",
+				Name:        "cache-type-k",
+				Aliases:     []string{"ctk"},
+				Usage: "Specify the type of Key cache, " +
+					"which is used to estimate the usage, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1].",
+			},
+			&cli.StringFlag{
+				Destination: &lmcCacheValueType,
+				Value:       lmcCacheValueType,
+				Category:    "Estimate/LLaMACpp",
+				Name:        "cache-type-v",
+				Aliases:     []string{"ctv"},
+				Usage: "Specify the type of Value cache, " +
+					"which is used to estimate the usage, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1].",
+			},
+			&cli.BoolFlag{
+				Destination: &lmcNoKVOffload,
+				Value:       lmcNoKVOffload,
+				Category:    "Estimate/LLaMACpp",
+				Name:        "no-kv-offload",
+				Aliases:     []string{"nkvo"},
+				Usage: "Specify disabling Key-Value offloading, " +
+					"which is used to estimate the usage. " +
+					"Disable Key-Value offloading can reduce the usage of VRAM.",
+			},
+			&cli.StringFlag{
+				Destination: &lmcSplitMode,
+				Value:       lmcSplitMode,
+				Category:    "Estimate/LLaMACpp",
+				Name:        "split-mode",
+				Aliases:     []string{"sm"},
+				Usage: "Specify how to split the model across multiple devices, " +
+					"which is used to estimate the usage, select from [layer, row, none]. " +
+					"Since gguf-parser always estimates the usage of VRAM, " +
+					"\"none\" is meaningless here, keep for compatibility.",
+			},
+			&cli.BoolFlag{
+				Destination: &lmcNoMMap,
+				Value:       lmcNoMMap,
+				Category:    "Estimate/LLaMACpp",
 				Name:        "no-mmap",
 				Usage: "Specify disabling Memory-Mapped using, " +
 					"which is used to estimate the usage. " +
 					"Memory-Mapped can avoid loading the entire model weights into RAM.",
 			},
 			&cli.IntFlag{
-				Destination: &offloadLayers,
-				Value:       offloadLayers,
-				Category:    "Estimate",
+				Destination: &lmcOffloadLayers,
+				Value:       lmcOffloadLayers,
+				Category:    "Estimate/LLaMACpp",
 				Name:        "gpu-layers",
 				Aliases:     []string{"ngl", "n-gpu-layers"},
 				Usage: "Specify how many layers of the main model to offload, " +
@@ -520,9 +632,9 @@ func main() {
 					"default is full offloaded.",
 			},
 			&cli.IntFlag{
-				Destination: &offloadLayersDraft,
-				Value:       offloadLayersDraft,
-				Category:    "Estimate",
+				Destination: &lmcOffloadLayersDraft,
+				Value:       lmcOffloadLayersDraft,
+				Category:    "Estimate/LLaMACpp",
 				Name:        "gpu-layers-draft",
 				Aliases:     []string{"ngld", "n-gpu-layers-draft"},
 				Usage: "Specify how many layers of the draft model to offload, " +
@@ -530,28 +642,78 @@ func main() {
 					"default is full offloaded.",
 			},
 			&cli.Uint64Flag{
-				Destination: &offloadLayersStep,
-				Value:       offloadLayersStep,
-				Category:    "Estimate",
+				Destination: &lmcOffloadLayersStep,
+				Value:       lmcOffloadLayersStep,
+				Category:    "Estimate/LLaMACpp",
 				Name:        "gpu-layers-step",
 				Usage: "Specify the step of layers to offload, " +
 					"works with \"--gpu-layers\".",
 			},
-			&cli.StringSliceFlag{
-				Destination: &deviceMetrics,
-				Category:    "Estimate",
-				Name:        "device-metric",
-				Usage: "Specify the device metrics, " +
-					"which is used to estimate the usage, in form of \"FLOPS;Up Bandwidth[;Down Bandwidth]\". " +
-					"The FLOPS unit, select from [PFLOPS, TFLOPS, GFLOPS, MFLOPS, KFLOPS]. " +
-					"The Up/Down Bandwidth unit, select from [PiBps, TiBps, GiBps, MiBps, KiBps, PBps, TBps, GBps, MBps, KBps, Pbps, Tbps, Gbps, Mbps, Kbps]. " +
-					"Up Bandwidth usually indicates the bandwidth to transmit the data to calculate, " +
-					"and Down Bandwidth indicates the bandwidth to transmit the calculated result to next layer. " +
-					"For example, \"--device-metric 10TFLOPS;400GBps\" means the device has 10 TFLOPS and 400 GBps Up/Down bandwidth, " +
-					"\"--device-metric 10TFLOPS;400GBps;5000MBps\" means the device has 5000MBps Down bandwidth. " +
-					"If the quantity specified by \"--device-metric\" is less than the number of estimation devices(" +
-					"determined by \"--tensor-split\" and \"--rpc\" to infer the device count), " +
-					"then replicate the last \"--device-metric\" to meet the required number of evaluation devices.",
+			&cli.IntFlag{
+				Destination: &sdcBatchCount,
+				Value:       sdcBatchCount,
+				Category:    "Estimate/StableDiffusionCpp",
+				Name:        "image-batch-count",
+				Aliases: []string{
+					"batch-count",     // StableDiffusionCpp compatibility
+					"image-max-batch", // LLaMABox compatibility
+				},
+				Usage: "Specify the batch(generation) count of the image.",
+			},
+			&cli.IntFlag{
+				Destination: &sdcHeight,
+				Value:       sdcHeight,
+				Category:    "Estimate/StableDiffusionCpp",
+				Name:        "image-height",
+				Aliases: []string{
+					"height",           // StableDiffusionCpp compatibility
+					"image-max-height", // LLaMABox compatibility
+				},
+				Usage: "Specify the (maximum) height of the image.",
+			},
+			&cli.IntFlag{
+				Destination: &sdcWidth,
+				Value:       sdcWidth,
+				Category:    "Estimate/StableDiffusionCpp",
+				Name:        "image-width",
+				Aliases: []string{
+					"width",           // StableDiffusionCpp compatibility
+					"image-max-width", // LLaMABox compatibility
+				},
+				Usage: "Specify the (maximum) width of the image.",
+			},
+			&cli.BoolFlag{
+				Destination: &sdcNoConditionerOffload,
+				Value:       sdcNoConditionerOffload,
+				Category:    "Estimate/StableDiffusionCpp",
+				Name:        "image-no-conditioner-offload",
+				Aliases: []string{
+					"clip-on-cpu",                         // StableDiffusionCpp compatibility
+					"image-no-text-encoder-model-offload", // LLaMABox compatibility
+				},
+				Usage: "Specify to offload the text encoder model to CPU.",
+			},
+			&cli.BoolFlag{
+				Destination: &sdcNoAutoencoderOffload,
+				Value:       sdcNoAutoencoderOffload,
+				Category:    "Estimate/StableDiffusionCpp",
+				Name:        "image-no-autoencoder-offload",
+				Aliases: []string{
+					"vae-on-cpu",                 // StableDiffusionCpp compatibility
+					"image-no-vae-model-offload", // LLaMABox compatibility
+				},
+				Usage: "Specify to offload the vae model to CPU.",
+			},
+			&cli.BoolFlag{
+				Destination: &sdcAutoencoderTiling,
+				Value:       sdcAutoencoderTiling,
+				Category:    "Estimate/StableDiffusionCpp",
+				Name:        "image-autoencoder-tiling",
+				Aliases: []string{
+					"vae-tiling",       // StableDiffusionCpp compatibility
+					"image-vae-tiling", // LLaMABox compatibility
+				},
+				Usage: "Specify to enable tiling for the vae model.",
 			},
 			&cli.BoolFlag{
 				Destination: &raw,
@@ -638,15 +800,19 @@ func main() {
 var (
 	// model options
 	path                 string
-	mmprojPath           string          // for estimate
 	draftPath            string          // for estimate
+	mmprojPath           string          // for estimate
 	loraPaths            cli.StringSlice // for estimate
 	controlVectorPaths   cli.StringSlice // for estimate
+	upscalePath          string          // for estimate
+	controlNetPath       string          // for estimate
 	url                  string
-	mmprojUrl            string          // for estimate
 	draftUrl             string          // for estimate
+	mmprojUrl            string          // for estimate
 	loraUrls             cli.StringSlice // for estimate
 	controlVectorUrls    cli.StringSlice // for estimate
+	upscaleUrl           string          // for estimate
+	controlNetUrl        string          // for estimate
 	token                string
 	hfRepo               string
 	hfFile               string
@@ -655,6 +821,10 @@ var (
 	hfMMProjFile         string          // for estimate
 	hfLoRAFiles          cli.StringSlice // for estimate
 	hfControlVectorFiles cli.StringSlice // for estimate
+	hfUpscaleRepo        string          // for estimate
+	hfUpscaleFile        string          // for estimate
+	hfControlNetRepo     string          // for estimate
+	hfControlNetFile     string          // for estimate
 	hfToken              string
 	msRepo               string
 	msFile               string
@@ -663,6 +833,10 @@ var (
 	msMMProjFile         string          // for estimate
 	msLoRAFiles          cli.StringSlice // for estimate
 	msControlVectorFiles cli.StringSlice // for estimate
+	msUpscaleRepo        string          // for estimate
+	msUpscaleFile        string          // for estimate
+	msControlNetRepo     string          // for estimate
+	msControlNetFile     string          // for estimate
 	msToken              string
 	olBaseURL            = "https://registry.ollama.ai"
 	olModel              string
@@ -677,25 +851,33 @@ var (
 	cachePath              = DefaultCachePath()
 	skipCache              bool
 	// estimate options
-	ctxSize            = -1
-	inMaxCtxSize       bool
-	logicalBatchSize   = 2048
-	physicalBatchSize  = 512
-	parallelSize       = 1
-	cacheKeyType       = "f16"
-	cacheValueType     = "f16"
-	noKVOffload        bool
-	flashAttention     bool
-	splitMode          = "layer"
-	tensorSplit        string
-	mainGPU            uint
-	rpcServers         string
-	platformFootprint  = "150,250"
-	noMMap             bool
-	offloadLayers      = -1
-	offloadLayersDraft = -1
-	offloadLayersStep  uint64
-	deviceMetrics      cli.StringSlice
+	parallelSize      = 1
+	flashAttention    bool
+	mainGPU           uint
+	rpcServers        string
+	tensorSplit       string
+	deviceMetrics     cli.StringSlice
+	platformFootprint = "150,250"
+	// estimate options for llama.cpp
+	lmcCtxSize            = -1
+	lmcInMaxCtxSize       bool
+	lmcLogicalBatchSize   = 2048
+	lmcPhysicalBatchSize  = 512
+	lmcCacheKeyType       = "f16"
+	lmcCacheValueType     = "f16"
+	lmcNoKVOffload        bool
+	lmcSplitMode          = "layer"
+	lmcNoMMap             bool
+	lmcOffloadLayers      = -1
+	lmcOffloadLayersDraft = -1
+	lmcOffloadLayersStep  uint64
+	// estimate options for stable-diffusion.cpp
+	sdcBatchCount           = 1
+	sdcHeight               = 512
+	sdcWidth                = 512
+	sdcNoConditionerOffload bool
+	sdcNoAutoencoderOffload bool
+	sdcAutoencoderTiling    bool
 	// output options
 	raw              bool
 	rawOutput        string
@@ -744,47 +926,15 @@ func mainAction(c *cli.Context) error {
 		ropts = append(ropts, SkipCache())
 	}
 
-	eopts := []LLaMACppRunEstimateOption{
-		WithCacheValueType(GGMLTypeF16),
-		WithCacheKeyType(GGMLTypeF16),
-	}
-	if ctxSize > 0 {
-		eopts = append(eopts, WithContextSize(int32(ctxSize)))
-	}
-	if inMaxCtxSize {
-		eopts = append(eopts, WithinMaxContextSize())
-	}
-	if logicalBatchSize > 0 {
-		eopts = append(eopts, WithLogicalBatchSize(int32(max(32, logicalBatchSize))))
-	}
-	if physicalBatchSize > 0 {
-		if physicalBatchSize > logicalBatchSize {
-			return errors.New("--ubatch-size must be less than or equal to --batch-size")
-		}
-		eopts = append(eopts, WithPhysicalBatchSize(int32(physicalBatchSize)))
+	eopts := []GGUFRunEstimateOption{
+		WithLLaMACppCacheValueType(GGMLTypeF16),
+		WithLLaMACppCacheKeyType(GGMLTypeF16),
 	}
 	if parallelSize > 0 {
 		eopts = append(eopts, WithParallelSize(int32(parallelSize)))
 	}
-	if cacheKeyType != "" {
-		eopts = append(eopts, WithCacheKeyType(toGGMLType(cacheKeyType)))
-	}
-	if cacheValueType != "" {
-		eopts = append(eopts, WithCacheValueType(toGGMLType(cacheValueType)))
-	}
-	if noKVOffload {
-		eopts = append(eopts, WithoutOffloadKVCache())
-	}
 	if flashAttention {
 		eopts = append(eopts, WithFlashAttention())
-	}
-	switch splitMode {
-	case "row":
-		eopts = append(eopts, WithSplitMode(LLaMACppSplitModeRow))
-	case "none":
-		eopts = append(eopts, WithSplitMode(LLaMACppSplitModeNone))
-	default:
-		eopts = append(eopts, WithSplitMode(LLaMACppSplitModeLayer))
 	}
 	if tensorSplit != "" {
 		tss := strings.Split(tensorSplit, ",")
@@ -826,7 +976,7 @@ func mainAction(c *cli.Context) error {
 		}
 	}
 	if dmss := deviceMetrics.Value(); len(dmss) > 0 {
-		dms := make([]LLaMACppRunDeviceMetric, len(dmss))
+		dms := make([]GGUFRunDeviceMetric, len(dmss))
 		for i := range dmss {
 			ss := strings.Split(dmss[i], ";")
 			if len(ss) < 2 {
@@ -852,14 +1002,69 @@ func mainAction(c *cli.Context) error {
 		}
 		eopts = append(eopts, WithDeviceMetrics(dms))
 	}
+	if lmcCtxSize > 0 {
+		eopts = append(eopts, WithLLaMACppContextSize(int32(lmcCtxSize)))
+	}
+	if lmcInMaxCtxSize {
+		eopts = append(eopts, WithinLLaMACppMaxContextSize())
+	}
+	if lmcLogicalBatchSize > 0 {
+		eopts = append(eopts, WithLLaMACppLogicalBatchSize(int32(max(32, lmcLogicalBatchSize))))
+	}
+	if lmcPhysicalBatchSize > 0 {
+		if lmcPhysicalBatchSize > lmcLogicalBatchSize {
+			return errors.New("--ubatch-size must be less than or equal to --batch-size")
+		}
+		eopts = append(eopts, WithLLaMACppPhysicalBatchSize(int32(lmcPhysicalBatchSize)))
+	}
+	if lmcCacheKeyType != "" {
+		eopts = append(eopts, WithLLaMACppCacheKeyType(toGGMLType(lmcCacheKeyType)))
+	}
+	if lmcCacheValueType != "" {
+		eopts = append(eopts, WithLLaMACppCacheValueType(toGGMLType(lmcCacheValueType)))
+	}
+	if lmcNoKVOffload {
+		eopts = append(eopts, WithoutLLaMACppOffloadKVCache())
+	}
+	switch lmcSplitMode {
+	case "row":
+		eopts = append(eopts, WithLLaMACppSplitMode(LLaMACppSplitModeRow))
+	case "none":
+		eopts = append(eopts, WithLLaMACppSplitMode(LLaMACppSplitModeNone))
+	default:
+		eopts = append(eopts, WithLLaMACppSplitMode(LLaMACppSplitModeLayer))
+	}
+	if sdcBatchCount > 1 {
+		eopts = append(eopts, WithStableDiffusionCppBatchCount(int32(sdcBatchCount)))
+	}
+	if sdcHeight > 0 {
+		eopts = append(eopts, WithStableDiffusionCppHeight(uint32(sdcHeight)))
+	}
+	if sdcWidth > 0 {
+		eopts = append(eopts, WithStableDiffusionCppWidth(uint32(sdcWidth)))
+	}
+	if sdcNoConditionerOffload {
+		eopts = append(eopts, WithoutStableDiffusionCppOffloadConditioner())
+	}
+	if sdcNoAutoencoderOffload {
+		eopts = append(eopts, WithoutStableDiffusionCppOffloadAutoencoder())
+	}
+	if sdcAutoencoderTiling {
+		eopts = append(eopts, WithStableDiffusionCppAutoencoderTiling())
+	}
 
 	// Parse GGUF file.
 
 	var (
-		gf     *GGUFFile
-		projgf *GGUFFile
-		dftgf  *GGUFFile
-		adpgfs []*GGUFFile
+		// Common.
+		gf         *GGUFFile
+		adapterGfs []*GGUFFile
+		// LLaMACpp specific.
+		lmcProjectGf *GGUFFile
+		lmcDrafterGf *GGUFFile
+		// StableDiffusionCpp specific.
+		sdcUpscaleGf    *GGUFFile
+		sdcControlNetGf *GGUFFile
 	)
 	{
 		var err error
@@ -892,22 +1097,22 @@ func mainAction(c *cli.Context) error {
 				{
 					ps, _ := om.Params(ctx, nil)
 					if v, ok := ps["num_ctx"]; ok {
-						eopts = append(eopts, WithContextSize(anyx.Number[int32](v)))
-					} else if ctxSize <= 0 {
-						eopts = append(eopts, WithContextSize(2048))
+						eopts = append(eopts, WithLLaMACppContextSize(anyx.Number[int32](v)))
+					} else if lmcCtxSize <= 0 {
+						eopts = append(eopts, WithLLaMACppContextSize(2048))
 					}
 					if v, ok := ps["use_mmap"]; ok && !anyx.Bool(v) {
-						noMMap = true
+						lmcNoMMap = true
 					}
 					if v, ok := ps["num_gpu"]; ok {
-						offloadLayers = anyx.Number[int](v)
+						lmcOffloadLayers = anyx.Number[int](v)
 					}
 				}
 				// Multimodal projector overlap.
 				{
 					mls := om.SearchLayers(regexp.MustCompile(`^application/vnd\.ollama\.image\.projector$`))
 					if len(mls) > 0 {
-						projgf, err = ParseGGUFFileRemote(ctx, mls[len(mls)-1].BlobURL().String(), ropts...)
+						lmcProjectGf, err = ParseGGUFFileRemote(ctx, mls[len(mls)-1].BlobURL().String(), ropts...)
 					}
 				}
 				// Adapter overlap.
@@ -920,7 +1125,7 @@ func mainAction(c *cli.Context) error {
 							if err != nil {
 								break
 							}
-							adpgfs = append(adpgfs, adpgf)
+							adapterGfs = append(adapterGfs, adpgf)
 						}
 					}
 				}
@@ -928,36 +1133,6 @@ func mainAction(c *cli.Context) error {
 		}
 		if err != nil {
 			return fmt.Errorf("failed to parse GGUF file: %w", err)
-		}
-
-		// Drafter.
-		switch {
-		case draftPath != "":
-			dftgf, err = ParseGGUFFile(draftPath, ropts...)
-		case draftUrl != "":
-			dftgf, err = ParseGGUFFileRemote(ctx, draftUrl, ropts...)
-		case hfDraftRepo != "" && hfDraftFile != "":
-			dftgf, err = ParseGGUFFileFromHuggingFace(ctx, hfDraftRepo, hfDraftFile, ropts...)
-		case msDraftRepo != "" && msDraftFile != "":
-			dftgf, err = ParseGGUFFileFromModelScope(ctx, msDraftRepo, msDraftFile, ropts...)
-		}
-		if err != nil {
-			return fmt.Errorf("failed to parse draft GGUF file: %w", err)
-		}
-
-		// Projector.
-		switch {
-		case mmprojPath != "":
-			projgf, err = ParseGGUFFile(mmprojPath, ropts...)
-		case mmprojUrl != "":
-			projgf, err = ParseGGUFFileRemote(ctx, mmprojUrl, ropts...)
-		case hfRepo != "" && hfMMProjFile != "":
-			projgf, err = ParseGGUFFileFromHuggingFace(ctx, hfRepo, hfMMProjFile, ropts...)
-		case msRepo != "" && msMMProjFile != "":
-			projgf, err = ParseGGUFFileFromModelScope(ctx, msRepo, msMMProjFile, ropts...)
-		}
-		if err != nil {
-			return fmt.Errorf("failed to parse multimodal projector GGUF file: %w", err)
 		}
 
 		// Adapter.
@@ -968,14 +1143,14 @@ func mainAction(c *cli.Context) error {
 				if err != nil {
 					return fmt.Errorf("failed to parse LoRA adapter GGUF file: %w", err)
 				}
-				adpgfs = append(adpgfs, adpgf)
+				adapterGfs = append(adapterGfs, adpgf)
 			}
 			for _, loraUrl := range loraUrls.Value() {
 				adpgf, err := ParseGGUFFileRemote(ctx, loraUrl, ropts...)
 				if err != nil {
 					return fmt.Errorf("failed to parse LoRA adapter GGUF file: %w", err)
 				}
-				adpgfs = append(adpgfs, adpgf)
+				adapterGfs = append(adapterGfs, adpgf)
 			}
 			if hfRepo != "" {
 				for _, hfLoRAFile := range hfLoRAFiles.Value() {
@@ -983,7 +1158,7 @@ func mainAction(c *cli.Context) error {
 					if err != nil {
 						return fmt.Errorf("failed to parse LoRA adapter GGUF file: %w", err)
 					}
-					adpgfs = append(adpgfs, adpgf)
+					adapterGfs = append(adapterGfs, adpgf)
 				}
 			}
 			if msRepo != "" {
@@ -992,7 +1167,7 @@ func mainAction(c *cli.Context) error {
 					if err != nil {
 						return fmt.Errorf("failed to parse LoRA adapter GGUF file: %w", err)
 					}
-					adpgfs = append(adpgfs, adpgf)
+					adapterGfs = append(adapterGfs, adpgf)
 				}
 			}
 
@@ -1002,14 +1177,14 @@ func mainAction(c *cli.Context) error {
 				if err != nil {
 					return fmt.Errorf("failed to parse Control Vector adapter GGUF file: %w", err)
 				}
-				adpgfs = append(adpgfs, adpgf)
+				adapterGfs = append(adapterGfs, adpgf)
 			}
 			for _, cvUrl := range controlVectorUrls.Value() {
 				adpgf, err := ParseGGUFFileRemote(ctx, cvUrl, ropts...)
 				if err != nil {
 					return fmt.Errorf("failed to parse Control Vector adapter GGUF file: %w", err)
 				}
-				adpgfs = append(adpgfs, adpgf)
+				adapterGfs = append(adapterGfs, adpgf)
 			}
 			if hfRepo != "" {
 				for _, hfCvFile := range hfControlVectorFiles.Value() {
@@ -1017,7 +1192,7 @@ func mainAction(c *cli.Context) error {
 					if err != nil {
 						return fmt.Errorf("failed to parse Control Vector adapter GGUF file: %w", err)
 					}
-					adpgfs = append(adpgfs, adpgf)
+					adapterGfs = append(adapterGfs, adpgf)
 				}
 			}
 			if msRepo != "" {
@@ -1026,9 +1201,69 @@ func mainAction(c *cli.Context) error {
 					if err != nil {
 						return fmt.Errorf("failed to parse Control Vector adapter GGUF file: %w", err)
 					}
-					adpgfs = append(adpgfs, adpgf)
+					adapterGfs = append(adapterGfs, adpgf)
 				}
 			}
+		}
+
+		// Drafter for LLaMACpp.
+		switch {
+		case draftPath != "":
+			lmcDrafterGf, err = ParseGGUFFile(draftPath, ropts...)
+		case draftUrl != "":
+			lmcDrafterGf, err = ParseGGUFFileRemote(ctx, draftUrl, ropts...)
+		case hfDraftRepo != "" && hfDraftFile != "":
+			lmcDrafterGf, err = ParseGGUFFileFromHuggingFace(ctx, hfDraftRepo, hfDraftFile, ropts...)
+		case msDraftRepo != "" && msDraftFile != "":
+			lmcDrafterGf, err = ParseGGUFFileFromModelScope(ctx, msDraftRepo, msDraftFile, ropts...)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to parse draft GGUF file: %w", err)
+		}
+
+		// Projector for LLaMACpp.
+		switch {
+		case mmprojPath != "":
+			lmcProjectGf, err = ParseGGUFFile(mmprojPath, ropts...)
+		case mmprojUrl != "":
+			lmcProjectGf, err = ParseGGUFFileRemote(ctx, mmprojUrl, ropts...)
+		case hfRepo != "" && hfMMProjFile != "":
+			lmcProjectGf, err = ParseGGUFFileFromHuggingFace(ctx, hfRepo, hfMMProjFile, ropts...)
+		case msRepo != "" && msMMProjFile != "":
+			lmcProjectGf, err = ParseGGUFFileFromModelScope(ctx, msRepo, msMMProjFile, ropts...)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to parse multimodal projector GGUF file: %w", err)
+		}
+
+		// Upscaler for StableDiffusionCpp.
+		switch {
+		case upscalePath != "":
+			sdcUpscaleGf, err = ParseGGUFFile(upscalePath, ropts...)
+		case upscaleUrl != "":
+			sdcUpscaleGf, err = ParseGGUFFileRemote(ctx, upscaleUrl, ropts...)
+		case hfUpscaleRepo != "" && hfUpscaleFile != "":
+			sdcUpscaleGf, err = ParseGGUFFileFromHuggingFace(ctx, hfUpscaleRepo, hfUpscaleFile, ropts...)
+		case msUpscaleRepo != "" && msUpscaleFile != "":
+			sdcUpscaleGf, err = ParseGGUFFileFromModelScope(ctx, msUpscaleRepo, msUpscaleFile, ropts...)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to parse upscaler GGUF file: %w", err)
+		}
+
+		// ControlNet for StableDiffusionCpp.
+		switch {
+		case controlNetPath != "":
+			sdcControlNetGf, err = ParseGGUFFile(controlNetPath, ropts...)
+		case controlNetUrl != "":
+			sdcControlNetGf, err = ParseGGUFFileRemote(ctx, controlNetUrl, ropts...)
+		case hfControlNetRepo != "" && hfControlNetFile != "":
+			sdcControlNetGf, err = ParseGGUFFileFromHuggingFace(ctx, hfControlNetRepo, hfControlNetFile, ropts...)
+		case msControlNetRepo != "" && msControlNetFile != "":
+			sdcControlNetGf, err = ParseGGUFFileFromModelScope(ctx, msControlNetRepo, msControlNetFile, ropts...)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to parse control net GGUF file: %w", err)
 		}
 	}
 
@@ -1053,57 +1288,70 @@ func mainAction(c *cli.Context) error {
 	// Otherwise, display the metadata and estimate the usage.
 
 	var (
-		m GGUFMetadata
-		a GGUFArchitecture
-		t GGUFTokenizer
-		e LLaMACppRunEstimate
+		m   = gf.Metadata()
+		a   = gf.Architecture()
+		t   = gf.Tokenizer()
+		lme LLaMACppRunEstimate
+		sde StableDiffusionCppRunEstimate
 	)
-	if !skipMetadata {
-		m = gf.Metadata()
-	}
-	if !skipArchitecture {
-		a = gf.Architecture()
-	}
-	if !skipTokenizer {
-		t = gf.Tokenizer()
-	}
-	if !skipEstimate {
-		if dftgf != nil {
-			deopts := eopts[:len(eopts):len(eopts)]
-			if offloadLayersDraft >= 0 {
-				deopts = append(deopts, WithOffloadLayers(uint64(offloadLayersDraft)))
+
+	skipTokenizer = skipTokenizer || t.Model == ""
+	skipEstimate = skipEstimate || m.Type != "model"
+
+	if !skipEstimate && m.Architecture != "diffusion" {
+		if lmcDrafterGf != nil {
+			dlmceopts := eopts[:len(eopts):len(eopts)]
+			if lmcOffloadLayersDraft >= 0 {
+				dlmceopts = append(dlmceopts, WithLLaMACppOffloadLayers(uint64(lmcOffloadLayersDraft)))
 			}
-			de := dftgf.EstimateLLaMACppRun(deopts...)
-			eopts = append(eopts, WithDrafter(&de))
+			de := lmcDrafterGf.EstimateLLaMACppRun(dlmceopts...)
+			eopts = append(eopts, WithLLaMACppDrafter(&de))
 		}
 
-		if projgf != nil {
-			peopts := eopts[:len(eopts):len(eopts)]
-			me := projgf.EstimateLLaMACppRun(peopts...)
-			eopts = append(eopts, WithProjector(&me))
+		if lmcProjectGf != nil {
+			plmceopts := eopts[:len(eopts):len(eopts)]
+			me := lmcProjectGf.EstimateLLaMACppRun(plmceopts...)
+			eopts = append(eopts, WithLLaMACppProjector(&me))
 		}
 
-		if len(adpgfs) > 0 {
-			adps := make([]LLaMACppRunEstimate, len(adpgfs))
-			aeopts := eopts[:len(eopts):len(eopts)]
-			for i, adpgf := range adpgfs {
-				ae := adpgf.EstimateLLaMACppRun(aeopts...)
+		if len(adapterGfs) > 0 {
+			adps := make([]LLaMACppRunEstimate, len(adapterGfs))
+			almceopts := eopts[:len(eopts):len(eopts)]
+			for i, adpgf := range adapterGfs {
+				ae := adpgf.EstimateLLaMACppRun(almceopts...)
 				adps[i] = ae
 			}
-			eopts = append(eopts, WithAdapters(adps))
+			eopts = append(eopts, WithLLaMACppAdapters(adps))
 		}
 
-		deopts := eopts[:len(eopts):len(eopts)]
-		if offloadLayers >= 0 {
-			deopts = append(deopts, WithOffloadLayers(uint64(offloadLayers)))
+		lmceopts := eopts[:len(eopts):len(eopts)]
+		if lmcOffloadLayers >= 0 {
+			lmceopts = append(lmceopts, WithLLaMACppOffloadLayers(uint64(lmcOffloadLayers)))
 		}
-		e = gf.EstimateLLaMACppRun(deopts...)
+		lme = gf.EstimateLLaMACppRun(lmceopts...)
+	}
+
+	if !skipEstimate && m.Architecture == "diffusion" {
+		if sdcUpscaleGf != nil {
+			sdceopts := eopts[:len(eopts):len(eopts)]
+			ue := sdcUpscaleGf.EstimateStableDiffusionCppRun(sdceopts...)
+			eopts = append(eopts, WithStableDiffusionCppUpscaler(&ue))
+		}
+
+		if sdcControlNetGf != nil {
+			sdceopts := eopts[:len(eopts):len(eopts)]
+			ce := sdcControlNetGf.EstimateStableDiffusionCppRun(sdceopts...)
+			eopts = append(eopts, WithStableDiffusionCppControlNet(&ce))
+		}
+
+		sdceopts := eopts[:len(eopts):len(eopts)]
+		sde = gf.EstimateStableDiffusionCppRun(sdceopts...)
 	}
 
 	// Then, output as JSON or table.
 
 	var (
-		mmap                      = !noMMap
+		mmap                      = !lmcNoMMap
 		platformRAM, platformVRAM uint64
 	)
 	{
@@ -1122,26 +1370,30 @@ func mainAction(c *cli.Context) error {
 
 	if inJson {
 		o := map[string]any{}
+
 		if !skipMetadata {
 			o["metadata"] = m
 		}
+
 		if !skipArchitecture {
 			o["architecture"] = a
 		}
-		if !skipTokenizer && t.Model != "" {
+
+		if !skipTokenizer {
 			o["tokenizer"] = t
 		}
-		if !skipEstimate && e.Type == "model" {
-			es := e.Summarize(mmap, platformRAM, platformVRAM)
+
+		if !skipEstimate && m.Architecture != "diffusion" {
+			lmes := lme.Summarize(mmap, platformRAM, platformVRAM)
 			switch {
-			case offloadLayersStep > e.OffloadLayers:
-				offloadLayersStep = e.OffloadLayers
-			case offloadLayersStep <= 0:
-				offloadLayersStep = e.OffloadLayers
+			case lmcOffloadLayersStep > lme.OffloadLayers:
+				lmcOffloadLayersStep = lme.OffloadLayers
+			case lmcOffloadLayersStep <= 0:
+				lmcOffloadLayersStep = lme.OffloadLayers
 			}
-			if offloadLayersStep < e.OffloadLayers {
-				cnt := e.OffloadLayers/offloadLayersStep + 1
-				if e.OffloadLayers%offloadLayersStep != 0 || e.FullOffloaded {
+			if lmcOffloadLayersStep < lme.OffloadLayers {
+				cnt := lme.OffloadLayers/lmcOffloadLayersStep + 1
+				if lme.OffloadLayers%lmcOffloadLayersStep != 0 || lme.FullOffloaded {
 					cnt++
 				}
 				esis := make([]LLaMACppRunEstimateSummaryItem, cnt)
@@ -1150,16 +1402,21 @@ func mainAction(c *cli.Context) error {
 					wg.Add(1)
 					go func(i int) {
 						defer wg.Done()
-						eopts := eopts[:len(eopts):len(eopts)]
-						eopts = append(eopts, WithOffloadLayers(uint64(i)*offloadLayersStep))
-						esis[i] = gf.EstimateLLaMACppRun(eopts...).SummarizeItem(mmap, platformRAM, platformVRAM)
+						lmeopts := eopts[:len(eopts):len(eopts)]
+						lmeopts = append(lmeopts, WithLLaMACppOffloadLayers(uint64(i)*lmcOffloadLayersStep))
+						esis[i] = gf.EstimateLLaMACppRun(lmeopts...).SummarizeItem(mmap, platformRAM, platformVRAM)
 					}(i)
 				}
 				wg.Wait()
-				esis[cap(esis)-1] = es.Items[0]
-				es.Items = esis
+				esis[cap(esis)-1] = lmes.Items[0]
+				lmes.Items = esis
 			}
-			o["estimate"] = es
+			o["estimate"] = lmes
+		}
+
+		if !skipEstimate && m.Architecture == "diffusion" {
+			sdes := sde.Summarize(mmap, platformRAM, platformVRAM)
+			o["estimate"] = sdes
 		}
 
 		enc := json.NewEncoder(os.Stdout)
@@ -1181,7 +1438,7 @@ func mainAction(c *cli.Context) error {
 			[][]any{
 				{
 					"Type",
-					"Name",
+					"Architecture",
 					"Arch",
 					"Quantization",
 					"Little Endian",
@@ -1240,27 +1497,40 @@ func mainAction(c *cli.Context) error {
 				bd = append(bd, sprintf(a.AdapterControlVectorLayerCount))
 			}
 		default:
-			hd = []any{
-				"Max Context Len",
-				"Embedding Len",
-				"Embedding GQA",
-				"Attention Causal",
-				"Attention Head Cnt",
-				"Layers",
-				"Feed Forward Len",
-				"Expert Cnt",
-				"Vocabulary Len",
-			}
-			bd = []any{
-				sprintf(a.MaximumContextLength),
-				sprintf(a.EmbeddingLength),
-				sprintf(a.EmbeddingGQA),
-				sprintf(a.AttentionCausal),
-				sprintf(tenary(a.AttentionHeadCountKV == 0 || a.AttentionHeadCountKV == a.AttentionHeadCount, "N/A", a.AttentionHeadCount)),
-				sprintf(a.BlockCount),
-				sprintf(a.FeedForwardLength),
-				sprintf(a.ExpertCount),
-				sprintf(a.VocabularyLength),
+			if a.Architecture == "diffusion" {
+				hd = []any{
+					"Diffusion Type",
+					"Conditioners",
+					"Autoencoder",
+				}
+				bd = []any{
+					a.DiffusionArchitecture,
+					sprintf(tenary(a.DiffusionHasConditioners(), a.DiffusionConditioners, "N/A")),
+					sprintf(tenary(a.DiffusionHasAutoencoder(), a.DiffusionAutoencoder, "N/A")),
+				}
+			} else {
+				hd = []any{
+					"Max Context Len",
+					"Embedding Len",
+					"Embedding GQA",
+					"Attention Causal",
+					"Attention Head Cnt",
+					"Layers",
+					"Feed Forward Len",
+					"Expert Cnt",
+					"Vocabulary Len",
+				}
+				bd = []any{
+					sprintf(a.MaximumContextLength),
+					sprintf(a.EmbeddingLength),
+					sprintf(a.EmbeddingGQA),
+					sprintf(a.AttentionCausal),
+					sprintf(tenary(a.AttentionHeadCountKV == 0 || a.AttentionHeadCountKV == a.AttentionHeadCount, "N/A", a.AttentionHeadCount)),
+					sprintf(a.BlockCount),
+					sprintf(a.FeedForwardLength),
+					sprintf(a.ExpertCount),
+					sprintf(a.VocabularyLength),
+				}
 			}
 		}
 		tprint(
@@ -1269,7 +1539,7 @@ func mainAction(c *cli.Context) error {
 			[][]any{bd})
 	}
 
-	if !skipTokenizer && t.Model != "" {
+	if !skipTokenizer {
 		tprint(
 			"TOKENIZER",
 			[][]any{
@@ -1304,9 +1574,9 @@ func mainAction(c *cli.Context) error {
 			})
 	}
 
-	if !skipEstimate && e.Type == "model" {
+	if !skipEstimate && m.Architecture != "diffusion" {
 		hds := make([][]any, 2)
-		es := e.Summarize(mmap, platformRAM, platformVRAM)
+		lmes := lme.Summarize(mmap, platformRAM, platformVRAM)
 		if !inShort {
 			hds[0] = []any{
 				"Arch",
@@ -1333,13 +1603,13 @@ func mainAction(c *cli.Context) error {
 				"Full Offloaded",
 			}
 		}
-		if es.Items[0].MaximumTokensPerSecond != nil {
+		if lmes.Items[0].MaximumTokensPerSecond != nil {
 			hds[0] = append(hds[0], "Max TPS")
 			hds[1] = append(hds[1], "Max TPS")
 		}
 		hds[0] = append(hds[0], "RAM", "RAM", "RAM")
 		hds[1] = append(hds[1], "Layers (I + T + O)", "UMA", "NonUMA")
-		for _, v := range es.Items[0].VRAMs {
+		for _, v := range lmes.Items[0].VRAMs {
 			var hd string
 			if v.Remote {
 				hd = fmt.Sprintf("RPC %d (V)RAM", v.Position)
@@ -1351,14 +1621,14 @@ func mainAction(c *cli.Context) error {
 		}
 
 		switch {
-		case offloadLayersStep > e.OffloadLayers:
-			offloadLayersStep = e.OffloadLayers
-		case offloadLayersStep <= 0:
-			offloadLayersStep = e.OffloadLayers
+		case lmcOffloadLayersStep > lme.OffloadLayers:
+			lmcOffloadLayersStep = lme.OffloadLayers
+		case lmcOffloadLayersStep <= 0:
+			lmcOffloadLayersStep = lme.OffloadLayers
 		}
-		if offloadLayersStep < e.OffloadLayers {
-			cnt := e.OffloadLayers/offloadLayersStep + 1
-			if e.OffloadLayers%offloadLayersStep != 0 || e.FullOffloaded {
+		if lmcOffloadLayersStep < lme.OffloadLayers {
+			cnt := lme.OffloadLayers/lmcOffloadLayersStep + 1
+			if lme.OffloadLayers%lmcOffloadLayersStep != 0 || lme.FullOffloaded {
 				cnt++
 			}
 			esis := make([]LLaMACppRunEstimateSummaryItem, cnt)
@@ -1367,48 +1637,108 @@ func mainAction(c *cli.Context) error {
 				wg.Add(1)
 				go func(i int) {
 					defer wg.Done()
-					eopts := eopts[:len(eopts):len(eopts)]
-					eopts = append(eopts, WithOffloadLayers(uint64(i)*offloadLayersStep))
-					esis[i] = gf.EstimateLLaMACppRun(eopts...).SummarizeItem(mmap, platformRAM, platformVRAM)
+					lmeopts := eopts[:len(eopts):len(eopts)]
+					lmeopts = append(lmeopts, WithLLaMACppOffloadLayers(uint64(i)*lmcOffloadLayersStep))
+					esis[i] = gf.EstimateLLaMACppRun(lmeopts...).SummarizeItem(mmap, platformRAM, platformVRAM)
 				}(i)
 			}
 			wg.Wait()
-			esis[cap(esis)-1] = es.Items[0]
-			es.Items = esis
+			esis[cap(esis)-1] = lmes.Items[0]
+			lmes.Items = esis
 		}
 
-		bds := make([][]any, len(es.Items))
-		for i := range es.Items {
+		bds := make([][]any, len(lmes.Items))
+		for i := range lmes.Items {
 			if !inShort {
 				bds[i] = []any{
-					sprintf(es.Architecture),
-					sprintf(es.ContextSize),
-					sprintf("%d / %d", es.LogicalBatchSize, es.PhysicalBatchSize),
-					sprintf(tenary(flashAttention, tenary(es.FlashAttention, "Enabled", "Unsupported"), "Disabled")),
-					sprintf(tenary(mmap, tenary(!es.NoMMap, "Enabled", "Unsupported"), "Disabled")),
-					sprintf(tenary(es.EmbeddingOnly, "Yes", "No")),
-					sprintf(tenary(es.Reranking, "Supported", "Unsupported")),
-					sprintf(tenary(es.Distributable, "Supported", "Unsupported")),
-					sprintf(tenary(es.Items[i].FullOffloaded, sprintf("%d (%d + 1)",
-						es.Items[i].OffloadLayers, es.Items[i].OffloadLayers-1), es.Items[i].OffloadLayers)),
-					sprintf(tenary(es.Items[i].FullOffloaded, "Yes", "No")),
+					sprintf(lmes.Architecture),
+					sprintf(lmes.ContextSize),
+					sprintf("%d / %d", lmes.LogicalBatchSize, lmes.PhysicalBatchSize),
+					sprintf(tenary(flashAttention, tenary(lmes.FlashAttention, "Enabled", "Unsupported"), "Disabled")),
+					sprintf(tenary(mmap, tenary(!lmes.NoMMap, "Enabled", "Unsupported"), "Disabled")),
+					sprintf(tenary(lmes.EmbeddingOnly, "Yes", "No")),
+					sprintf(tenary(lmes.Reranking, "Supported", "Unsupported")),
+					sprintf(tenary(lmes.Distributable, "Supported", "Unsupported")),
+					sprintf(tenary(lmes.Items[i].FullOffloaded, sprintf("%d (%d + 1)",
+						lmes.Items[i].OffloadLayers, lmes.Items[i].OffloadLayers-1), lmes.Items[i].OffloadLayers)),
+					sprintf(tenary(lmes.Items[i].FullOffloaded, "Yes", "No")),
 				}
 			}
-			if es.Items[i].MaximumTokensPerSecond != nil {
+			if lmes.Items[i].MaximumTokensPerSecond != nil {
 				bds[i] = append(bds[i],
-					sprintf(*es.Items[i].MaximumTokensPerSecond))
+					sprintf(*lmes.Items[i].MaximumTokensPerSecond))
 			}
 			bds[i] = append(bds[i],
-				sprintf("1 + %d + %d", es.Items[i].RAM.HandleLayers, tenary(es.Items[i].RAM.HandleOutputLayer, 1, 0)),
-				sprintf(es.Items[i].RAM.UMA),
-				sprintf(es.Items[i].RAM.NonUMA))
-			for _, v := range es.Items[i].VRAMs {
+				sprintf("1 + %d + %d", lmes.Items[i].RAM.HandleLayers, tenary(lmes.Items[i].RAM.HandleOutputLayer, 1, 0)),
+				sprintf(lmes.Items[i].RAM.UMA),
+				sprintf(lmes.Items[i].RAM.NonUMA))
+			for _, v := range lmes.Items[i].VRAMs {
 				bds[i] = append(bds[i],
 					sprintf("%d + %d", v.HandleLayers, tenary(v.HandleOutputLayer, 1, 0)),
 					sprintf(v.UMA),
 					sprintf(v.NonUMA))
 			}
 		}
+
+		tprint(
+			"ESTIMATE",
+			hds,
+			bds)
+	}
+
+	if !skipEstimate && m.Architecture == "diffusion" {
+		hds := make([][]any, 2)
+		sdes := sde.Summarize(mmap, platformRAM, platformVRAM)
+		if !inShort {
+			hds[0] = []any{
+				"Arch",
+				"Flash Attention",
+				"MMap Load",
+				"Distributable",
+				"Full Offloaded",
+			}
+			hds[1] = []any{
+				"Arch",
+				"Flash Attention",
+				"MMap Load",
+				"Distributable",
+				"Full Offloaded",
+			}
+		}
+		hds[0] = append(hds[0], "RAM", "RAM")
+		hds[1] = append(hds[1], "UMA", "NonUMA")
+		for _, v := range sdes.Items[0].VRAMs {
+			var hd string
+			if v.Remote {
+				hd = fmt.Sprintf("RPC %d (V)RAM", v.Position)
+			} else {
+				hd = fmt.Sprintf("VRAM %d", v.Position)
+			}
+			hds[0] = append(hds[0], hd, hd)
+			hds[1] = append(hds[1], "UMA", "NonUMA")
+		}
+
+		bds := make([][]any, len(sdes.Items))
+		for i := range sdes.Items {
+			if !inShort {
+				bds[i] = []any{
+					sprintf(sdes.Architecture),
+					sprintf(tenary(flashAttention, tenary(sdes.FlashAttention, "Enabled", "Unsupported"), "Disabled")),
+					sprintf(tenary(mmap, tenary(!sdes.NoMMap, "Enabled", "Unsupported"), "Disabled")),
+					sprintf(tenary(sdes.Distributable, "Supported", "Unsupported")),
+					sprintf(tenary(sdes.Items[i].FullOffloaded, "Yes", "No")),
+				}
+			}
+			bds[i] = append(bds[i],
+				sprintf(sdes.Items[i].RAM.UMA),
+				sprintf(sdes.Items[i].RAM.NonUMA))
+			for _, v := range sdes.Items[i].VRAMs {
+				bds[i] = append(bds[i],
+					sprintf(v.UMA),
+					sprintf(v.NonUMA))
+			}
+		}
+
 		tprint(
 			"ESTIMATE",
 			hds,

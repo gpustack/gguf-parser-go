@@ -17,6 +17,8 @@ type (
 		// Type describes what type this GGUF file is.
 		Type string `json:"type"`
 		// Architecture describes what architecture this GGUF file implements.
+		//
+		// All lowercase ASCII.
 		Architecture string `json:"architecture"`
 		// FlashAttention is the flag to indicate whether enable the flash attention,
 		// true for enable.
@@ -47,11 +49,11 @@ type (
 		// Devices represents the usage for running the GGUF file,
 		// the first device is the CPU, and the rest are GPUs.
 		Devices []LLaMACppRunDeviceUsage `json:"devices"`
-		// Drafter is the memory usage of drafter.
+		// Drafter is the estimated result of drafter.
 		Drafter *LLaMACppRunEstimate `json:"drafter,omitempty"`
-		// Projector is the memory usage of multimodal projector.
+		// Projector is the estimated result of multimodal projector.
 		Projector *LLaMACppRunEstimate `json:"projector,omitempty"`
-		// Adapters is the memory usage of adapters.
+		// Adapters is the estimated result of adapters.
 		Adapters []LLaMACppRunEstimate `json:"adapters,omitempty"`
 		// MaximumTokensPerSecond represents the maximum tokens per second for running the GGUF file.
 		MaximumTokensPerSecond *GGUFTokensPerSecondScalar `json:"maximumTokensPerSecond,omitempty"`
@@ -131,34 +133,11 @@ type (
 )
 
 // EstimateLLaMACppRun returns the inference estimated result of the GGUF file.
-func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LLaMACppRunEstimate) {
-	var o _LLaMACppRunEstimateOptions
+func (gf *GGUFFile) EstimateLLaMACppRun(opts ...GGUFRunEstimateOption) (e LLaMACppRunEstimate) {
+	// Options
+	var o _GGUFRunEstimateOptions
 	for _, opt := range opts {
 		opt(&o)
-	}
-	if o.CacheKeyType == nil {
-		o.CacheKeyType = ptr.To(GGMLTypeF16)
-	}
-	if o.CacheValueType == nil {
-		o.CacheValueType = ptr.To(GGMLTypeF16)
-	}
-	if o.OffloadKVCache == nil {
-		o.OffloadKVCache = ptr.To(true)
-	}
-	if o.LogicalBatchSize == nil {
-		o.LogicalBatchSize = ptr.To(int32(2048))
-	} else {
-		// See https://github.com/ggerganov/llama.cpp/blob/0bf16de07b0692e7df26b9a633e232bbd66e0360/src/llama.cpp#L16519-L16525.
-		o.LogicalBatchSize = ptr.To(max(32, *o.LogicalBatchSize))
-	}
-	if o.PhysicalBatchSize == nil {
-		o.PhysicalBatchSize = ptr.To(int32(512))
-	}
-	if *o.PhysicalBatchSize > *o.LogicalBatchSize {
-		panic("physical batch size must be less than or equal to logical batch size")
-	}
-	if o.SplitMode >= _LLAMACppSplitModeMax {
-		panic("split mode must be less than max")
 	}
 	switch {
 	case o.TensorSplitFraction == nil:
@@ -173,6 +152,30 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 		}
 		o.DeviceMetrics = o.DeviceMetrics[:len(o.TensorSplitFraction)+1]
 	}
+	if o.LMCCacheKeyType == nil {
+		o.LMCCacheKeyType = ptr.To(GGMLTypeF16)
+	}
+	if o.LMCCacheValueType == nil {
+		o.LMCCacheValueType = ptr.To(GGMLTypeF16)
+	}
+	if o.LMCOffloadKVCache == nil {
+		o.LMCOffloadKVCache = ptr.To(true)
+	}
+	if o.LMCLogicalBatchSize == nil {
+		o.LMCLogicalBatchSize = ptr.To(int32(2048))
+	} else {
+		// See https://github.com/ggerganov/llama.cpp/blob/0bf16de07b0692e7df26b9a633e232bbd66e0360/src/llama.cpp#L16519-L16525.
+		o.LMCLogicalBatchSize = ptr.To(max(32, *o.LMCLogicalBatchSize))
+	}
+	if o.LMCPhysicalBatchSize == nil {
+		o.LMCPhysicalBatchSize = ptr.To(int32(512))
+	}
+	if *o.LMCPhysicalBatchSize > *o.LMCLogicalBatchSize {
+		panic("physical batch size must be less than or equal to logical batch size")
+	}
+	if o.LMCSplitMode >= _LLAMACppSplitModeMax {
+		panic("split mode must be less than max")
+	}
 
 	// Devices.
 	e.Devices = make([]LLaMACppRunDeviceUsage, len(o.TensorSplitFraction)+1)
@@ -181,20 +184,8 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 	}
 
 	// Metadata.
-	var (
-		a GGUFArchitecture
-		t GGUFTokenizer
-	)
-	if o.Architecture != nil {
-		a = *o.Architecture
-	} else {
-		a = gf.Architecture()
-	}
-	if o.Tokenizer != nil {
-		t = *o.Tokenizer
-	} else {
-		t = gf.Tokenizer()
-	}
+	a := gf.Architecture()
+	t := gf.Tokenizer()
 	e.Type = a.Type
 	e.Architecture = a.Architecture
 
@@ -202,7 +193,7 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 	if a.Type == "model" {
 		// Quantization requires flash attention,
 		// see https://github.com/ggerganov/llama.cpp/blob/172c8256840ffd882ab9992ecedbb587d9b21f15/llama.cpp#L16055-L16058.
-		if *o.CacheValueType > GGMLTypeF16 && !o.FlashAttention {
+		if *o.LMCCacheValueType > GGMLTypeF16 && !o.FlashAttention {
 			o.FlashAttention = true
 		}
 		// Grok is not compatible with flash attention,
@@ -217,7 +208,7 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 	// Embedding.
 	if a.Type == "model" && !a.AttentionCausal {
 		e.EmbeddingOnly = true
-		o.PhysicalBatchSize = o.LogicalBatchSize
+		o.LMCPhysicalBatchSize = o.LMCLogicalBatchSize
 		// Reranking.
 		if _, found := gf.TensorInfos.Index([]string{"cls.bias", "cls.weight"}); found > 0 {
 			e.Reranking = true
@@ -247,8 +238,8 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 	}
 
 	// Batch size.
-	e.LogicalBatchSize = *o.LogicalBatchSize
-	e.PhysicalBatchSize = *o.PhysicalBatchSize
+	e.LogicalBatchSize = *o.LMCLogicalBatchSize
+	e.PhysicalBatchSize = *o.LMCPhysicalBatchSize
 
 	// Init hyperparameters,
 	// https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L6957-L7000.
@@ -262,10 +253,10 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 	)
 	{
 		nContext = a.MaximumContextLength
-		if o.ContextSize != nil {
-			nContext = uint64(*o.ContextSize)
+		if o.LMCContextSize != nil {
+			nContext = uint64(*o.LMCContextSize)
 		}
-		if o.InMaxContextSize {
+		if o.LMCInMaxContextSize {
 			nContext = min(nContext, a.MaximumContextLength)
 		}
 		// Padding context size,
@@ -277,7 +268,7 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 		}
 		// Correct token size,
 		// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L12221-L12224.
-		nTokens = min(nContext, uint64(*o.PhysicalBatchSize))
+		nTokens = min(nContext, uint64(*o.LMCPhysicalBatchSize))
 		nBatch = nTokens
 		nOutputs = nTokens
 		nParallel = uint64(ptr.Deref(o.ParallelSize, 1))
@@ -287,8 +278,8 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 		// see https://github.com/ggerganov/llama.cpp/blob/7672adeec7a79ea271058c63106c142ba84f951a/llama.cpp#L16122-L16129.
 		if a.Type == "model" && a.Architecture == "mamba" {
 			nKV = nParallel
-			o.CacheKeyType = ptr.To(GGMLTypeF32)
-			o.CacheValueType = ptr.To(GGMLTypeF32)
+			o.LMCCacheKeyType = ptr.To(GGMLTypeF32)
+			o.LMCCacheValueType = ptr.To(GGMLTypeF32)
 		}
 
 		e.ContextSize = nContext
@@ -310,11 +301,11 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 		// For none model,
 		// see https://github.com/ggerganov/llama.cpp/blob/148ec970b62c3c5ae0a8bfdaad2fc237aaae350d/examples/llava/clip.cpp#L994-L1008.
 		if a.Type != "model" {
-			o.OffloadLayers = ptr.To(a.BlockCount + 1) // Clip means full offload.
+			o.LMCOffloadLayers = ptr.To(a.BlockCount + 1) // None model means full offload.
 		}
-		switch v := o.OffloadLayers; {
+		switch v := o.LMCOffloadLayers; {
 		case v == nil:
-			o.OffloadLayers = ptr.To(a.BlockCount)
+			o.LMCOffloadLayers = ptr.To(a.BlockCount)
 			nOffloadLayers = a.BlockCount
 			isOffloadOutputLayer = true
 		case *v != 0:
@@ -379,7 +370,7 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 		"token_types.weight",
 	})
 
-	// Weight.
+	// Weight & Parameter.
 	{
 		// Compute.
 		switch a.Type {
@@ -441,12 +432,12 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 	// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L2479-L2501.
 	{
 		kps, vps := a.EmbeddingKeyGQA*nKV, a.EmbeddingValueGQA*nKV
-		krs, vrs := o.CacheKeyType.RowSizeOf([]uint64{kps}), o.CacheValueType.RowSizeOf([]uint64{vps})
+		krs, vrs := o.LMCCacheKeyType.RowSizeOf([]uint64{kps}), o.LMCCacheValueType.RowSizeOf([]uint64{vps})
 
 		e.Devices[0].KVCache.Key = GGUFBytesScalar(krs * nLoadLayers)
 		e.Devices[0].KVCache.Value = GGUFBytesScalar(vrs * nLoadLayers)
 		e.Devices[0].Parameter.KVCache = GGUFParametersScalar((kps + vps) * nLoadLayers)
-		if !*o.OffloadKVCache {
+		if !*o.LMCOffloadKVCache {
 			e.Devices[0].KVCache.Key += GGUFBytesScalar(krs * nOffloadLayers)
 			e.Devices[0].KVCache.Value += GGUFBytesScalar(vrs * nOffloadLayers)
 			e.Devices[0].Parameter.KVCache += GGUFParametersScalar((kps + vps) * nOffloadLayers)
@@ -555,10 +546,10 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 					offloadAttnInc += rs
 				}
 				// https://github.com/ggerganov/llama.cpp/blob/172c8256840ffd882ab9992ecedbb587d9b21f15/llama.cpp#L6986-L6992.
-				rs := o.CacheKeyType.RowSizeOf([]uint64{uint64(a.AttentionKeyLength), nKV, a.AttentionHeadCountKV})
+				rs := o.LMCCacheKeyType.RowSizeOf([]uint64{uint64(a.AttentionKeyLength), nKV, a.AttentionHeadCountKV})
 				offloadAttnInc += rs
 				// https://github.com/ggerganov/llama.cpp/blob/172c8256840ffd882ab9992ecedbb587d9b21f15/llama.cpp#L7000-L7007.
-				rs = o.CacheValueType.RowSizeOf([]uint64{uint64(a.AttentionValueLength), nKV, a.AttentionHeadCountKV})
+				rs = o.LMCCacheValueType.RowSizeOf([]uint64{uint64(a.AttentionValueLength), nKV, a.AttentionHeadCountKV})
 				offloadAttnInc += rs
 			} else {
 				offloadAttnInc = uint64(0)
@@ -574,7 +565,7 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 						loadAttnInc = rs         // Vcur.
 						rs = GGMLTypeF32.RowSizeOf([]uint64{nKV, nTokens, a.AttentionHeadCount})
 						offloadAttnInc += rs // kq.
-						rs = o.CacheKeyType.RowSizeOf([]uint64{uint64(a.AttentionKeyLength), nKV, a.AttentionHeadCountKV})
+						rs = o.LMCCacheKeyType.RowSizeOf([]uint64{uint64(a.AttentionKeyLength), nKV, a.AttentionHeadCountKV})
 						offloadAttnInc += rs * 2 // k-?, v-?.
 					case strings.HasSuffix(l.Name, ".attn_qkv.weight"):
 						rs = GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[0], nTokens})
@@ -582,7 +573,7 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 						loadAttnInc = rs         // Vcur.
 						rs = GGMLTypeF32.RowSizeOf([]uint64{nKV, nTokens, a.AttentionHeadCount})
 						offloadAttnInc += rs // kq.
-						rs = o.CacheKeyType.RowSizeOf([]uint64{uint64(a.AttentionKeyLength), nKV, a.AttentionHeadCountKV})
+						rs = o.LMCCacheKeyType.RowSizeOf([]uint64{uint64(a.AttentionKeyLength), nKV, a.AttentionHeadCountKV})
 						offloadAttnInc += rs * 2 // k-?, v-?.
 					}
 				}
@@ -633,18 +624,18 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...LLaMACppRunEstimateOption) (e LL
 	}
 
 	// Drafter.
-	e.Drafter = o.Drafter
+	e.Drafter = o.LMCDrafter
 
 	// Projector.
-	e.Projector = o.Projector
+	e.Projector = o.LMCProjector
 
 	// Adapters.
-	e.Adapters = o.Adapters
+	e.Adapters = o.LMCAdapters
 
 	// Maximum tokens per second.
 	if ds, dmss := e.Devices, o.DeviceMetrics; len(dmss) != 0 {
 		ltss := make([]float64, len(dmss))
-		bs := anyx.Number[float64](*o.LogicalBatchSize) / float64(nBatch)
+		bs := anyx.Number[float64](*o.LMCLogicalBatchSize) / float64(nBatch)
 		for i, dm := range dmss {
 			fl, upbw, dwbw := float64(max(dm.FLOPS, 1)), float64(max(dm.UpBandwidth, 1)), float64(max(dm.DownBandwidth, 1))
 			cmpops := float64(ds[i].Parameter.Compute)*2 /* FMA */ *bs + float64(ds[i].Parameter.Input) + float64(ds[i].Parameter.Output)
@@ -686,6 +677,8 @@ type (
 		// Type describes what type this GGUF file is.
 		Type string `json:"type"`
 		// Architecture describes what architecture this GGUF file implements.
+		//
+		// All lowercase ASCII.
 		Architecture string `json:"architecture"`
 		// ContextSize is the size of the context.
 		ContextSize uint64 `json:"contextSize"`
@@ -785,30 +778,30 @@ func (e LLaMACppRunEstimate) SummarizeItem(mmap bool, nonUMARamFootprint, nonUMA
 	// VRAMs.
 	emi.VRAMs = make([]LLaMACppRunEstimateMemory, len(e.Devices)-1)
 	{
-		for i, v := range e.Devices[1:] {
-			fp := v.Footprint
-			wg := v.Weight.Sum()
-			kv := v.KVCache.Sum()
-			cp := v.Computation.Sum()
+		for i, d := range e.Devices[1:] {
+			fp := d.Footprint
+			wg := d.Weight.Sum()
+			kv := d.KVCache.Sum()
+			cp := d.Computation.Sum()
 
-			emi.VRAMs[i].HandleLayers = v.HandleLayers
-			emi.VRAMs[i].HandleLastLayer = v.HandleLastLayer
-			emi.VRAMs[i].HandleOutputLayer = v.HandleOutputLayer
-			emi.VRAMs[i].Remote = v.Remote
-			emi.VRAMs[i].Position = v.Position
+			emi.VRAMs[i].HandleLayers = d.HandleLayers
+			emi.VRAMs[i].HandleLastLayer = d.HandleLastLayer
+			emi.VRAMs[i].HandleOutputLayer = d.HandleOutputLayer
+			emi.VRAMs[i].Remote = d.Remote
+			emi.VRAMs[i].Position = d.Position
 
 			// UMA.
 			emi.VRAMs[i].UMA = fp + wg + kv + /* cp */ 0
 			if !e.NoMMap && mmap {
 				emi.VRAMs[i].UMA -= wg
-				if v.Remote || v.Position > 0 && v.HandleLastLayer >= 0 {
+				if d.Remote || d.Position > 0 && d.HandleLastLayer >= 0 {
 					emi.VRAMs[i].UMA += wg
 				}
 			}
 
 			// NonUMA.
 			emi.VRAMs[i].NonUMA = GGUFBytesScalar(nonUMAVramFootprint) + fp + wg + kv + cp
-			if !v.Remote && v.Position > 0 && v.HandleLastLayer < 0 {
+			if !d.Remote && d.Position > 0 && d.HandleLastLayer < 0 {
 				emi.VRAMs[i].NonUMA -= wg + cp
 			}
 		}

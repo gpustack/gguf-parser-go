@@ -1,20 +1,23 @@
 package gguf_parser
 
 import (
+	"regexp"
 	"sort"
 	"strings"
+
+	"golang.org/x/exp/maps"
 )
 
 // GGUFMetadata represents the model metadata of a GGUF file.
 type GGUFMetadata struct {
 	/* Basic */
 
-	// Type describes the type of the GGUF file,
+	// Type describes what type this GGUF file is,
 	// default is "model".
 	Type string `json:"type"`
 	// Architecture describes what architecture this GGUF file implements.
 	//
-	// All lowercase ASCII, with only [a-z0-9]+ characters allowed.
+	// All lowercase ASCII.
 	Architecture string `json:"architecture"`
 	// QuantizationVersion describes the version of the quantization format.
 	//
@@ -158,7 +161,12 @@ func (gf *GGUFFile) Metadata() (gm GGUFMetadata) {
 			gm.Type = "projector"
 		}
 	} else {
-		gm.Architecture = "llama"
+		if gf.TensorInfos.Match(regexp.MustCompile(`^model\.diffusion_model\..*`)) ||
+			gf.TensorInfos.Match(regexp.MustCompile(`^double_blocks\..*`)) {
+			gm.Architecture = "diffusion"
+		} else {
+			gm.Architecture = "llama"
+		}
 	}
 	if v, ok := m[quantizationKey]; ok {
 		gm.QuantizationVersion = ValueNumeric[uint32](v)
@@ -277,31 +285,33 @@ func (gf *GGUFFile) guessFileType() GGUFFileType {
 		return _GGUFFileTypeCount
 	}
 
-	var ts []GGMLType
-	{
-		// Count.
-		cm := map[GGMLType]int{}
-		for i := range gf.TensorInfos {
-			if !strings.HasPrefix(gf.TensorInfos[i].Name, "blk") {
-				continue
-			}
-			cm[gf.TensorInfos[i].Type]++
+	// Count.
+	cm := make(map[GGMLType]int)
+	for i := range gf.TensorInfos {
+		if !strings.HasSuffix(gf.TensorInfos[i].Name, ".weight") {
+			continue
 		}
-
-		// Calculate.
-		ts = make([]GGMLType, 0, len(cm))
-		for t := range cm {
-			ts = append(ts, t)
-		}
-		sort.Slice(ts, func(i, j int) bool {
-			return cm[ts[i]] > cm[ts[j]]
-		})
+		cm[gf.TensorInfos[i].Type]++
 	}
 
-	if len(ts) == 0 {
+	return GetFileType(cm)
+}
+
+// GetFileType returns the GGUFFileType represented the mostly GGMLType of the given tensors counter.
+//
+// The input `cm` is a map of GGMLType to the count of tensors of that type.
+func GetFileType(cm map[GGMLType]int) GGUFFileType {
+	if len(cm) == 0 {
 		return _GGUFFileTypeCount
 	}
 
+	// Sort.
+	ts := maps.Keys(cm)
+	sort.Slice(ts, func(i, j int) bool {
+		return cm[ts[i]] > cm[ts[j]]
+	})
+
+	// Guess.
 	switch ts[0] {
 	case GGMLTypeF32:
 		return GGUFFileTypeAllF32

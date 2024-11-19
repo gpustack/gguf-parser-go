@@ -23,8 +23,8 @@ download it.
 - **No File Required**: GGUF Parser uses chunking reading to parse the metadata of remote GGUF file, which means you
   don't need to download the entire file and load it.
 - **Accurate Prediction**: The evaluation results of GGUF Parser usually deviate from the actual usage by about 100MiB.
-- **Quick Verification**: You can provide device metrics to calculate the maximum tokens per second (TPS) without running the
-  model.
+- **Quick Verification**: You can provide device metrics to calculate the maximum tokens per second (TPS) without
+  running the model.
 - **Type Screening**: GGUF Parser can distinguish what the GGUF file used for, such as Embedding, Reranking, LoRA, etc.
 - **Fast**: GGUF Parser is written in Go, which is fast and efficient.
 
@@ -39,7 +39,9 @@ download it.
         * [From HuggingFace](#parse-from-huggingface)
         * [From ModelScope](#parse-from-modelscope)
         * [From Ollama Library](#parse-from-ollama-library)
-        * [None Model](#parse-none-model)
+        * [Others](#others)
+            * [Image Model](#parse-image-model)
+            * [None Model](#parse-none-model)
     + [Estimate](#estimate)
         * [Across Multiple GPU devices](#across-multiple-gpu-devices)
         * [Maximum Tokens Per Second](#maximum-tokens-per-second)
@@ -54,23 +56,25 @@ download it.
 
 ## Notes
 
-- GGUF Parser estimates the maximum tokens per second(`MAX TPS`) for a model (experimental).
+- **Since v0.13.0 (BREAKING CHANGE)**, GGUF Parser can parse files
+  for [StableDiffusion.Cpp](https://github.com/leejet/stable-diffusion.cpp) or StableDiffusion.Cpp like application.
+- Experimentally, GGUF Parser can estimate the maximum tokens per second(`MAX TPS`) for a (V)LM model according to the
+  `--device-metric` options.
 - GGUF Parser distinguishes the remote devices from `--tensor-split` via `--rpc`.
     + For one host multiple GPU devices, you can use `--tensor-split` to get the estimated memory usage of each GPU.
     + For multiple hosts multiple GPU devices, you can use `--tensor-split` and `--rpc` to get the estimated memory
       usage of each GPU. Since v0.11.0, `--rpc` flag masks the devices specified by `--tensor-split` in front.
 - Table result usage:
-    + `I`/`T`/`O` indicates the count for input layers, transformer layers, and output layers. Input layers are not
-      offloaded at present.
     + `DISTRIBUTABLE` indicates the GGUF file supports distribution inference or not, if the file doesn't support
       distribution inference, you can not offload it
       with [RPC servers](https://github.com/ggerganov/llama.cpp/tree/master/examples/rpc).
-    + `RAM` indicates the system memory usage when running [LLaMA.Cpp](https://github.com/ggerganov/llama.cpp) or
-      LLaMA.Cpp like application.
-    + `VRAM *` indicates the local GPU memory usage when serving the GGUF file.
-    + `RPC * (V)RAM` indicates the remote GPU memory usage when serving the GGUF file.
-    + `UMA` indicates the memory usage of Apple macOS only. `NONUMA` adapts to other cases, including none GPU
-      devices.
+    + `RAM` indicates the system memory usage.
+    + `VRAM *` indicates the local GPU memory usage.
+    + `RPC * (V)RAM` indicates the remote memory usage. The kind of memory is determined by which backend the RPC server
+      uses, check the running logs for more details.
+    + `UMA` indicates the memory usage of Apple macOS only. `NONUMA` adapts to other cases, including none GPU devices.
+    + `LAYERS`(`I`/`T`/`O`) indicates the count for input layers, transformer layers, and output layers. Input layers
+      are not offloaded at present.
 
 ## Installation
 
@@ -238,7 +242,7 @@ $ gguf-parser --url="https://huggingface.co/MaziyarPanahi/Meta-Llama-3.1-405B-In
 #### Parse From HuggingFace
 
 > [!NOTE]
-> 
+>
 > Allow using `HF_ENDPOINT` to override the default HuggingFace endpoint: `https://huggingface.co`.
 
 ```shell
@@ -319,7 +323,7 @@ $ gguf-parser --hf-repo="etemiz/Llama-3.1-405B-Inst-GGUF" --hf-file="llama-3.1-4
 #### Parse From ModelScope
 
 > [!NOTE]
-> 
+>
 > Allow using `MS_ENDPOINT` to override the default ModelScope endpoint: `https://modelscope.cn`.
 
 ```shell
@@ -363,7 +367,7 @@ $ gguf-parser --ms-repo="shaowenchen/chinese-alpaca-2-13b-16k-gguf" --ms-file="c
 #### Parse From Ollama Library
 
 > [!NOTE]
-> 
+>
 > Allow using `--ol-base-url` to override the default Ollama registry endpoint: `https://registry.ollama.ai`.
 
 ```shell
@@ -442,7 +446,70 @@ $ gguf-parser --ol-model="llama3.1" --ol-usage
 
 ```
 
-#### Parse None Model
+#### Others
+
+##### Parse Image Model
+
+```shell
+$ # Parse FLUX.1-dev Model
+$ gguf-parser --hf-repo="gpustack/FLUX.1-dev-GGUF" --hf-file="FLUX.1-dev-FP16.gguf"
++------------------------------------------------------------------------------------------------------+
+| METADATA                                                                                             |
++-------+--------------+-----------+--------------+---------------+-----------+------------+-----------+
+|  TYPE | ARCHITECTURE |    ARCH   | QUANTIZATION | LITTLE ENDIAN |    SIZE   | PARAMETERS |    BPW    |
++-------+--------------+-----------+--------------+---------------+-----------+------------+-----------+
+| model |      N/A     | diffusion |      F16     |      true     | 31.95 GiB |    17 B    | 16.14 bpw |
++-------+--------------+-----------+--------------+---------------+-----------+------------+-----------+
+
++-----------------------------------------------------------------------------------------+
+| ARCHITECTURE                                                                            |
++----------------+-------------------------------------------------+----------------------+
+| DIFFUSION TYPE |                   CONDITIONERS                  |      AUTOENCODER     |
++----------------+-------------------------------------------------+----------------------+
+|   FLUX.1-dev   | OpenAI CLIP ViT-L/14 (F16), Google T5-xxl (F16) | FLUX.1-dev VAE (F32) |
++----------------+-------------------------------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------------------------------------------+
+| ESTIMATE                                                                                                                    |
++------------+-----------------+-------------+---------------+----------------+-----------------------+-----------------------+
+|    ARCH    | FLASH ATTENTION |  MMAP LOAD  | DISTRIBUTABLE | FULL OFFLOADED |          RAM          |         VRAM 0        |
+|            |                 |             |               |                +----------+------------+-----------+-----------+
+|            |                 |             |               |                |    UMA   |   NONUMA   |    UMA    |   NONUMA  |
++------------+-----------------+-------------+---------------+----------------+----------+------------+-----------+-----------+
+| flux_1_dev |     Disabled    | Unsupported |  Unsupported  |       No       | 5.13 MiB | 155.13 MiB | 31.95 GiB | 32.19 GiB |
++------------+-----------------+-------------+---------------+----------------+----------+------------+-----------+-----------+
+
+$ # Parse FLUX.1-dev Model without offload Conditioner and Autoencoder
+$ gguf-parser --hf-repo="gpustack/FLUX.1-dev-GGUF" --hf-file="FLUX.1-dev-FP16.gguf" --clip-on-cpu --vae-on-cpu
++------------------------------------------------------------------------------------------------------+
+| METADATA                                                                                             |
++-------+--------------+-----------+--------------+---------------+-----------+------------+-----------+
+|  TYPE | ARCHITECTURE |    ARCH   | QUANTIZATION | LITTLE ENDIAN |    SIZE   | PARAMETERS |    BPW    |
++-------+--------------+-----------+--------------+---------------+-----------+------------+-----------+
+| model |      N/A     | diffusion |      F16     |      true     | 31.95 GiB |    17 B    | 16.14 bpw |
++-------+--------------+-----------+--------------+---------------+-----------+------------+-----------+
+
++-----------------------------------------------------------------------------------------+
+| ARCHITECTURE                                                                            |
++----------------+-------------------------------------------------+----------------------+
+| DIFFUSION TYPE |                   CONDITIONERS                  |      AUTOENCODER     |
++----------------+-------------------------------------------------+----------------------+
+|   FLUX.1-dev   | OpenAI CLIP ViT-L/14 (F16), Google T5-xxl (F16) | FLUX.1-dev VAE (F32) |
++----------------+-------------------------------------------------+----------------------+
+
++---------------------------------------------------------------------------------------------------------------------------+
+| ESTIMATE                                                                                                                  |
++------------+-----------------+-------------+---------------+----------------+---------------------+-----------------------+
+|    ARCH    | FLASH ATTENTION |  MMAP LOAD  | DISTRIBUTABLE | FULL OFFLOADED |         RAM         |         VRAM 0        |
+|            |                 |             |               |                +----------+----------+-----------+-----------+
+|            |                 |             |               |                |    UMA   |  NONUMA  |    UMA    |   NONUMA  |
++------------+-----------------+-------------+---------------+----------------+----------+----------+-----------+-----------+
+| flux_1_dev |     Disabled    | Unsupported |  Unsupported  |       No       | 9.66 GiB | 9.81 GiB | 22.29 GiB | 22.54 GiB |
++------------+-----------------+-------------+---------------+----------------+----------+----------+-----------+-----------+
+
+```
+
+##### Parse None Model
 
 ```shell
 $ # Parse Multi-Modal Projector

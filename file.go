@@ -424,6 +424,10 @@ type (
 		// Get returns the GGUFTensorInfo with the given name,
 		// and true if found, and false otherwise.
 		Get(name string) (info GGUFTensorInfo, found bool)
+		// GetFileType returns the GGUFFileType.
+		GetFileType() GGUFFileType
+		// Match returns true if the name matches the given regex, and false otherwise.
+		Match(nameRegex *regexp.Regexp) bool
 		// Search returns a list of GGUFTensorInfo with the names that match the given regex.
 		Search(nameRegex *regexp.Regexp) (infos []GGUFTensorInfo)
 		// Index returns a map value to the GGUFTensorInfo with the given names,
@@ -460,79 +464,7 @@ type (
 
 // Layers converts the GGUFTensorInfos to GGUFLayerTensorInfos.
 func (gf *GGUFFile) Layers(ignores ...string) GGUFLayerTensorInfos {
-	ls := gf.layers()
-	if len(ignores) != 0 {
-		_, ls, _ = ls.Cut(ignores)
-		return ls
-	}
-	return ls
-}
-
-func (gf *GGUFFile) layers() GGUFLayerTensorInfos {
-	var ret GGUFLayerTensorInfos
-
-	pm := make(map[string]any)
-	for i := range gf.TensorInfos {
-		ps := strings.Split(gf.TensorInfos[i].Name, ".")
-		if len(ps) < 2 {
-			ret = append(ret, gf.TensorInfos[i])
-			continue
-		}
-		switch {
-		default:
-			ret = append(ret, gf.TensorInfos[i])
-		case ps[0] == "blk" || ps[0] == "mm":
-			p := strings.Join([]string{ps[0], ps[1]}, ".")
-			if _, ok := pm[p]; !ok {
-				l := &GGUFNamedTensorInfos{Name: p}
-				pm[p] = l
-				ret = append(ret, l)
-			}
-			l := pm[p].(*GGUFNamedTensorInfos)
-			l.GGUFLayerTensorInfos = append(l.GGUFLayerTensorInfos, gf.TensorInfos[i])
-		case ps[0] == "v" || ps[0] == "t": // Clip.
-			p := ps[0]
-			if _, ok := pm[p]; !ok {
-				xl := &GGUFNamedTensorInfos{Name: p}
-				pm[p] = xl
-				ret = append(ret, xl)
-			}
-			xl := pm[p].(*GGUFNamedTensorInfos)
-			if ps[1] != "blk" || len(ps) < 3 {
-				xl.GGUFLayerTensorInfos = append(xl.GGUFLayerTensorInfos, gf.TensorInfos[i])
-				continue
-			}
-			p = strings.Join([]string{ps[0], ps[1], ps[2]}, ".")
-			if _, ok := pm[p]; !ok {
-				l := &GGUFNamedTensorInfos{Name: p}
-				pm[p] = l
-				xl.GGUFLayerTensorInfos = append(xl.GGUFLayerTensorInfos, l)
-			}
-			l := pm[p].(*GGUFNamedTensorInfos)
-			l.GGUFLayerTensorInfos = append(l.GGUFLayerTensorInfos, gf.TensorInfos[i])
-		case ps[0] == "decoder" || ps[0] == "encoder": // BERT.
-			p := ps[0]
-			if _, ok := pm[p]; !ok {
-				xl := &GGUFNamedTensorInfos{Name: p}
-				pm[p] = xl
-				ret = append(ret, xl)
-			}
-			xl := pm[p].(*GGUFNamedTensorInfos)
-			if ps[1] != "block" || len(ps) < 3 {
-				xl.GGUFLayerTensorInfos = append(xl.GGUFLayerTensorInfos, gf.TensorInfos[i])
-				continue
-			}
-			p = strings.Join([]string{ps[0], ps[1], ps[2]}, ".")
-			if _, ok := pm[p]; !ok {
-				l := &GGUFNamedTensorInfos{Name: p}
-				pm[p] = l
-				xl.GGUFLayerTensorInfos = append(xl.GGUFLayerTensorInfos, l)
-			}
-			l := pm[p].(*GGUFNamedTensorInfos)
-			l.GGUFLayerTensorInfos = append(l.GGUFLayerTensorInfos, gf.TensorInfos[i])
-		}
-	}
-	return ret
+	return gf.TensorInfos.Layers(ignores...)
 }
 
 func (kv GGUFMetadataKV) ValueUint8() uint8 {
@@ -909,6 +841,16 @@ func (ti GGUFTensorInfo) Get(name string) (info GGUFTensorInfo, found bool) {
 	return GGUFTensorInfo{}, false
 }
 
+// GetFileType returns the GGUFFileType.
+func (ti GGUFTensorInfo) GetFileType() GGUFFileType {
+	return GetFileType(map[GGMLType]int{ti.Type: 1})
+}
+
+// Match returns true if the name of the GGUFTensorInfo matches the given regex.
+func (ti GGUFTensorInfo) Match(nameRegex *regexp.Regexp) bool {
+	return nameRegex.MatchString(ti.Name)
+}
+
 // Search returns a list of GGUFTensorInfo with the names that match the given regex.
 func (ti GGUFTensorInfo) Search(nameRegex *regexp.Regexp) (infos []GGUFTensorInfo) {
 	if nameRegex.MatchString(ti.Name) {
@@ -1000,6 +942,33 @@ func (tis GGUFTensorInfos) Get(name string) (info GGUFTensorInfo, found bool) {
 	return GGUFTensorInfo{}, false
 }
 
+// GetFileType returns the GGUFFileType represented the mostly GGMLType of the GGUFTensorInfos.
+func (tis GGUFTensorInfos) GetFileType() GGUFFileType {
+	if len(tis) == 0 {
+		return _GGUFFileTypeCount
+	}
+
+	cm := make(map[GGMLType]int)
+	for i := range tis {
+		if !strings.HasSuffix(tis[i].Name, ".weight") {
+			continue
+		}
+		cm[tis[i].Type]++
+	}
+
+	return GetFileType(cm)
+}
+
+// Match returns true if a tensor of GGUFTensorInfos matches the given regex.
+func (tis GGUFTensorInfos) Match(nameRegex *regexp.Regexp) bool {
+	for i := range tis {
+		if nameRegex.MatchString(tis[i].Name) {
+			return true
+		}
+	}
+	return false
+}
+
 // Search returns a list of GGUFTensorInfo with the names that match the given regex.
 func (tis GGUFTensorInfos) Search(nameRegex *regexp.Regexp) (infos []GGUFTensorInfo) {
 	for i := range tis {
@@ -1053,6 +1022,165 @@ func (tis GGUFTensorInfos) Count() uint64 {
 	return uint64(len(tis))
 }
 
+// Layers converts the GGUFTensorInfos to GGUFLayerTensorInfos.
+func (tis GGUFTensorInfos) Layers(ignores ...string) GGUFLayerTensorInfos {
+	if len(tis) == 0 {
+		return nil
+	}
+
+	ls := tis.layers()
+	if len(ignores) != 0 {
+		_, ls, _ = ls.Cut(ignores)
+		return ls
+	}
+	return ls
+}
+
+var numberRegex = regexp.MustCompile(`^\d+$`)
+
+func (tis GGUFTensorInfos) layers() GGUFLayerTensorInfos {
+	var ret GGUFLayerTensorInfos
+
+	pm := make(map[string]any)
+	for i := range tis {
+		ps := strings.Split(tis[i].Name, ".")
+		if len(ps) < 2 {
+			ret = append(ret, tis[i])
+			continue
+		}
+		switch {
+		default:
+			ret = append(ret, tis[i])
+		case ps[0] == "blk" || ps[0] == "mm":
+			// LLaMACpp.
+			p := strings.Join([]string{ps[0], ps[1]}, ".")
+			if _, ok := pm[p]; !ok {
+				l := &GGUFNamedTensorInfos{Name: p}
+				pm[p] = l
+				ret = append(ret, l)
+			}
+			l := pm[p].(*GGUFNamedTensorInfos)
+			l.GGUFLayerTensorInfos = append(l.GGUFLayerTensorInfos, tis[i])
+		case ps[0] == "v" || ps[0] == "t":
+			// LLaMACpp CLIP.
+			p := ps[0]
+			if _, ok := pm[p]; !ok {
+				l := &GGUFNamedTensorInfos{Name: p}
+				pm[p] = l
+				ret = append(ret, l)
+			}
+			l := pm[p].(*GGUFNamedTensorInfos)
+			if ps[1] != "blk" || len(ps) < 3 {
+				l.GGUFLayerTensorInfos = append(l.GGUFLayerTensorInfos, tis[i])
+				continue
+			}
+			p = strings.Join([]string{ps[0], ps[1], ps[2]}, ".")
+			if _, ok := pm[p]; !ok {
+				xl := &GGUFNamedTensorInfos{Name: p}
+				pm[p] = xl
+				l.GGUFLayerTensorInfos = append(l.GGUFLayerTensorInfos, xl)
+			}
+			xl := pm[p].(*GGUFNamedTensorInfos)
+			xl.GGUFLayerTensorInfos = append(xl.GGUFLayerTensorInfos, tis[i])
+		case ps[0] == "decoder" || ps[0] == "encoder":
+			// BERT.
+			p := ps[0]
+			if _, ok := pm[p]; !ok {
+				l := &GGUFNamedTensorInfos{Name: p}
+				pm[p] = l
+				ret = append(ret, l)
+			}
+			l := pm[p].(*GGUFNamedTensorInfos)
+			if ps[1] != "block" || len(ps) < 3 {
+				l.GGUFLayerTensorInfos = append(l.GGUFLayerTensorInfos, tis[i])
+				continue
+			}
+			p = strings.Join([]string{ps[0], ps[1], ps[2]}, ".")
+			if _, ok := pm[p]; !ok {
+				xl := &GGUFNamedTensorInfos{Name: p}
+				pm[p] = xl
+				l.GGUFLayerTensorInfos = append(l.GGUFLayerTensorInfos, xl)
+			}
+			xl := pm[p].(*GGUFNamedTensorInfos)
+			xl.GGUFLayerTensorInfos = append(xl.GGUFLayerTensorInfos, tis[i])
+		case ps[0] == "first_stage_model":
+			// StableDiffusionCpp Autoencoder.
+			p := strings.Join([]string{ps[0], ps[1]}, ".")
+			if _, ok := pm[p]; !ok {
+				l := &GGUFNamedTensorInfos{Name: p}
+				pm[p] = l
+				ret = append(ret, l)
+			}
+			l := pm[p].(*GGUFNamedTensorInfos)
+			if len(ps) < 3 {
+				l.GGUFLayerTensorInfos = append(l.GGUFLayerTensorInfos, tis[i])
+				continue
+			}
+			p = strings.Join([]string{ps[0], ps[1], ps[2]}, ".")
+			if _, ok := pm[p]; !ok {
+				xl := &GGUFNamedTensorInfos{Name: p}
+				pm[p] = xl
+				l.GGUFLayerTensorInfos = append(l.GGUFLayerTensorInfos, xl)
+			}
+			xl := pm[p].(*GGUFNamedTensorInfos)
+			xl.GGUFLayerTensorInfos = append(xl.GGUFLayerTensorInfos, tis[i])
+		case ps[0] == "cond_stage_model":
+			// StableDiffusionCpp Conditioner.
+			if len(ps) < 3 {
+				ret = append(ret, tis[i])
+				continue
+			}
+			p := strings.Join([]string{ps[0], ps[1], ps[2]}, ".")
+			if !numberRegex.MatchString(ps[1]) {
+				p = strings.Join([]string{ps[0], ps[1]}, ".")
+			}
+			if _, ok := pm[p]; !ok {
+				l := &GGUFNamedTensorInfos{Name: p}
+				pm[p] = l
+				ret = append(ret, l)
+			}
+			l := pm[p].(*GGUFNamedTensorInfos)
+			if len(ps) < 4 {
+				l.GGUFLayerTensorInfos = append(l.GGUFLayerTensorInfos, tis[i])
+				continue
+			}
+			p = strings.Join([]string{ps[0], ps[1], ps[2], ps[3]}, ".")
+			if !numberRegex.MatchString(ps[1]) {
+				p = strings.Join([]string{ps[0], ps[1], ps[2]}, ".")
+			}
+			if _, ok := pm[p]; !ok {
+				xl := &GGUFNamedTensorInfos{Name: p}
+				pm[p] = xl
+				l.GGUFLayerTensorInfos = append(l.GGUFLayerTensorInfos, xl)
+			}
+			xl := pm[p].(*GGUFNamedTensorInfos)
+			xl.GGUFLayerTensorInfos = append(xl.GGUFLayerTensorInfos, tis[i])
+		case ps[0] == "model" && ps[1] == "diffusion_model": // nolint: goconst
+			// StableDiffusionCpp.
+			p := "model.diffusion_model"
+			if _, ok := pm[p]; !ok {
+				l := &GGUFNamedTensorInfos{Name: p}
+				pm[p] = l
+				ret = append(ret, l)
+			}
+			l := pm[p].(*GGUFNamedTensorInfos)
+			if len(ps) < 3 {
+				l.GGUFLayerTensorInfos = append(l.GGUFLayerTensorInfos, tis[i])
+				continue
+			}
+			p = strings.Join([]string{"model.diffusion_model", ps[2]}, ".")
+			if _, ok := pm[p]; !ok {
+				xl := &GGUFNamedTensorInfos{Name: p}
+				pm[p] = xl
+				l.GGUFLayerTensorInfos = append(l.GGUFLayerTensorInfos, xl)
+			}
+			xl := pm[p].(*GGUFNamedTensorInfos)
+			xl.GGUFLayerTensorInfos = append(xl.GGUFLayerTensorInfos, tis[i])
+		}
+	}
+	return ret
+}
+
 // Get returns the IGGUFTensorInfos with the given name,
 // and true if found, and false otherwise.
 func (ltis GGUFLayerTensorInfos) Get(name string) (info GGUFTensorInfo, found bool) {
@@ -1070,6 +1198,45 @@ func (ltis GGUFLayerTensorInfos) Get(name string) (info GGUFTensorInfo, found bo
 		}
 	}
 	return GGUFTensorInfo{}, false
+}
+
+// GetFileType returns the GGUFFileType represented the mostly GGMLType of the GGUFLayerTensorInfos.
+func (ltis GGUFLayerTensorInfos) GetFileType() GGUFFileType {
+	if len(ltis) == 0 {
+		return _GGUFFileTypeCount
+	}
+
+	cm := make(map[GGMLType]int)
+	for i := range ltis {
+		switch v := ltis[i].(type) {
+		case GGUFTensorInfo:
+			if !strings.HasSuffix(v.Name, ".weight") {
+				continue
+			}
+			cm[v.Type]++
+		case *GGUFNamedTensorInfos:
+			cm[v.GetFileType().GGMLType()]++
+		}
+	}
+
+	return GetFileType(cm)
+}
+
+// Match returns true if a tensor of GGUFLayerTensorInfos matches the given regex.
+func (ltis GGUFLayerTensorInfos) Match(nameRegex *regexp.Regexp) bool {
+	for i := range ltis {
+		switch v := ltis[i].(type) {
+		case GGUFTensorInfo:
+			if nameRegex.MatchString(v.Name) {
+				return true
+			}
+		case *GGUFNamedTensorInfos:
+			if v.Match(nameRegex) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Search returns a list of GGUFTensorInfo with the names that match the given regex.
