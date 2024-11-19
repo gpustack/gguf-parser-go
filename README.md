@@ -237,7 +237,8 @@ $ gguf-parser --url="https://huggingface.co/MaziyarPanahi/Meta-Llama-3.1-405B-In
 
 #### Parse From HuggingFace
 
-> ![NOTE]
+> [!NOTE]
+> 
 > Allow using `HF_ENDPOINT` to override the default HuggingFace endpoint: `https://huggingface.co`.
 
 ```shell
@@ -317,7 +318,8 @@ $ gguf-parser --hf-repo="etemiz/Llama-3.1-405B-Inst-GGUF" --hf-file="llama-3.1-4
 
 #### Parse From ModelScope
 
-> ![NOTE]
+> [!NOTE]
+> 
 > Allow using `MS_ENDPOINT` to override the default ModelScope endpoint: `https://modelscope.cn`.
 
 ```shell
@@ -360,7 +362,8 @@ $ gguf-parser --ms-repo="shaowenchen/chinese-alpaca-2-13b-16k-gguf" --ms-file="c
 
 #### Parse From Ollama Library
 
-> ![NOTE]
+> [!NOTE]
+> 
 > Allow using `--ol-base-url` to override the default Ollama registry endpoint: `https://registry.ollama.ai`.
 
 ```shell
