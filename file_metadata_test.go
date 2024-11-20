@@ -74,7 +74,8 @@ func TestGGUFFile_guessFileType(t *testing.T) {
 				t.Fatal(err)
 				return
 			}
-			assert.Equal(t, gf.Metadata().FileType.String(), gf.guessFileType().String(), tc+" file type should be equal")
+			md := gf.Metadata()
+			assert.Equal(t, md.FileType.String(), gf.guessFileType(md.Architecture).String(), tc+" file type should be equal")
 		})
 	}
 }

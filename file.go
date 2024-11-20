@@ -950,9 +950,6 @@ func (tis GGUFTensorInfos) GetFileType() GGUFFileType {
 
 	cm := make(map[GGMLType]int)
 	for i := range tis {
-		if !strings.HasSuffix(tis[i].Name, ".weight") {
-			continue
-		}
 		cm[tis[i].Type]++
 	}
 
@@ -1210,9 +1207,6 @@ func (ltis GGUFLayerTensorInfos) GetFileType() GGUFFileType {
 	for i := range ltis {
 		switch v := ltis[i].(type) {
 		case GGUFTensorInfo:
-			if !strings.HasSuffix(v.Name, ".weight") {
-				continue
-			}
 			cm[v.Type]++
 		case *GGUFNamedTensorInfos:
 			cm[v.GetFileType().GGMLType()]++

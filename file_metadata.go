@@ -196,7 +196,7 @@ func (gf *GGUFFile) Metadata() (gm GGUFMetadata) {
 	}
 
 	if gm.FileType >= _GGUFFileTypeCount {
-		gm.FileType = gf.guessFileType()
+		gm.FileType = gf.guessFileType(gm.Architecture)
 	}
 
 	gm.LittleEndian = gf.Header.Version < GGUFVersionV3 || gf.Header.Magic == GGUFMagicGGUFLe
@@ -280,7 +280,7 @@ func (t GGUFFileType) GGMLType() GGMLType {
 // statistically analyzing the tensor types,
 // which is inspired by
 // https://huggingface.co/TheBloke/Llama-2-13B-chat-GGML#provided-files.
-func (gf *GGUFFile) guessFileType() GGUFFileType {
+func (gf *GGUFFile) guessFileType(arch string) GGUFFileType {
 	if len(gf.TensorInfos) == 0 {
 		return _GGUFFileTypeCount
 	}
@@ -288,7 +288,10 @@ func (gf *GGUFFile) guessFileType() GGUFFileType {
 	// Count.
 	cm := make(map[GGMLType]int)
 	for i := range gf.TensorInfos {
-		if !strings.HasSuffix(gf.TensorInfos[i].Name, ".weight") {
+		switch {
+		case arch != "diffusion" && !strings.HasPrefix(gf.TensorInfos[i].Name, "blk."):
+			continue
+		case arch == "diffusion" && !strings.HasSuffix(gf.TensorInfos[i].Name, ".weight"):
 			continue
 		}
 		cm[gf.TensorInfos[i].Type]++
