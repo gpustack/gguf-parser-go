@@ -15,12 +15,12 @@ func TestGGUFFile_EstimateStableDiffusionRun(t *testing.T) {
 		given *GGUFFile
 	}{
 		{
-			name: "mixtral 7B",
+			name: "sd 1.5",
 			given: func() *GGUFFile {
 				f, err := ParseGGUFFileFromHuggingFace(
 					ctx,
-					"NousResearch/Hermes-2-Pro-Mistral-7B-GGUF",
-					"Hermes-2-Pro-Mistral-7B.Q5_K_M.gguf",
+					"gpustack/stable-diffusion-v1-5-GGUF",
+					"stable-diffusion-v1-5-FP16.gguf",
 					SkipLargeMetadata())
 				if err != nil {
 					t.Fatal(err)
@@ -29,12 +29,12 @@ func TestGGUFFile_EstimateStableDiffusionRun(t *testing.T) {
 			}(),
 		},
 		{
-			name: "mixtral 8x7B",
+			name: "sd 2.1",
 			given: func() *GGUFFile {
 				f, err := ParseGGUFFileFromHuggingFace(
 					ctx,
-					"NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO-GGUF",
-					"Nous-Hermes-2-Mixtral-8x7B-DPO.Q5_K_M.gguf",
+					"gpustack/stable-diffusion-v2-1-GGUF",
+					"stable-diffusion-v2-1-Q8_0.gguf",
 					SkipLargeMetadata())
 				if err != nil {
 					t.Fatal(err)
@@ -43,12 +43,40 @@ func TestGGUFFile_EstimateStableDiffusionRun(t *testing.T) {
 			}(),
 		},
 		{
-			name: "wizardlm 8x22B",
+			name: "sd xl",
 			given: func() *GGUFFile {
 				f, err := ParseGGUFFileFromHuggingFace(
 					ctx,
-					"MaziyarPanahi/WizardLM-2-8x22B-GGUF",
-					"WizardLM-2-8x22B.IQ1_M.gguf",
+					"gpustack/stable-diffusion-xl-base-1.0-GGUF",
+					"stable-diffusion-xl-base-1.0-FP16.gguf",
+					SkipLargeMetadata())
+				if err != nil {
+					t.Fatal(err)
+				}
+				return f
+			}(),
+		},
+		{
+			name: "sd 3.5 large",
+			given: func() *GGUFFile {
+				f, err := ParseGGUFFileFromHuggingFace(
+					ctx,
+					"gpustack/stable-diffusion-v3-5-large-GGUF",
+					"stable-diffusion-v3-5-large-Q4_0.gguf",
+					SkipLargeMetadata())
+				if err != nil {
+					t.Fatal(err)
+				}
+				return f
+			}(),
+		},
+		{
+			name: "flux .1 dev",
+			given: func() *GGUFFile {
+				f, err := ParseGGUFFileFromHuggingFace(
+					ctx,
+					"gpustack/FLUX.1-dev-GGUF",
+					"FLUX.1-dev-Q4_0.gguf",
 					SkipLargeMetadata())
 				if err != nil {
 					t.Fatal(err)
@@ -60,7 +88,7 @@ func TestGGUFFile_EstimateStableDiffusionRun(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			f := tc.given
-			t.Log("\n", spew.Sdump(f.EstimateLLaMACppRun()), "\n")
+			t.Log("\n", spew.Sdump(f.EstimateStableDiffusionCppRun()), "\n")
 		})
 	}
 }
