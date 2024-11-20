@@ -300,6 +300,8 @@ func (e StableDiffusionCppRunEstimate) SummarizeItem(
 	mmap bool,
 	nonUMARamFootprint, nonUMAVramFootprint uint64,
 ) (emi StableDiffusionCppRunEstimateSummaryItem) {
+	emi.FullOffloaded = e.FullOffloaded
+
 	// RAM.
 	{
 		fp := e.Devices[0].Footprint
