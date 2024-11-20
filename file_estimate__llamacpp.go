@@ -38,6 +38,8 @@ type (
 		EmbeddingOnly bool `json:"embeddingOnly"`
 		// Reranking is the flag to indicate whether the model is used for reranking,
 		// true for reranking.
+		//
+		// Only available when EmbeddingOnly is true.
 		Reranking bool `json:"reranking"`
 		// Distributable is the flag to indicate whether the model is distributable,
 		// true for distributable.
@@ -693,6 +695,8 @@ type (
 		EmbeddingOnly bool `json:"embeddingOnly"`
 		// Reranking is the flag to indicate whether the model is used for reranking,
 		// true for reranking.
+		//
+		// Only available when EmbeddingOnly is true.
 		Reranking bool `json:"reranking"`
 		// Distributable is the flag to indicate whether the model is distributable,
 		// true for distributable.

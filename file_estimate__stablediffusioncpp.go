@@ -26,6 +26,9 @@ type (
 		// NoMMap is the flag to indicate whether support the mmap,
 		// true for support.
 		NoMMap bool `json:"noMMap"`
+		// ImageOnly is the flag to indicate whether the model is used for generating image,
+		// true for embedding only.
+		ImageOnly bool `json:"imageOnly"`
 		// Distributable is the flag to indicate whether the model is distributable,
 		// true for distributable.
 		Distributable bool `json:"distributable"`
@@ -121,6 +124,9 @@ func (gf *GGUFFile) EstimateStableDiffusionCppRun(opts ...GGUFRunEstimateOption)
 
 	// NoMMap.
 	e.NoMMap = true // TODO: Implement this.
+
+	// ImageOnly.
+	e.ImageOnly = true // TODO: Implement this.
 
 	// Autoencoder.
 	if a.DiffusionAutoencoder != nil {
@@ -252,6 +258,9 @@ type (
 		// NoMMap is the flag to indicate whether the file must be loaded without mmap,
 		// true for total loaded.
 		NoMMap bool `json:"noMMap"`
+		// ImageOnly is the flag to indicate whether the model is used for generating image,
+		// true for embedding only.
+		ImageOnly bool `json:"imageOnly"`
 		// Distributable is the flag to indicate whether the model is distributable,
 		// true for distributable.
 		Distributable bool `json:"distributable"`
@@ -382,6 +391,7 @@ func (e StableDiffusionCppRunEstimate) Summarize(
 	es.Architecture = e.Architecture
 	es.FlashAttention = e.FlashAttention
 	es.NoMMap = e.NoMMap
+	es.ImageOnly = e.ImageOnly
 	es.Distributable = e.Distributable
 
 	return es
