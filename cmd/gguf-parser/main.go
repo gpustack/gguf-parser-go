@@ -1438,7 +1438,7 @@ func mainAction(c *cli.Context) error {
 			[][]any{
 				{
 					"Type",
-					"Architecture",
+					"Name",
 					"Arch",
 					"Quantization",
 					"Little Endian",
@@ -1499,7 +1499,7 @@ func mainAction(c *cli.Context) error {
 		default:
 			if a.Architecture == "diffusion" {
 				hd = []any{
-					"Diffusion Type",
+					"Diffusion Arch",
 					"Conditioners",
 					"Autoencoder",
 				}
