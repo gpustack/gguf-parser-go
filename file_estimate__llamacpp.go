@@ -210,6 +210,9 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...GGUFRunEstimateOption) (e LLaMAC
 	// Embedding.
 	if a.Type == "model" && !a.AttentionCausal {
 		e.EmbeddingOnly = true
+		// Set context size/physical batch size/logical batch size to the training context size.
+		o.LMCContextSize = ptr.To(min(int32(a.MaximumContextLength), ptr.Deref(o.LMCContextSize, int32(a.MaximumContextLength))))
+		o.LMCLogicalBatchSize = o.LMCContextSize
 		o.LMCPhysicalBatchSize = o.LMCLogicalBatchSize
 		// Reranking.
 		if _, found := gf.TensorInfos.Index([]string{"cls.bias", "cls.weight"}); found > 0 {
