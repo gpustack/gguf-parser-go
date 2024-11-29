@@ -242,9 +242,9 @@ func (gf *GGUFFile) EstimateStableDiffusionCppRun(opts ...GGUFRunEstimateOption)
 		//     https://github.com/thxCode/stable-diffusion.cpp/blob/78629d6340f763a8fe14372e0ba3ace73526a265/stable-diffusion.cpp#L2270-L2274.
 		//
 		{
-			wcSize := GGUFBytesScalar(50 * 1024 * 1024)
-			wcSize += GGUFBytesScalar(*o.SDCWidth * *o.SDCHeight * 3 * 4 /* sizeof(float) */ * 2) // RGB
-			e.Devices[0].Computation += wcSize
+			var wcSize uint32 = 50 * 1024 * 1024
+			wcSize += *o.SDCWidth * *o.SDCHeight * 3 * 4 /* sizeof(float) */ * 2 // RGB
+			e.Devices[0].Computation += GGUFBytesScalar(wcSize * uint32(ptr.Deref(o.ParallelSize, 1)))
 		}
 
 		// Conditioner learned conditions,
