@@ -130,6 +130,9 @@ type (
 		//
 		// Only used when Architecture is "diffusion".
 		DiffusionArchitecture string `json:"diffusionArchitecture,omitempty"`
+		// DiffusionTransformer indicates whether the diffusion model is a diffusion transformer or not.
+		//
+		DiffusionTransformer bool `json:"diffusionTransformer,omitempty"`
 		// DiffusionConditioners is the list of diffusion conditioners.
 		//
 		// Only used when Architecture is "diffusion".
@@ -248,10 +251,12 @@ func (gf *GGUFFile) diffuserArchitecture() (ga GGUFArchitecture) {
 		sd3_5MediumKey = "model.diffusion_model.joint_blocks.23.x_block.attn.ln_k.weight"                  // SD 3.5 Medium
 		sd3_5LargeKey  = "model.diffusion_model.joint_blocks.37.x_block.attn.ln_k.weight"                  // SD 3.5 Large
 
-		fluxKey     = "model.diffusion_model.double_blocks.18.txt_attn.proj.weight" // FLUX.1-schnell
-		fluxKey2    = "double_blocks.18.txt_attn.proj.weight"
-		fluxDevKey  = "model.diffusion_model.guidance_in.in_layer.weight" // FLUX.1-dev
-		fluxDevKey2 = "guidance_in.in_layer.weight"
+		fluxKey               = "model.diffusion_model.double_blocks.7.txt_attn.proj.weight"
+		fluxKey2              = "double_blocks.7.txt_attn.proj.weight"
+		fluxDevAndLiteKey     = "model.diffusion_model.guidance_in.in_layer.weight" // FLUX.1-dev / FLUX.1-lite
+		fluxDevAndLiteKey2    = "guidance_in.in_layer.weight"
+		fluxDevAndSchnellKey  = "model.diffusion_model.double_blocks.18.txt_attn.proj.weight" // FLUX.1-dev / FLUX.1-schnell
+		fluxDevAndSchnellKey2 = "double_blocks.18.txt_attn.proj.weight"
 
 		// Conditioner
 
@@ -271,8 +276,10 @@ func (gf *GGUFFile) diffuserArchitecture() (ga GGUFArchitecture) {
 		sd3_5LargeKey,
 		fluxKey,
 		fluxKey2,
-		fluxDevKey,
-		fluxDevKey2,
+		fluxDevAndLiteKey,
+		fluxDevAndLiteKey2,
+		fluxDevAndSchnellKey,
+		fluxDevAndSchnellKey2,
 
 		openAiClipVitL14Key,
 		openClipVitH14Key,
@@ -302,17 +309,30 @@ func (gf *GGUFFile) diffuserArchitecture() (ga GGUFArchitecture) {
 				ga.DiffusionArchitecture = "Stable Diffusion 3.5 Large"
 			}
 		}
+		ga.DiffusionTransformer = true
 	}
 	if _, ok := tis[fluxKey]; ok {
-		ga.DiffusionArchitecture = "FLUX.1-schnell"
-		if _, ok = tis[fluxDevKey]; ok {
-			ga.DiffusionArchitecture = "FLUX.1-dev"
+		if _, ok = tis[fluxDevAndLiteKey]; ok {
+			if _, ok = tis[fluxDevAndSchnellKey]; ok {
+				ga.DiffusionArchitecture = "FLUX.1-dev"
+			} else {
+				ga.DiffusionArchitecture = "FLUX.1-lite"
+			}
+		} else {
+			ga.DiffusionArchitecture = "FLUX.1-schnell"
 		}
+		ga.DiffusionTransformer = true
 	} else if _, ok := tis[fluxKey2]; ok {
-		ga.DiffusionArchitecture = "FLUX.1-schnell"
-		if _, ok = tis[fluxDevKey2]; ok {
-			ga.DiffusionArchitecture = "FLUX.1-dev"
+		if _, ok = tis[fluxDevAndLiteKey2]; ok {
+			if _, ok = tis[fluxDevAndSchnellKey2]; ok {
+				ga.DiffusionArchitecture = "FLUX.1-dev"
+			} else {
+				ga.DiffusionArchitecture = "FLUX.1-lite"
+			}
+		} else {
+			ga.DiffusionArchitecture = "FLUX.1-schnell"
 		}
+		ga.DiffusionTransformer = true
 	}
 
 	if ti, ok := tis[openAiClipVitL14Key]; ok {
