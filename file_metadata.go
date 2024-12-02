@@ -315,9 +315,13 @@ func GetFileType(cm map[GGMLType]int) GGUFFileType {
 	})
 
 	// Guess.
+	if ts[0] == GGMLTypeF32 {
+		if len(ts) == 1 {
+			return GGUFFileTypeAllF32
+		}
+		ts[0] = ts[1]
+	}
 	switch ts[0] {
-	case GGMLTypeF32:
-		return GGUFFileTypeAllF32
 	case GGMLTypeF16:
 		return GGUFFileTypeMostlyF16
 	case GGMLTypeQ4_0:

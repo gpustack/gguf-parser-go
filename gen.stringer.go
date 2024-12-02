@@ -1,4 +1,4 @@
-//go:build tools
+//go:build stringer
 
 //go:generate go run golang.org/x/tools/cmd/stringer -linecomment -type GGUFMagic -output zz_generated.ggufmagic.stringer.go -trimprefix GGUFMagic
 //go:generate go run golang.org/x/tools/cmd/stringer -linecomment -type GGUFVersion -output zz_generated.ggufversion.stringer.go -trimprefix GGUFVersion

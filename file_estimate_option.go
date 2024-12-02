@@ -31,14 +31,15 @@ type (
 		LMCAdapters          []LLaMACppRunEstimate
 
 		// StableDiffusionCpp (SDC) specific
-		SDCBatchCount         *int32
-		SDCHeight             *uint32
-		SDCWidth              *uint32
-		SDCOffloadConditioner *bool
-		SDCOffloadAutoencoder *bool
-		SDCAutoencoderTiling  *bool
-		SDCUpscaler           *StableDiffusionCppRunEstimate
-		SDCControlNet         *StableDiffusionCppRunEstimate
+		SDCBatchCount                   *int32
+		SDCHeight                       *uint32
+		SDCWidth                        *uint32
+		SDCOffloadConditioner           *bool
+		SDCOffloadAutoencoder           *bool
+		SDCAutoencoderTiling            *bool
+		SDCFreeComputeMemoryImmediately *bool
+		SDCUpscaler                     *StableDiffusionCppRunEstimate
+		SDCControlNet                   *StableDiffusionCppRunEstimate
 	}
 
 	// GGUFRunDeviceMetric holds the device metric for the estimate.
@@ -315,6 +316,13 @@ func WithoutStableDiffusionCppOffloadAutoencoder() GGUFRunEstimateOption {
 func WithStableDiffusionCppAutoencoderTiling() GGUFRunEstimateOption {
 	return func(o *_GGUFRunEstimateOptions) {
 		o.SDCAutoencoderTiling = ptr.To(true)
+	}
+}
+
+// WithStableDiffusionCppFreeComputeMemoryImmediately enables freeing compute memory immediately.
+func WithStableDiffusionCppFreeComputeMemoryImmediately() GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
+		o.SDCFreeComputeMemoryImmediately = ptr.To(true)
 	}
 }
 

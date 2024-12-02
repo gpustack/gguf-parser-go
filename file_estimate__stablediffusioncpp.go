@@ -2,10 +2,12 @@ package gguf_parser
 
 import (
 	"regexp"
+	"strings"
+
+	"golang.org/x/exp/maps"
 
 	"github.com/gpustack/gguf-parser-go/util/ptr"
 	"github.com/gpustack/gguf-parser-go/util/stringx"
-	"strings"
 )
 
 // Types for StableDiffusionCpp estimation.
@@ -91,10 +93,10 @@ func (gf *GGUFFile) EstimateStableDiffusionCppRun(opts ...GGUFRunEstimateOption)
 		o.SDCBatchCount = ptr.To[int32](1)
 	}
 	if o.SDCHeight == nil {
-		o.SDCHeight = ptr.To[uint32](512)
+		o.SDCHeight = ptr.To[uint32](1024)
 	}
 	if o.SDCWidth == nil {
-		o.SDCWidth = ptr.To[uint32](512)
+		o.SDCWidth = ptr.To[uint32](1024)
 	}
 	if o.SDCOffloadConditioner == nil {
 		o.SDCOffloadConditioner = ptr.To(true)
@@ -104,6 +106,9 @@ func (gf *GGUFFile) EstimateStableDiffusionCppRun(opts ...GGUFRunEstimateOption)
 	}
 	if o.SDCAutoencoderTiling == nil {
 		o.SDCAutoencoderTiling = ptr.To(false)
+	}
+	if o.SDCFreeComputeMemoryImmediately == nil {
+		o.SDCFreeComputeMemoryImmediately = ptr.To(false)
 	}
 
 	// Devices.
@@ -166,13 +171,9 @@ func (gf *GGUFFile) EstimateStableDiffusionCppRun(opts ...GGUFRunEstimateOption)
 	{
 		// Bootstrap.
 		e.Devices[0].Footprint = GGUFBytesScalar(10*1024*1024) /* model load */ + (gf.Size - gf.ModelSize) /* metadata */
-
-		// Output buffer,
-		// see
-		// TODO: Implement this.
 	}
 
-	var cdLs, aeLs, mdLs GGUFLayerTensorInfos
+	var cdLs, aeLs, dmLs GGUFLayerTensorInfos
 	{
 		var tis GGUFTensorInfos
 		tis = gf.TensorInfos.Search(regexp.MustCompile(`^cond_stage_model\..*`))
@@ -188,13 +189,13 @@ func (gf *GGUFFile) EstimateStableDiffusionCppRun(opts ...GGUFRunEstimateOption)
 		}
 		tis = gf.TensorInfos.Search(regexp.MustCompile(`^model\.diffusion_model\..*`))
 		if len(tis) != 0 {
-			mdLs = tis.Layers()
+			dmLs = tis.Layers()
 		} else {
-			mdLs = gf.TensorInfos.Layers()
+			dmLs = gf.TensorInfos.Layers()
 		}
 	}
 
-	var cdDevIdx, aeDevIdx, mdDevIdx int
+	var cdDevIdx, aeDevIdx, dmDevIdx int
 	{
 		if *o.SDCOffloadConditioner {
 			cdDevIdx = 1
@@ -202,7 +203,7 @@ func (gf *GGUFFile) EstimateStableDiffusionCppRun(opts ...GGUFRunEstimateOption)
 		if *o.SDCOffloadAutoencoder {
 			aeDevIdx = 1
 		}
-		mdDevIdx = 1
+		dmDevIdx = 1
 	}
 
 	// Weight & Parameter.
@@ -220,10 +221,8 @@ func (gf *GGUFFile) EstimateStableDiffusionCppRun(opts ...GGUFRunEstimateOption)
 		}
 
 		// Model.
-		if mdLs != nil {
-			e.Devices[mdDevIdx].Weight = GGUFBytesScalar(mdLs.Bytes())
-			e.Devices[mdDevIdx].Parameter = GGUFParametersScalar(mdLs.Elements())
-		}
+		e.Devices[dmDevIdx].Weight = GGUFBytesScalar(dmLs.Bytes())
+		e.Devices[dmDevIdx].Parameter = GGUFParametersScalar(dmLs.Elements())
 	}
 
 	// Computation.
@@ -237,71 +236,118 @@ func (gf *GGUFFile) EstimateStableDiffusionCppRun(opts ...GGUFRunEstimateOption)
 		// Work context,
 		// see https://github.com/leejet/stable-diffusion.cpp/blob/4570715727f35e5a07a76796d823824c8f42206c/stable-diffusion.cpp#L1467-L1481,
 		//     https://github.com/leejet/stable-diffusion.cpp/blob/4570715727f35e5a07a76796d823824c8f42206c/stable-diffusion.cpp#L1572-L1586,
-		//     https://github.com/leejet/stable-diffusion.cpp/blob/4570715727f35e5a07a76796d823824c8f42206c/stable-diffusion.cpp#L1675-L1679,
-		//     https://github.com/thxCode/stable-diffusion.cpp/blob/78629d6340f763a8fe14372e0ba3ace73526a265/stable-diffusion.cpp#L2185-L2189,
-		//     https://github.com/thxCode/stable-diffusion.cpp/blob/78629d6340f763a8fe14372e0ba3ace73526a265/stable-diffusion.cpp#L2270-L2274.
+		//     https://github.com/leejet/stable-diffusion.cpp/blob/4570715727f35e5a07a76796d823824c8f42206c/stable-diffusion.cpp#L1675-L1679.
 		//
 		{
-			var wcSize uint32 = 50 * 1024 * 1024
-			wcSize += *o.SDCWidth * *o.SDCHeight * 3 * 4 /* sizeof(float) */ * 2 // RGB
-			e.Devices[0].Computation += GGUFBytesScalar(wcSize * uint32(ptr.Deref(o.ParallelSize, 1)))
+			usage := uint64(50 * 1024 * 1024)
+			usage += uint64(*o.SDCWidth) * uint64(*o.SDCHeight) * 3 /* output channels */ * 4 /* sizeof(float) */ * 2 /* include img2img*/
+			e.Devices[0].Computation += GGUFBytesScalar(usage * uint64(ptr.Deref(o.ParallelSize, 1)) /* max batch */)
 		}
 
-		// Conditioner learned conditions,
+		// Encode usage,
 		// see https://github.com/leejet/stable-diffusion.cpp/blob/4570715727f35e5a07a76796d823824c8f42206c/conditioner.hpp#L388-L391,
 		//     https://github.com/leejet/stable-diffusion.cpp/blob/4570715727f35e5a07a76796d823824c8f42206c/conditioner.hpp#L758-L766,
 		//     https://github.com/leejet/stable-diffusion.cpp/blob/4570715727f35e5a07a76796d823824c8f42206c/conditioner.hpp#L1083-L1085.
-		switch {
-		case strings.HasPrefix(a.DiffusionArchitecture, "FLUX"):
-			for i := range cdLs {
-				ds := []uint64{1}
-				switch i {
-				case 0:
-					ds = []uint64{768, 77}
-				case 1:
-					ds = []uint64{4096, 256}
-				}
-				cds := GGUFBytesScalar(GGMLTypeF32.RowSizeOf(ds)) * 2 // include unconditioner
-				e.Conditioners[i].Devices[cdDevIdx].Computation += cds
-			}
-		case strings.HasPrefix(a.DiffusionArchitecture, "Stable Diffusion 3"):
-			for i := range cdLs {
-				ds := []uint64{1}
-				switch i {
-				case 0:
-					ds = []uint64{768, 77}
-				case 1:
-					ds = []uint64{1280, 77}
-				case 2:
-					ds = []uint64{4096, 77}
-				}
-				cds := GGUFBytesScalar(GGMLTypeF32.RowSizeOf(ds)) * 2 // include unconditioner
-				e.Conditioners[i].Devices[cdDevIdx].Computation += cds
-			}
-		default:
-			for i := range cdLs {
-				ds := []uint64{1}
-				switch i {
-				case 0:
-					ds = []uint64{768, 77}
-					if strings.HasSuffix(a.DiffusionArchitecture, "Refiner") {
-						ds = []uint64{1280, 77}
-					}
-				case 1:
-					ds = []uint64{1280, 77}
-				}
-				cds := GGUFBytesScalar(GGMLTypeF32.RowSizeOf(ds)) * 2 // include unconditioner
-				e.Conditioners[i].Devices[cdDevIdx].Computation += cds
-			}
-		}
-
-		// Diffusion nosier,
-		// see https://github.com/leejet/stable-diffusion.cpp/blob/4570715727f35e5a07a76796d823824c8f42206c/stable-diffusion.cpp#L1361.
 		{
-			mds := GGUFBytesScalar(GGMLTypeF32.RowSizeOf([]uint64{uint64(*o.SDCWidth / 8), uint64(*o.SDCHeight / 8), 16, 1}))
-			e.Devices[mdDevIdx].Computation += mds
+			var tes [][]uint64
+			switch {
+			case strings.HasPrefix(a.DiffusionArchitecture, "FLUX"): // FLUX.1
+				tes = [][]uint64{
+					{768, 77},
+					{4096, 256},
+				}
+			case strings.HasPrefix(a.DiffusionArchitecture, "Stable Diffusion 3"): // SD 3.x
+				tes = [][]uint64{
+					{768, 77},
+					{1280, 77},
+					{4096, 77},
+				}
+			case strings.HasPrefix(a.DiffusionArchitecture, "Stable Diffusion XL"): // SD XL/XL Refiner
+				if strings.HasSuffix(a.DiffusionArchitecture, "Refiner") {
+					tes = [][]uint64{
+						{1280, 77},
+					}
+				} else {
+					tes = [][]uint64{
+						{768, 77},
+						{1280, 77},
+					}
+				}
+			default: // SD 1.x/2.x
+				tes = [][]uint64{
+					{768, 77},
+				}
+			}
+			for i := range cdLs {
+				usage := GGMLTypeF32.RowSizeOf(tes[i]) * 2 /* include conditioner */
+				e.Conditioners[i].Devices[cdDevIdx].Computation += GGUFBytesScalar(usage)
+			}
+
+			// TODO VAE Encode
 		}
 
+		// Diffusing usage.
+		if !*o.SDCFreeComputeMemoryImmediately {
+			var usage uint64
+			switch {
+			case strings.HasPrefix(a.DiffusionArchitecture, "FLUX"): // FLUX.1
+				usage = GuessFLUXDiffusionModelMemoryUsage(*o.SDCWidth, *o.SDCHeight, e.FlashAttention)
+			case strings.HasPrefix(a.DiffusionArchitecture, "Stable Diffusion 3"): // SD 3.x
+				const (
+					sd3MediumKey  = "model.diffusion_model.joint_blocks.23.x_block.attn.proj.weight" // SD 3 Medium
+					sd35MediumKey = "model.diffusion_model.joint_blocks.23.x_block.attn.ln_k.weight" // SD 3.5 Medium
+					sd35LargeKey  = "model.diffusion_model.joint_blocks.37.x_block.attn.ln_k.weight" // SD 3.5 Large
+				)
+				m, _ := dmLs.Index([]string{sd3MediumKey, sd35MediumKey, sd35LargeKey})
+				switch {
+				case m[sd35LargeKey].Name != "":
+					usage = GuessSD35LargeDiffusionModelMemoryUsage(*o.SDCWidth, *o.SDCHeight, e.FlashAttention)
+				case m[sd35MediumKey].Name != "":
+					usage = GuessSD35MediumDiffusionModelMemoryUsage(*o.SDCWidth, *o.SDCHeight, e.FlashAttention)
+				default:
+					usage = GuessSD3MediumDiffusionModelMemoryUsage(*o.SDCWidth, *o.SDCHeight, e.FlashAttention)
+				}
+			case strings.HasPrefix(a.DiffusionArchitecture, "Stable Diffusion XL"): // SD XL/XL Refiner
+				const (
+					sdXlKey        = "model.diffusion_model.output_blocks.5.1.transformer_blocks.1.attn1.to_v.weight" // SD XL
+					sdXlRefinerKey = "model.diffusion_model.output_blocks.8.1.transformer_blocks.1.attn1.to_v.weight" // SD XL Refiner
+				)
+				m, _ := dmLs.Index([]string{sdXlKey, sdXlRefinerKey})
+				if m[sdXlRefinerKey].Name != "" {
+					usage = GuessSDXLRefinerDiffusionModelMemoryUsage(*o.SDCWidth, *o.SDCHeight, e.FlashAttention)
+				} else {
+					usage = GuessSDXLDiffusionModelMemoryUsage(*o.SDCWidth, *o.SDCHeight, e.FlashAttention)
+				}
+			case strings.HasPrefix(a.DiffusionArchitecture, "Stable Diffusion 2"): // SD 2.x
+				usage = GuessSD2DiffusionModelMemoryUsage(*o.SDCWidth, *o.SDCHeight, e.FlashAttention)
+			default: // SD 1.x
+				usage = GuessSD1DiffusionModelMemoryUsage(*o.SDCWidth, *o.SDCHeight, e.FlashAttention)
+			}
+			e.Devices[dmDevIdx].Computation += GGUFBytesScalar(usage)
+		}
+
+		// Decode usage.
+		if aeLs != nil && !*o.SDCFreeComputeMemoryImmediately {
+			var convDim uint64
+			{
+				m, _ := aeLs.Index([]string{
+					"first_stage_model.decoder.conv_in.weight",
+					"decoder.conv_in.weight",
+				})
+				tis := maps.Values(m)
+				if len(tis) != 0 && tis[0].NDimensions > 3 {
+					convDim = max(tis[0].Dimensions[0], tis[0].Dimensions[3])
+				}
+			}
+
+			var usage uint64
+			if !*o.SDCAutoencoderTiling {
+				usage = uint64(*o.SDCWidth) * uint64(*o.SDCHeight) * (3 /* output channels */ *4 /* sizeof(float) */ + 1) * convDim
+			} else {
+				usage = 512 * 512 * (3 /* output channels */ *4 /* sizeof(float) */ + 1) * convDim
+			}
+			e.Autoencoder.Devices[aeDevIdx].Computation += GGUFBytesScalar(usage)
+		}
 	}
 
 	return e
@@ -396,10 +442,10 @@ func (e StableDiffusionCppRunEstimate) SummarizeItem(
 			cp := d.Computation
 
 			// UMA.
-			emi.VRAMs[i].UMA = fp + wg + cp
+			emi.VRAMs[i].UMA = fp + wg + /* cp */ 0
 
 			// NonUMA.
-			emi.VRAMs[i].NonUMA = GGUFBytesScalar(nonUMAVramFootprint) + emi.VRAMs[i].UMA
+			emi.VRAMs[i].NonUMA = GGUFBytesScalar(nonUMAVramFootprint) + fp + wg + cp
 		}
 	}
 

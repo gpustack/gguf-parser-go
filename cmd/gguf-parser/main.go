@@ -469,7 +469,11 @@ func main() {
 				Value:       flashAttention,
 				Category:    "Estimate",
 				Name:        "flash-attention",
-				Aliases:     []string{"flash-attn", "fa"},
+				Aliases: []string{
+					"flash-attn",
+					"fa",
+					"diffusion-fa", // StableDiffusionCpp compatibility
+				},
 				Usage: "Specify enabling Flash Attention, " +
 					"which is used to estimate the usage. " +
 					"Flash Attention can reduce the usage of RAM/VRAM.",
@@ -716,6 +720,23 @@ func main() {
 				Usage: "Specify to enable tiling for the vae model.",
 			},
 			&cli.BoolFlag{
+				Destination: &sdcNoAutoencoderTiling,
+				Value:       sdcNoAutoencoderTiling,
+				Category:    "Estimate/StableDiffusionCpp",
+				Name:        "image-no-autoencoder-tiling",
+				Aliases: []string{
+					"image-no-vae-tiling", // LLaMABox compatibility
+				},
+				Usage: "Specify to disable tiling for the vae model, it takes precedence over --image-autoencoder-tiling.",
+			},
+			&cli.BoolFlag{
+				Destination: &sdcFreeComputeMemoryImmediately,
+				Value:       sdcFreeComputeMemoryImmediately,
+				Category:    "Estimate/StableDiffusionCpp",
+				Name:        "image-free-compute-memory-immediately", // LLaMABox compatibility
+				Usage:       "Specify to free the compute memory immediately after the generation, which burst using VRAM.",
+			},
+			&cli.BoolFlag{
 				Destination: &raw,
 				Value:       raw,
 				Category:    "Output",
@@ -872,12 +893,14 @@ var (
 	lmcOffloadLayersDraft = -1
 	lmcOffloadLayersStep  uint64
 	// estimate options for stable-diffusion.cpp
-	sdcBatchCount           = 1
-	sdcHeight               = 512
-	sdcWidth                = 512
-	sdcNoConditionerOffload bool
-	sdcNoAutoencoderOffload bool
-	sdcAutoencoderTiling    bool
+	sdcBatchCount                   = 1
+	sdcHeight                       = 1024
+	sdcWidth                        = 1024
+	sdcNoConditionerOffload         bool
+	sdcNoAutoencoderOffload         bool
+	sdcAutoencoderTiling            bool
+	sdcNoAutoencoderTiling          bool
+	sdcFreeComputeMemoryImmediately bool
 	// output options
 	raw              bool
 	rawOutput        string
@@ -1049,8 +1072,11 @@ func mainAction(c *cli.Context) error {
 	if sdcNoAutoencoderOffload {
 		eopts = append(eopts, WithoutStableDiffusionCppOffloadAutoencoder())
 	}
-	if sdcAutoencoderTiling {
+	if sdcAutoencoderTiling && !sdcNoAutoencoderTiling {
 		eopts = append(eopts, WithStableDiffusionCppAutoencoderTiling())
+	}
+	if sdcFreeComputeMemoryImmediately {
+		eopts = append(eopts, WithStableDiffusionCppFreeComputeMemoryImmediately())
 	}
 
 	// Parse GGUF file.
