@@ -61,47 +61,49 @@ const (
 	GGMLTypeQ4_0_8_8
 	GGMLTypeTQ1_0
 	GGMLTypeTQ2_0
+	GGMLTypeIQ4_NL_4_4
 	_GGMLTypeCount // Unknown
 )
 
 // _GGMLTypeTraits is a table of GGMLTypeTrait for GGMLType.
 var _GGMLTypeTraits = map[GGMLType]GGMLTypeTrait{
-	GGMLTypeF32:      {BlockSize: 1, TypeSize: 4},
-	GGMLTypeF16:      {BlockSize: 1, TypeSize: 2},
-	GGMLTypeQ4_0:     {BlockSize: 32, TypeSize: 18, Quantized: true},
-	GGMLTypeQ4_1:     {BlockSize: 32, TypeSize: 20, Quantized: true},
-	GGMLTypeQ4_2:     {BlockSize: 0, TypeSize: 0}, // Deprecated
-	GGMLTypeQ4_3:     {BlockSize: 0, TypeSize: 0}, // Deprecated
-	GGMLTypeQ5_0:     {BlockSize: 32, TypeSize: 22, Quantized: true},
-	GGMLTypeQ5_1:     {BlockSize: 32, TypeSize: 24, Quantized: true},
-	GGMLTypeQ8_0:     {BlockSize: 32, TypeSize: 34, Quantized: true},
-	GGMLTypeQ8_1:     {BlockSize: 32, TypeSize: 36, Quantized: true},
-	GGMLTypeQ2_K:     {BlockSize: 256, TypeSize: 84, Quantized: true},
-	GGMLTypeQ3_K:     {BlockSize: 256, TypeSize: 110, Quantized: true},
-	GGMLTypeQ4_K:     {BlockSize: 256, TypeSize: 144, Quantized: true},
-	GGMLTypeQ5_K:     {BlockSize: 256, TypeSize: 176, Quantized: true},
-	GGMLTypeQ6_K:     {BlockSize: 256, TypeSize: 210, Quantized: true},
-	GGMLTypeQ8_K:     {BlockSize: 256, TypeSize: 292, Quantized: true},
-	GGMLTypeIQ2_XXS:  {BlockSize: 256, TypeSize: 66, Quantized: true},
-	GGMLTypeIQ2_XS:   {BlockSize: 256, TypeSize: 74, Quantized: true},
-	GGMLTypeIQ3_XXS:  {BlockSize: 256, TypeSize: 98, Quantized: true},
-	GGMLTypeIQ1_S:    {BlockSize: 256, TypeSize: 50, Quantized: true},
-	GGMLTypeIQ4_NL:   {BlockSize: 32, TypeSize: 18, Quantized: true},
-	GGMLTypeIQ3_S:    {BlockSize: 256, TypeSize: 110, Quantized: true},
-	GGMLTypeIQ2_S:    {BlockSize: 256, TypeSize: 82, Quantized: true},
-	GGMLTypeIQ4_XS:   {BlockSize: 256, TypeSize: 136, Quantized: true},
-	GGMLTypeI8:       {BlockSize: 1, TypeSize: 1},
-	GGMLTypeI16:      {BlockSize: 1, TypeSize: 2},
-	GGMLTypeI32:      {BlockSize: 1, TypeSize: 4},
-	GGMLTypeI64:      {BlockSize: 1, TypeSize: 8},
-	GGMLTypeF64:      {BlockSize: 1, TypeSize: 8},
-	GGMLTypeIQ1_M:    {BlockSize: 256, TypeSize: 56, Quantized: true},
-	GGMLTypeBF16:     {BlockSize: 1, TypeSize: 2},
-	GGMLTypeQ4_0_4_4: {BlockSize: 32, TypeSize: 18, Quantized: true},
-	GGMLTypeQ4_0_4_8: {BlockSize: 32, TypeSize: 18, Quantized: true},
-	GGMLTypeQ4_0_8_8: {BlockSize: 32, TypeSize: 18, Quantized: true},
-	GGMLTypeTQ1_0:    {BlockSize: 256, TypeSize: 54, Quantized: true},
-	GGMLTypeTQ2_0:    {BlockSize: 256, TypeSize: 66, Quantized: true},
+	GGMLTypeF32:        {BlockSize: 1, TypeSize: 4},
+	GGMLTypeF16:        {BlockSize: 1, TypeSize: 2},
+	GGMLTypeQ4_0:       {BlockSize: 32, TypeSize: 18, Quantized: true},
+	GGMLTypeQ4_1:       {BlockSize: 32, TypeSize: 20, Quantized: true},
+	GGMLTypeQ4_2:       {BlockSize: 0, TypeSize: 0}, // Deprecated
+	GGMLTypeQ4_3:       {BlockSize: 0, TypeSize: 0}, // Deprecated
+	GGMLTypeQ5_0:       {BlockSize: 32, TypeSize: 22, Quantized: true},
+	GGMLTypeQ5_1:       {BlockSize: 32, TypeSize: 24, Quantized: true},
+	GGMLTypeQ8_0:       {BlockSize: 32, TypeSize: 34, Quantized: true},
+	GGMLTypeQ8_1:       {BlockSize: 32, TypeSize: 36, Quantized: true},
+	GGMLTypeQ2_K:       {BlockSize: 256, TypeSize: 84, Quantized: true},
+	GGMLTypeQ3_K:       {BlockSize: 256, TypeSize: 110, Quantized: true},
+	GGMLTypeQ4_K:       {BlockSize: 256, TypeSize: 144, Quantized: true},
+	GGMLTypeQ5_K:       {BlockSize: 256, TypeSize: 176, Quantized: true},
+	GGMLTypeQ6_K:       {BlockSize: 256, TypeSize: 210, Quantized: true},
+	GGMLTypeQ8_K:       {BlockSize: 256, TypeSize: 292, Quantized: true},
+	GGMLTypeIQ2_XXS:    {BlockSize: 256, TypeSize: 66, Quantized: true},
+	GGMLTypeIQ2_XS:     {BlockSize: 256, TypeSize: 74, Quantized: true},
+	GGMLTypeIQ3_XXS:    {BlockSize: 256, TypeSize: 98, Quantized: true},
+	GGMLTypeIQ1_S:      {BlockSize: 256, TypeSize: 50, Quantized: true},
+	GGMLTypeIQ4_NL:     {BlockSize: 32, TypeSize: 18, Quantized: true},
+	GGMLTypeIQ3_S:      {BlockSize: 256, TypeSize: 110, Quantized: true},
+	GGMLTypeIQ2_S:      {BlockSize: 256, TypeSize: 82, Quantized: true},
+	GGMLTypeIQ4_XS:     {BlockSize: 256, TypeSize: 136, Quantized: true},
+	GGMLTypeI8:         {BlockSize: 1, TypeSize: 1},
+	GGMLTypeI16:        {BlockSize: 1, TypeSize: 2},
+	GGMLTypeI32:        {BlockSize: 1, TypeSize: 4},
+	GGMLTypeI64:        {BlockSize: 1, TypeSize: 8},
+	GGMLTypeF64:        {BlockSize: 1, TypeSize: 8},
+	GGMLTypeIQ1_M:      {BlockSize: 256, TypeSize: 56, Quantized: true},
+	GGMLTypeBF16:       {BlockSize: 1, TypeSize: 2},
+	GGMLTypeQ4_0_4_4:   {BlockSize: 32, TypeSize: 18, Quantized: true},
+	GGMLTypeQ4_0_4_8:   {BlockSize: 32, TypeSize: 18, Quantized: true},
+	GGMLTypeQ4_0_8_8:   {BlockSize: 32, TypeSize: 18, Quantized: true},
+	GGMLTypeTQ1_0:      {BlockSize: 256, TypeSize: 54, Quantized: true},
+	GGMLTypeTQ2_0:      {BlockSize: 256, TypeSize: 66, Quantized: true},
+	GGMLTypeIQ4_NL_4_4: {BlockSize: 32, TypeSize: 18, Quantized: true},
 }
 
 // Trait returns the GGMLTypeTrait of the GGMLType.
