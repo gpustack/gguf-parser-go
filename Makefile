@@ -37,7 +37,7 @@ lint:
 	if [[ "$(LINT_DIRTY)" == "true" ]]; then \
   		if [[ -n $$(git status --porcelain) ]]; then \
   			echo "Code tree is dirty."; \
-  			exit 1; \
+  			git diff --exit-code; \
   		fi; \
 	fi
 

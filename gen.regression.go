@@ -13,6 +13,8 @@ import (
 	"go/format"
 
 	"gonum.org/v1/gonum/mat"
+	"golang.org/x/exp/maps"
+	"sort"
 )
 
 type LinearRegression struct {
@@ -100,13 +102,13 @@ import "math"
 // {{ .Name }} returns the memory usage in bytes for the given width and height,
 // which is calculated by linear regression or polynomial regression.
 func {{ .Name }}(width, height uint32, flashAttention bool) uint64 {
-	coefficients := []float64{ {{ range .PolynomialRegression.Coefficients }}{{ . }}, {{ end }} }
+	coefficients := []float64{ {{ range $i, $c := .PolynomialRegression.Coefficients }}{{ if eq $i 0 }}{{ printf "%.4f" $c }}{{ else }}{{ printf "%.10f" $c }}{{ end }}, {{ end }} }
 	degree := {{ .PolynomialRegression.Degree }}
 	x := float64(width * height)
 	
 	{{ if .LinearRegression -}}
     if flashAttention {
-		coefficients = []float64{ {{ .LinearRegression.Intercept }}, {{ .LinearRegression.Slope }} }
+		coefficients = []float64{ {{ printf "%.5f" .LinearRegression.Intercept }}, {{ printf "%.10f" .LinearRegression.Slope }} }
 		degree = 1
     }
     {{- end }}
@@ -407,10 +409,11 @@ func {{ .Name }}(width, height uint32, flashAttention bool) uint64 {
 			Degree: 2,
 		}
 
-		xs, ys := make([]float64, 0, len(t.x2y)), make([]float64, 0, len(t.x2y))
-		for x, y := range t.x2y {
-			xs = append(xs, x)
-			ys = append(ys, y*1024*1024) // MB to B
+		xs := maps.Keys(t.x2y)
+		sort.Float64s(xs)
+		ys := make([]float64, len(xs))
+		for j, x := range xs {
+			ys[j] = t.x2y[x] * 1024 * 1024 // MB to B
 		}
 		pr.Fit(xs, ys)
 
@@ -440,10 +443,11 @@ func {{ .Name }}(width, height uint32, flashAttention bool) uint64 {
 
 		lr := LinearRegression{}
 
-		xs, ys := make([]float64, 0, len(t.fax2y)), make([]float64, 0, len(t.fax2y))
-		for x, y := range t.fax2y {
-			xs = append(xs, x)
-			ys = append(ys, y*1024*1024) // MB to B
+		xs := maps.Keys(t.fax2y)
+		sort.Float64s(xs)
+		ys := make([]float64, len(xs))
+		for j, x := range xs {
+			ys[j] = t.fax2y[x] * 1024 * 1024 // MB to B
 		}
 		lr.Fit(xs, ys)
 
