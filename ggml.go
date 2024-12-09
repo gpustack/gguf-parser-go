@@ -62,6 +62,8 @@ const (
 	GGMLTypeTQ1_0
 	GGMLTypeTQ2_0
 	GGMLTypeIQ4_NL_4_4
+	GGMLTypeIQ4_NL_4_8
+	GGMLTypeIQ4_NL_8_8
 	_GGMLTypeCount // Unknown
 )
 
@@ -104,6 +106,8 @@ var _GGMLTypeTraits = map[GGMLType]GGMLTypeTrait{
 	GGMLTypeTQ1_0:      {BlockSize: 256, TypeSize: 54, Quantized: true},
 	GGMLTypeTQ2_0:      {BlockSize: 256, TypeSize: 66, Quantized: true},
 	GGMLTypeIQ4_NL_4_4: {BlockSize: 32, TypeSize: 18, Quantized: true},
+	GGMLTypeIQ4_NL_4_8: {BlockSize: 32, TypeSize: 18, Quantized: true},
+	GGMLTypeIQ4_NL_8_8: {BlockSize: 32, TypeSize: 18, Quantized: true},
 }
 
 // Trait returns the GGMLTypeTrait of the GGMLType.

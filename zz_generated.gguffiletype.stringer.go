@@ -39,12 +39,14 @@ func _() {
 	_ = x[GGUFFileTypeMostlyTQ1_0-28]
 	_ = x[GGUFFileTypeMostlyTQ2_0-29]
 	_ = x[GGUFFileTypeMostlyIQ4_NL_4_4-30]
-	_ = x[_GGUFFileTypeCount-31]
+	_ = x[GGUFFileTypeMostlyIQ4_NL_4_8-31]
+	_ = x[GGUFFileTypeMostlyIQ4_NL_8_8-32]
+	_ = x[_GGUFFileTypeCount-33]
 }
 
-const _GGUFFileType_name = "F32F16Q4_0Q4_1Q4_1_F16Q4_2Q4_3Q8_0Q5_0Q5_1Q2_KQ3_K/Q3_K_SQ4_K/Q3_K_MQ5_K/Q3_K_LQ6_K/Q4_K_SIQ2_XXS/Q4_K_MIQ2_XS/Q5_K_SIQ3_XXS/Q5_K_MIQ1_S/Q6_KIQ4_NLIQ3_SIQ2_SIQ4_XSIQ1_MBF16Q4_0_4x4Q4_0_4x8Q4_0_8x8TQ1_0TQ2_0IQ4_NL_4x4Unknown"
+const _GGUFFileType_name = "F32F16Q4_0Q4_1Q4_1_F16Q4_2Q4_3Q8_0Q5_0Q5_1Q2_KQ3_K/Q3_K_SQ4_K/Q3_K_MQ5_K/Q3_K_LQ6_K/Q4_K_SIQ2_XXS/Q4_K_MIQ2_XS/Q5_K_SIQ3_XXS/Q5_K_MIQ1_S/Q6_KIQ4_NLIQ3_SIQ2_SIQ4_XSIQ1_MBF16Q4_0_4x4Q4_0_4x8Q4_0_8x8TQ1_0TQ2_0IQ4_NL_4x4IQ4_NL_4x8IQ4_NL_8x8Unknown"
 
-var _GGUFFileType_index = [...]uint8{0, 3, 6, 10, 14, 22, 26, 30, 34, 38, 42, 46, 57, 68, 79, 90, 104, 117, 131, 141, 147, 152, 157, 163, 168, 172, 180, 188, 196, 201, 206, 216, 223}
+var _GGUFFileType_index = [...]uint8{0, 3, 6, 10, 14, 22, 26, 30, 34, 38, 42, 46, 57, 68, 79, 90, 104, 117, 131, 141, 147, 152, 157, 163, 168, 172, 180, 188, 196, 201, 206, 216, 226, 236, 243}
 
 func (i GGUFFileType) String() string {
 	if i >= GGUFFileType(len(_GGUFFileType_index)-1) {

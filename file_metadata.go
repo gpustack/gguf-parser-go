@@ -111,6 +111,8 @@ const (
 	GGUFFileTypeMostlyTQ1_0                          // TQ1_0
 	GGUFFileTypeMostlyTQ2_0                          // TQ2_0
 	GGUFFileTypeMostlyIQ4_NL_4_4                     // IQ4_NL_4x4
+	GGUFFileTypeMostlyIQ4_NL_4_8                     // IQ4_NL_4x8
+	GGUFFileTypeMostlyIQ4_NL_8_8                     // IQ4_NL_8x8
 	_GGUFFileTypeCount                               // Unknown
 )
 
@@ -274,6 +276,10 @@ func (t GGUFFileType) GGMLType() GGMLType {
 		return GGMLTypeTQ2_0
 	case GGUFFileTypeMostlyIQ4_NL_4_4:
 		return GGMLTypeIQ4_NL_4_4
+	case GGUFFileTypeMostlyIQ4_NL_4_8:
+		return GGMLTypeIQ4_NL_4_8
+	case GGUFFileTypeMostlyIQ4_NL_8_8:
+		return GGMLTypeIQ4_NL_8_8
 	default:
 	}
 	return _GGMLTypeCount
@@ -396,6 +402,10 @@ func GetFileType(cm map[GGMLType]int) GGUFFileType {
 		return GGUFFileTypeMostlyTQ2_0
 	case GGMLTypeIQ4_NL_4_4:
 		return GGUFFileTypeMostlyIQ4_NL_4_4
+	case GGMLTypeIQ4_NL_4_8:
+		return GGUFFileTypeMostlyIQ4_NL_4_8
+	case GGMLTypeIQ4_NL_8_8:
+		return GGUFFileTypeMostlyIQ4_NL_8_8
 	default:
 	}
 	return _GGUFFileTypeCount
