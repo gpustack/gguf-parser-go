@@ -31,6 +31,8 @@ func ParseGGUFFileFromOllamaModel(ctx context.Context, model *OllamaModel, opts 
 		return nil, ErrOllamaInvalidModel
 	}
 
+	opts = append(opts[:len(opts):len(opts)], SkipRangeDownloadDetection())
+
 	var o _GGUFReadOptions
 	for _, opt := range opts {
 		opt(&o)
