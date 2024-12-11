@@ -425,7 +425,10 @@ func main() {
 				Destination: &skipRangDownloadDetect,
 				Value:       skipRangDownloadDetect,
 				Category:    "Load",
-				Name:        "skip-rang-download-detect",
+				Name:        "skip-range-download-detect",
+				Aliases: []string{
+					"skip-rang-download-detect", // TODO: Fix typo in the next major version
+				},
 				Usage: "Skip range download detect, " +
 					"works with \"--url/--hf-*/--ms-*/--ol-*\", " +
 					"default is detecting the range download support.",
