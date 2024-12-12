@@ -359,16 +359,22 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...GGUFRunEstimateOption) (e LLaMAC
 
 	ls := gf.Layers()
 	ioLs, tfLs, _ := ls.Cut([]string{
+		"position_embd.weight",
 		"token_embd.weight",
 		"token_embd_norm.weight",
 		"token_embd_norm.bias",
 		"token_types.weight",
+		"cls.bias",
+		"cls.weight",
+		"cls.output.bias",
+		"cls.output.weight",
 		"output.weight",
 		"output.bias",
 		"output_norm.weight",
 		"output_norm.bias",
 	})
 	ipLs, opLs, _ := ioLs.Cut([]string{
+		"position_embd.weight",
 		"token_embd.weight",
 		"token_embd_norm.weight",
 		"token_embd_norm.bias",
@@ -603,7 +609,7 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...GGUFRunEstimateOption) (e LLaMAC
 			}
 		}
 		// Finally, get the usage of output layer.
-		if a.Type == "model" {
+		if a.Type == "model" && a.AttentionCausal {
 			var outInc uint64
 			if a.Architecture == "mamba" {
 				outInc += inpSMask + inpSSeq
