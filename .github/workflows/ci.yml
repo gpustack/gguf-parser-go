@@ -20,7 +20,9 @@ on:
       - "**.mdx"
       - "**.png"
       - "**.jpg"
-      - "!.github/workflows/ci.yml"
+      - ".github/workflows/cmd.yml"
+      - ".github/workflows/prune.yml"
+      - ".github/workflows/sync.yml"
   pull_request:
     branches:
       - 'main'
@@ -30,7 +32,9 @@ on:
       - "**.mdx"
       - "**.png"
       - "**.jpg"
-      - "!.github/workflows/ci.yml"
+      - ".github/workflows/cmd.yml"
+      - ".github/workflows/prune.yml"
+      - ".github/workflows/sync.yml"
 
 jobs:
   ci:

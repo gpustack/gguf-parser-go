@@ -244,12 +244,16 @@ func (gf *GGUFFile) diffuserArchitecture() (ga GGUFArchitecture) {
 	const (
 		// Diffusion
 
-		sdKey          = "model.diffusion_model.output_blocks.11.1.transformer_blocks.0.attn2.to_v.weight" // SD 1.x/2.x
-		sdXlKey        = "model.diffusion_model.output_blocks.5.1.transformer_blocks.1.attn1.to_v.weight"  // SD XL
-		sdXlRefinerKey = "model.diffusion_model.output_blocks.8.1.transformer_blocks.1.attn1.to_v.weight"  // SD XL Refiner
-		sd3Key         = "model.diffusion_model.joint_blocks.23.x_block.attn.proj.weight"                  // SD 3.x
-		fluxKey        = "model.diffusion_model.double_blocks.0.txt_attn.proj.weight"                      // FLUX.1
-		fluxKey2       = "double_blocks.0.txt_attn.proj.weight"
+		sdKey               = "model.diffusion_model.output_blocks.11.1.transformer_blocks.0.attn2.to_v.weight" // SD 1.x/2.x
+		sdXlKey             = "model.diffusion_model.output_blocks.5.1.transformer_blocks.1.attn1.to_v.weight"  // SD XL
+		sdXlRefinerKey      = "model.diffusion_model.output_blocks.8.1.transformer_blocks.1.attn1.to_v.weight"  // SD XL Refiner
+		sd3Key              = "model.diffusion_model.joint_blocks.23.x_block.attn.proj.weight"                  // SD 3.x
+		sdInPaintFeatureKey = "model.diffusion_model.input_blocks.0.0.weight"                                   // SD in-paint feature
+
+		fluxKey             = "model.diffusion_model.double_blocks.0.txt_attn.proj.weight" // FLUX.1
+		fluxKey2            = "double_blocks.0.txt_attn.proj.weight"
+		fluxFillFeatureKey  = "model.diffusion_model.img_in.weight" // FLUX.1 Fill feature
+		fluxFillFeatureKey2 = "img_in.weight"
 
 		// Conditioner
 
@@ -265,8 +269,12 @@ func (gf *GGUFFile) diffuserArchitecture() (ga GGUFArchitecture) {
 		sdXlKey,
 		sdXlRefinerKey,
 		sd3Key,
+		sdInPaintFeatureKey,
+
 		fluxKey,
 		fluxKey2,
+		fluxFillFeatureKey,
+		fluxFillFeatureKey2,
 
 		openAiClipVitL14Key,
 		openClipVitH14Key,
@@ -283,10 +291,16 @@ func (gf *GGUFFile) diffuserArchitecture() (ga GGUFArchitecture) {
 		if ti.Dimensions[0] == 1024 {
 			ga.DiffusionArchitecture = "Stable Diffusion 2.x"
 		}
+		if ti, ok := tis[sdInPaintFeatureKey]; ok && ti.Dimensions[2] == 9 {
+			ga.DiffusionArchitecture += " InPaint"
+		}
 	} else if _, ok := tis[sdXlKey]; ok {
 		ga.DiffusionArchitecture = "Stable Diffusion XL"
 		if _, ok = tis[sdXlRefinerKey]; ok {
 			ga.DiffusionArchitecture = "Stable Diffusion XL Refiner"
+		}
+		if ti, ok := tis[sdInPaintFeatureKey]; ok && ti.Dimensions[2] == 9 {
+			ga.DiffusionArchitecture += " InPaint"
 		}
 	} else if _, ok := tis[sd3Key]; ok {
 		ga.DiffusionArchitecture = "Stable Diffusion 3.x"
@@ -295,9 +309,15 @@ func (gf *GGUFFile) diffuserArchitecture() (ga GGUFArchitecture) {
 	if _, ok := tis[fluxKey]; ok {
 		ga.DiffusionArchitecture = "FLUX.1"
 		ga.DiffusionTransformer = true
+		if ti, ok := tis[fluxFillFeatureKey]; ok && ti.Dimensions[0] == 384 {
+			ga.DiffusionArchitecture += " Fill"
+		}
 	} else if _, ok := tis[fluxKey2]; ok {
 		ga.DiffusionArchitecture = "FLUX.1"
 		ga.DiffusionTransformer = true
+		if ti, ok := tis[fluxFillFeatureKey2]; ok && ti.Dimensions[0] == 384 {
+			ga.DiffusionArchitecture += " Fill"
+		}
 	}
 
 	if ti, ok := tis[openAiClipVitL14Key]; ok {

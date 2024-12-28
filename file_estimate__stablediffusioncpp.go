@@ -30,7 +30,7 @@ type (
 		// true for support.
 		NoMMap bool `json:"noMMap"`
 		// ImageOnly is the flag to indicate whether the model is used for generating image,
-		// true for embedding only.
+		// true for generating image only.
 		ImageOnly bool `json:"imageOnly"`
 		// Distributable is the flag to indicate whether the model is distributable,
 		// true for distributable.
@@ -240,7 +240,7 @@ func (gf *GGUFFile) EstimateStableDiffusionCppRun(opts ...GGUFRunEstimateOption)
 		//
 		{
 			usage := uint64(50 * 1024 * 1024)
-			usage += uint64(*o.SDCWidth) * uint64(*o.SDCHeight) * 3 /* output channels */ * 4 /* sizeof(float) */ * 2 /* include img2img*/
+			usage += uint64(*o.SDCWidth) * uint64(*o.SDCHeight) * 3 /* output channels */ * 4 /* sizeof(float) */ * 3 /* include img2img*/
 			e.Devices[0].Computation += GGUFBytesScalar(usage * uint64(ptr.Deref(o.ParallelSize, 1)) /* max batch */)
 		}
 

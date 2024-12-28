@@ -20,7 +20,9 @@ on:
       - "**.mdx"
       - "**.png"
       - "**.jpg"
-      - "!.github/workflows/ci.yml"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/prune.yml"
+      - ".github/workflows/sync.yml"
     tags:
       - "v*.*.*"
 
