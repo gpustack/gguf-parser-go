@@ -102,6 +102,26 @@ type (
 		// EmbeddingValueGQA is the number of value GQA in the embedding layer.
 		EmbeddingValueGQA uint64 `json:"embeddingValueGQA,omitempty"`
 
+		// ClipProjectorType is the type of the projector used in the clip model.
+		//
+		// Only used when Architecture is "clip".
+		ClipProjectorType string `json:"clipProjectorType,omitempty"`
+		// ClipHasLLaVAProjector indicates whether the clip model has LLaVA projector or not.
+		//
+		// Only used when Architecture is "clip".
+		ClipHasLLaVAProjector bool `json:"clipHasLLaVAProjector,omitempty"`
+		// ClipHasMiniCPMVProjector indicates whether the clip model has MiniCPMV projector or not.
+		//
+		// Only used when Architecture is "clip".
+		ClipHasMiniCPMVProjector bool `json:"clipHasMiniCPMVProject,omitempty"`
+		// ClipMiniCPMVVersion is the version of the MiniCPMV projector.
+		//
+		// Only used when Architecture is "clip" and ClipHasMiniCPMVProjector is true.
+		ClipMiniCPMVVersion int32 `json:"clipMiniCPMVVersion,omitempty"`
+		// ClipHasQwen2VLMerger indicates whether the clip model has Qwen2VL merger or not.
+		//
+		// Only used when Architecture is "clip".
+		ClipHasQwen2VLMerger bool `json:"clipHasQwen2VLMerger,omitempty"`
 		// ClipHasTextEncoder indicates whether the clip model has text encoder or not.
 		//
 		// Only used when Architecture is "clip".
@@ -110,12 +130,26 @@ type (
 		//
 		// Only used when Architecture is "clip".
 		ClipHasVisionEncoder bool `json:"clipHasVisionEncoder,omitempty"`
-		// ClipProjectorType is the type of the projector used in the clip model.
+		// ClipVisionImageSize indicates the image size of vision encoder.
 		//
-		// Only used when Architecture is "clip".
-		ClipProjectorType string `json:"clipProjectorType,omitempty"`
+		// Only used when Architecture is "clip" and ClipHasVisionEncoder is true.
+		ClipVisionImageSize uint32 `json:"clipVisionImageSize,omitempty"`
+		// ClipVisionPatchSize indicates the patch size of vision encoder.
+		//
+		// Only used when Architecture is "clip" and ClipHasVisionEncoder is true.
+		ClipVisionPatchSize uint32 `json:"clipVisionPatchSize,omitempty"`
+		// ClipVisionProjectionDim indicates the projection dimension of vision encoder.
+		//
+		// Only used when Architecture is "clip" and ClipHasVisionEncoder is true.
+		ClipVisionProjectionDim uint32 `json:"clipVisionProjectionDim,omitempty"`
+		// ClipVisionMMPatchMergeType indicates the merge type of the vision encoder.
+		//
+		// Only used when Architecture is "clip" and ClipHasVisionEncoder is true.
+		ClipVisionMMPatchMergeType string `json:"clipVisionMMPatchMergeType,omitempty"`
 
 		// AdapterType is the type of the adapter.
+		//
+		// Only used when Architecture is "adapter".
 		AdapterType string `json:"adapterType,omitempty"`
 		// AdapterLoRAAlpha is the alpha value of the LoRA adapter.
 		//
@@ -362,10 +396,18 @@ func (gf *GGUFFile) diffuserArchitecture() (ga GGUFArchitecture) {
 }
 
 func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
-	var (
-		hasTextEncoderKey   = "clip.has_text_encoder"
-		hasVisionEncoderKey = "clip.has_vision_encoder"
-		projectorTypeKey    = "clip.projector_type"
+	const (
+		projectorTypeKey       = "clip.projector_type"
+		hasLLaVAProjectorKey   = "clip.has_llava_projector"
+		hasMiniCPMVProjector   = "clip.has_minicpmv_projector"
+		miniCPMVVersionKey     = "clip.minicpmv_version"
+		hasQwen2VLMergerKey    = "clip.has_qwen2vl_merger"
+		hasTextEncoderKey      = "clip.has_text_encoder"
+		hasVisionEncoderKey    = "clip.has_vision_encoder"
+		visionImageSizeKey     = "clip.vision.image_size"
+		visionPatchSizeKey     = "clip.vision.patch_size"
+		visionProjectionDim    = "clip.vision.projection_dim"
+		visionMMPatchMergeType = "clip.vision.mm_patch_merge_type"
 
 		textEmbeddingLengthKey              = "clip.text.embedding_length"
 		textBlockCountKey                   = "clip.text.block_count"
@@ -384,9 +426,17 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 	ga.Architecture = "clip"
 
 	m, _ := gf.Header.MetadataKV.Index([]string{
+		projectorTypeKey,
+		hasLLaVAProjectorKey,
+		hasMiniCPMVProjector,
+		miniCPMVVersionKey,
+		hasQwen2VLMergerKey,
 		hasTextEncoderKey,
 		hasVisionEncoderKey,
-		projectorTypeKey,
+		visionImageSizeKey,
+		visionPatchSizeKey,
+		visionProjectionDim,
+		visionMMPatchMergeType,
 		textEmbeddingLengthKey,
 		textBlockCountKey,
 		textFeedForwardLengthKey,
@@ -399,16 +449,41 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 		visionAttentionLayerNormRMSEpsilonKey,
 	})
 
+	if v, ok := m[projectorTypeKey]; ok {
+		ga.ClipProjectorType = v.ValueString()
+	} else {
+		ga.ClipProjectorType = "mlp"
+	}
+	if v, ok := m[hasLLaVAProjectorKey]; ok {
+		ga.ClipHasLLaVAProjector = v.ValueBool()
+	}
+	if v, ok := m[hasMiniCPMVProjector]; ok {
+		ga.ClipHasMiniCPMVProjector = v.ValueBool()
+	}
+	if v, ok := m[miniCPMVVersionKey]; ok {
+		ga.ClipMiniCPMVVersion = ValueNumeric[int32](v)
+	}
+	if v, ok := m[hasQwen2VLMergerKey]; ok {
+		ga.ClipHasQwen2VLMerger = v.ValueBool()
+	}
 	if v, ok := m[hasTextEncoderKey]; ok {
 		ga.ClipHasTextEncoder = v.ValueBool()
 	}
 	if v, ok := m[hasVisionEncoderKey]; ok {
 		ga.ClipHasVisionEncoder = v.ValueBool()
 	}
-	if v, ok := m[projectorTypeKey]; ok {
-		ga.ClipProjectorType = v.ValueString()
-	} else {
-		ga.ClipProjectorType = "mlp"
+	if v, ok := m[visionImageSizeKey]; ok {
+		ga.ClipVisionImageSize = ValueNumeric[uint32](v)
+	}
+	if v, ok := m[visionPatchSizeKey]; ok {
+		ga.ClipVisionPatchSize = ValueNumeric[uint32](v)
+	}
+	if v, ok := m[visionProjectionDim]; ok {
+		ga.ClipVisionProjectionDim = ValueNumeric[uint32](v)
+	}
+	ga.ClipVisionMMPatchMergeType = "flat"
+	if v, ok := m[visionMMPatchMergeType]; ok {
+		ga.ClipVisionMMPatchMergeType = v.ValueString()
 	}
 
 	if v, ok := m[textEmbeddingLengthKey]; ok {

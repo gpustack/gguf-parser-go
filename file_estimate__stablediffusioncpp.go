@@ -1,7 +1,6 @@
 package gguf_parser
 
 import (
-	"regexp"
 	"strings"
 
 	"golang.org/x/exp/maps"
@@ -175,24 +174,13 @@ func (gf *GGUFFile) EstimateStableDiffusionCppRun(opts ...GGUFRunEstimateOption)
 
 	var cdLs, aeLs, dmLs GGUFLayerTensorInfos
 	{
-		var tis GGUFTensorInfos
-		tis = gf.TensorInfos.Search(regexp.MustCompile(`^cond_stage_model\..*`))
-		if len(tis) != 0 {
-			cdLs = tis.Layers()
-			if len(cdLs) != len(e.Conditioners) {
-				panic("conditioners' layers count mismatch")
-			}
-		}
-		tis = gf.TensorInfos.Search(regexp.MustCompile(`^first_stage_model\..*`))
-		if len(tis) != 0 {
-			aeLs = tis.Layers()
-		}
-		tis = gf.TensorInfos.Search(regexp.MustCompile(`^model\.diffusion_model\..*`))
-		if len(tis) != 0 {
-			dmLs = tis.Layers()
-		} else {
-			dmLs = gf.TensorInfos.Layers()
-		}
+		ls := gf.Layers()
+		cdLs, aeLs, _ = ls.Cut([]string{
+			"cond_stage_model.*",
+		})
+		aeLs, dmLs, _ = aeLs.Cut([]string{
+			"first_stage_model.*",
+		})
 	}
 
 	var cdDevIdx, aeDevIdx, dmDevIdx int

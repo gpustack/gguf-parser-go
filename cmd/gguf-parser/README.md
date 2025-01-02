@@ -45,10 +45,12 @@ GLOBAL OPTIONS:
    --gpu-layers-draft value, --ngld value, --n-gpu-layers-draft value  Specify how many layers of the draft model to offload, which is used to estimate the usage, default is full offloaded. (default: -1)
    --gpu-layers-step value                                             Specify the step of layers to offload, works with "--gpu-layers". (default: 0)
    --in-max-ctx-size                                                   Limit the context size to the maximum context size of the model, if the context size is larger than the maximum context size. (default: false)
+   --mmap                                                              Specify enabling Memory-Mapped using, which is used to estimate the usage. Memory-Mapped can avoid loading the entire model weights into RAM. (default: false)
    --no-kv-offload, --nkvo                                             Specify disabling Key-Value offloading, which is used to estimate the usage. Disable Key-Value offloading can reduce the usage of VRAM. (default: false)
    --no-mmap                                                           Specify disabling Memory-Mapped using, which is used to estimate the usage. Memory-Mapped can avoid loading the entire model weights into RAM. (default: false)
    --split-mode value, --sm value                                      Specify how to split the model across multiple devices, which is used to estimate the usage, select from [layer, row, none]. Since gguf-parser always estimates the usage of VRAM, "none" is meaningless here, keep for compatibility. (default: "layer")
    --ubatch-size value, --ub value                                     Specify the physical maximum batch size, which is used to estimate the usage. (default: 512)
+   --visual-max-image-size value                                       Specify maximum image size when completion with vision model. (default: 0)
 
    Estimate/StableDiffusionCpp
 

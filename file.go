@@ -1048,7 +1048,7 @@ func (tis GGUFTensorInfos) layers() GGUFLayerTensorInfos {
 		switch {
 		default:
 			ret = append(ret, tis[i])
-		case ps[0] == "blk" || ps[0] == "mm":
+		case ps[0] == "blk" || ps[0] == "block":
 			// LLaMACpp.
 			p := strings.Join([]string{ps[0], ps[1]}, ".")
 			if _, ok := pm[p]; !ok {
@@ -1058,7 +1058,7 @@ func (tis GGUFTensorInfos) layers() GGUFLayerTensorInfos {
 			}
 			l := pm[p].(*GGUFNamedTensorInfos)
 			l.GGUFLayerTensorInfos = append(l.GGUFLayerTensorInfos, tis[i])
-		case ps[0] == "v" || ps[0] == "t":
+		case (ps[0] == "v" || ps[0] == "t") && ps[1] == "blk":
 			// LLaMACpp CLIP.
 			p := ps[0]
 			if _, ok := pm[p]; !ok {
@@ -1067,7 +1067,7 @@ func (tis GGUFTensorInfos) layers() GGUFLayerTensorInfos {
 				ret = append(ret, l)
 			}
 			l := pm[p].(*GGUFNamedTensorInfos)
-			if ps[1] != "blk" || len(ps) < 3 {
+			if len(ps) < 3 {
 				l.GGUFLayerTensorInfos = append(l.GGUFLayerTensorInfos, tis[i])
 				continue
 			}
@@ -1079,7 +1079,8 @@ func (tis GGUFTensorInfos) layers() GGUFLayerTensorInfos {
 			}
 			xl := pm[p].(*GGUFNamedTensorInfos)
 			xl.GGUFLayerTensorInfos = append(xl.GGUFLayerTensorInfos, tis[i])
-		case ps[0] == "decoder" || ps[0] == "encoder":
+		case ((ps[0] == "dec" || ps[0] == "enc") && ps[1] == "blk") ||
+			((ps[0] == "decoder" || ps[0] == "encoder") && ps[1] == "block"):
 			// BERT.
 			p := ps[0]
 			if _, ok := pm[p]; !ok {
@@ -1088,7 +1089,7 @@ func (tis GGUFTensorInfos) layers() GGUFLayerTensorInfos {
 				ret = append(ret, l)
 			}
 			l := pm[p].(*GGUFNamedTensorInfos)
-			if ps[1] != "block" || len(ps) < 3 {
+			if len(ps) < 3 {
 				l.GGUFLayerTensorInfos = append(l.GGUFLayerTensorInfos, tis[i])
 				continue
 			}
@@ -1308,10 +1309,17 @@ func (ltis GGUFLayerTensorInfos) Count() uint64 {
 // and returns the GGUFLayerTensorInfos with the names that match the given names at first,
 // and the GGUFLayerTensorInfos without the names at second,
 // and true if the GGUFLayerTensorInfos with the names are found, and false otherwise.
+//
+// The given names support glob pattern, for example, "a*" matches "a", "ab", "abc", and so on.
 func (ltis GGUFLayerTensorInfos) Cut(names []string) (before, after GGUFLayerTensorInfos, found bool) {
-	ns := make(map[string]struct{}, len(names))
+	prefixes := make(map[string]struct{})
+	matches := make(map[string]struct{})
 	for i := range names {
-		ns[names[i]] = struct{}{}
+		if strings.HasSuffix(names[i], "*") {
+			prefixes[strings.TrimSuffix(names[i], "*")] = struct{}{}
+		} else {
+			matches[names[i]] = struct{}{}
+		}
 	}
 	before = make(GGUFLayerTensorInfos, 0, len(names))
 	after = make(GGUFLayerTensorInfos, 0, len(ltis))
@@ -1319,15 +1327,45 @@ func (ltis GGUFLayerTensorInfos) Cut(names []string) (before, after GGUFLayerTen
 	for i := range ltis {
 		switch v := ltis[i].(type) {
 		case GGUFTensorInfo:
-			if _, ok := ns[v.Name]; ok {
-				before = append(before, v)
-				continue
+			if len(matches) != 0 {
+				if _, ok := matches[v.Name]; ok {
+					before = append(before, v)
+					continue
+				}
+			}
+			if len(prefixes) != 0 {
+				var check bool
+				for prefix := range prefixes {
+					if strings.HasPrefix(v.Name, prefix) {
+						before = append(before, v)
+						check = true
+						break
+					}
+				}
+				if check {
+					continue
+				}
 			}
 			after = append(after, v)
 		case *GGUFNamedTensorInfos:
-			if _, ok := ns[v.Name]; ok {
-				before = append(before, v)
-				continue
+			if len(matches) != 0 {
+				if _, ok := matches[v.Name]; ok {
+					before = append(before, v)
+					continue
+				}
+			}
+			if len(prefixes) != 0 {
+				var check bool
+				for prefix := range prefixes {
+					if strings.HasPrefix(v.Name, prefix) {
+						before = append(before, v)
+						check = true
+						break
+					}
+				}
+				if check {
+					continue
+				}
 			}
 			after = append(after, v)
 		}

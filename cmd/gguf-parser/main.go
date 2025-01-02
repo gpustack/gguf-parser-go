@@ -66,7 +66,10 @@ func main() {
 				Value:       path,
 				Category:    "Model/Local",
 				Name:        "path",
-				Aliases:     []string{"model", "m"},
+				Aliases: []string{ // LLaMACpp compatibility
+					"model",
+					"m",
+				},
 				Usage: "Path where the GGUF file to load for the main model, e.g. \"~/.cache" +
 					"/lm-studio/models/QuantFactory/Qwen2-7B-Instruct-GGUF" +
 					"/Qwen2-7B-Instruct.Q5_K_M.gguf\".",
@@ -76,7 +79,10 @@ func main() {
 				Value:       draftPath,
 				Category:    "Model/Local",
 				Name:        "draft-path",
-				Aliases:     []string{"model-draft", "md"},
+				Aliases: []string{ // LLaMACpp compatibility
+					"model-draft",
+					"md",
+				},
 				Usage: "Path where the GGUF file to load for the draft model, optional, e.g. \"~/.cache" +
 					"/lm-studio/models/QuantFactory/Qwen2-1.5B-Instruct-GGUF" +
 					"/Qwen2-1.5B-Instruct.Q5_K_M.gguf\".",
@@ -86,22 +92,28 @@ func main() {
 				Value:       mmprojPath,
 				Category:    "Model/Local",
 				Name:        "mmproj-path",
-				Aliases:     []string{"mmproj"},
-				Usage:       "Path where the GGUF file to load for the multimodal projector, optional.",
+				Aliases: []string{ // LLaMACpp compatibility
+					"mmproj",
+				},
+				Usage: "Path where the GGUF file to load for the multimodal projector, optional.",
 			},
 			&cli.StringSliceFlag{
 				Destination: &loraPaths,
 				Category:    "Model/Local",
 				Name:        "lora-path",
-				Aliases:     []string{"lora"},
-				Usage:       "Path where the GGUF file to load for the LoRA adapter, optional.",
+				Aliases: []string{ // LLaMACpp compatibility
+					"lora",
+				},
+				Usage: "Path where the GGUF file to load for the LoRA adapter, optional.",
 			},
 			&cli.StringSliceFlag{
 				Destination: &controlVectorPaths,
 				Category:    "Model/Local",
 				Name:        "control-vector-path",
-				Aliases:     []string{"control-vector"},
-				Usage:       "Path where the GGUF file to load for the Control Vector adapter, optional.",
+				Aliases: []string{ // LLaMACpp compatibility
+					"control-vector",
+				},
+				Usage: "Path where the GGUF file to load for the Control Vector adapter, optional.",
 			},
 			&cli.StringFlag{
 				Destination: &upscalePath,
@@ -130,7 +142,10 @@ func main() {
 				Value:       url,
 				Category:    "Model/Remote",
 				Name:        "url",
-				Aliases:     []string{"model-url", "mu"},
+				Aliases: []string{
+					"model-url",
+					"mu",
+				},
 				Usage: "Url where the GGUF file to load for the main model, e.g. " +
 					"\"https://huggingface.co/QuantFactory/Qwen2-7B-Instruct-GGUF" +
 					"/resolve/main/Qwen2-7B-Instruct.Q5_K_M.gguf\". " +
@@ -192,7 +207,9 @@ func main() {
 				Value:       hfRepo,
 				Category:    "Model/Remote/HuggingFace",
 				Name:        "hf-repo",
-				Aliases:     []string{"hfr"},
+				Aliases: []string{ // LLaMACpp compatibility
+					"hfr",
+				},
 				Usage: "Repository of HuggingFace which the GGUF file store for the main model, e.g. " +
 					"\"QuantFactory/Qwen2-7B-Instruct-GGUF\", works with \"--hf-file\".",
 			},
@@ -201,7 +218,9 @@ func main() {
 				Value:       hfFile,
 				Category:    "Model/Remote/HuggingFace",
 				Name:        "hf-file",
-				Aliases:     []string{"hff"},
+				Aliases: []string{ // LLaMACpp compatibility
+					"hff",
+				},
 				Usage: "Model file below the \"--hf-repo\", e.g. " +
 					"\"Qwen2-7B-Instruct.Q5_K_M.gguf\".",
 			},
@@ -275,7 +294,9 @@ func main() {
 				Value:       hfToken,
 				Category:    "Model/Remote/HuggingFace",
 				Name:        "hf-token",
-				Aliases:     []string{"hft"},
+				Aliases: []string{ // LLaMACpp compatibility
+					"hft",
+				},
 				Usage: "User access token of HuggingFace, optional, " +
 					"works with \"--hf-repo/--hf-file pair\" or \"--hf-draft-repo/--hf-draft-file\" pair. " +
 					"See https://huggingface.co/settings/tokens.",
@@ -463,7 +484,10 @@ func main() {
 				Value:       parallelSize,
 				Category:    "Estimate",
 				Name:        "parallel-size",
-				Aliases:     []string{"parallel", "np"},
+				Aliases: []string{ // LLaMACpp compatibility
+					"parallel",
+					"np",
+				},
 				Usage: "Specify the number of parallel sequences to decode, " +
 					"which is used to estimate the usage.",
 			},
@@ -486,7 +510,9 @@ func main() {
 				Value:       mainGPU,
 				Category:    "Estimate",
 				Name:        "main-gpu",
-				Aliases:     []string{"mg"},
+				Aliases: []string{ // LLaMACpp compatibility
+					"mg",
+				},
 				Usage: "Specify the GPU to use for the model (with \"--split-mode=none\") " +
 					"or for intermediate results and KV (with \"--split-mode=row\"), " +
 					"which is used to estimate the usage. " +
@@ -508,7 +534,9 @@ func main() {
 				Value:       tensorSplit,
 				Category:    "Estimate",
 				Name:        "tensor-split",
-				Aliases:     []string{"ts"},
+				Aliases: []string{ // LLaMACpp compatibility
+					"ts",
+				},
 				Usage: "Specify the fraction of the model to offload to each device, " +
 					"which is used to estimate the usage, " +
 					"it is a comma-separated list of integer. " +
@@ -549,7 +577,9 @@ func main() {
 				Value:       lmcCtxSize,
 				Category:    "Estimate/LLaMACpp",
 				Name:        "ctx-size",
-				Aliases:     []string{"c"},
+				Aliases: []string{ // LLaMACpp compatibility
+					"c",
+				},
 				Usage: "Specify the size of prompt context, " +
 					"which is used to estimate the usage, " +
 					"default is equal to the model's maximum context size.",
@@ -567,7 +597,9 @@ func main() {
 				Value:       lmcLogicalBatchSize,
 				Category:    "Estimate/LLaMACpp",
 				Name:        "batch-size",
-				Aliases:     []string{"b"},
+				Aliases: []string{ // LLaMACpp compatibility
+					"b",
+				},
 				Usage: "Specify the logical batch size, " +
 					"which is used to estimate the usage.",
 			},
@@ -576,7 +608,9 @@ func main() {
 				Value:       lmcPhysicalBatchSize,
 				Category:    "Estimate/LLaMACpp",
 				Name:        "ubatch-size",
-				Aliases:     []string{"ub"},
+				Aliases: []string{ // LLaMACpp compatibility
+					"ub",
+				},
 				Usage: "Specify the physical maximum batch size, " +
 					"which is used to estimate the usage.",
 			},
@@ -585,7 +619,9 @@ func main() {
 				Value:       lmcCacheKeyType,
 				Category:    "Estimate/LLaMACpp",
 				Name:        "cache-type-k",
-				Aliases:     []string{"ctk"},
+				Aliases: []string{ // LLaMACpp compatibility
+					"ctk",
+				},
 				Usage: "Specify the type of Key cache, " +
 					"which is used to estimate the usage, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1].",
 			},
@@ -594,7 +630,9 @@ func main() {
 				Value:       lmcCacheValueType,
 				Category:    "Estimate/LLaMACpp",
 				Name:        "cache-type-v",
-				Aliases:     []string{"ctv"},
+				Aliases: []string{ // LLaMACpp compatibility
+					"ctv",
+				},
 				Usage: "Specify the type of Value cache, " +
 					"which is used to estimate the usage, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1].",
 			},
@@ -603,7 +641,9 @@ func main() {
 				Value:       lmcNoKVOffload,
 				Category:    "Estimate/LLaMACpp",
 				Name:        "no-kv-offload",
-				Aliases:     []string{"nkvo"},
+				Aliases: []string{ // LLaMACpp compatibility
+					"nkvo",
+				},
 				Usage: "Specify disabling Key-Value offloading, " +
 					"which is used to estimate the usage. " +
 					"Disable Key-Value offloading can reduce the usage of VRAM.",
@@ -613,7 +653,9 @@ func main() {
 				Value:       lmcSplitMode,
 				Category:    "Estimate/LLaMACpp",
 				Name:        "split-mode",
-				Aliases:     []string{"sm"},
+				Aliases: []string{ // LLaMACpp compatibility
+					"sm",
+				},
 				Usage: "Specify how to split the model across multiple devices, " +
 					"which is used to estimate the usage, select from [layer, row, none]. " +
 					"Since gguf-parser always estimates the usage of VRAM, " +
@@ -628,12 +670,33 @@ func main() {
 					"which is used to estimate the usage. " +
 					"Memory-Mapped can avoid loading the entire model weights into RAM.",
 			},
+			&cli.BoolFlag{ // LLaMABox compatibility
+				Category: "Estimate/LLaMACpp",
+				Name:     "mmap",
+				Usage: "Specify enabling Memory-Mapped using, " +
+					"which is used to estimate the usage. " +
+					"Memory-Mapped can avoid loading the entire model weights into RAM.",
+				Action: func(context *cli.Context, b bool) error {
+					lmcNoMMap = !b
+					return nil
+				},
+			},
+			&cli.UintFlag{ // LLaMABox compatibility
+				Destination: &lmcVisualMaxImageSize,
+				Value:       lmcVisualMaxImageSize,
+				Category:    "Estimate/LLaMACpp",
+				Name:        "visual-max-image-size",
+				Usage:       "Specify maximum image size when completion with vision model.",
+			},
 			&cli.IntFlag{
 				Destination: &lmcOffloadLayers,
 				Value:       lmcOffloadLayers,
 				Category:    "Estimate/LLaMACpp",
 				Name:        "gpu-layers",
-				Aliases:     []string{"ngl", "n-gpu-layers"},
+				Aliases: []string{ // LLaMACpp compatibility
+					"ngl",
+					"n-gpu-layers",
+				},
 				Usage: "Specify how many layers of the main model to offload, " +
 					"which is used to estimate the usage, " +
 					"default is full offloaded.",
@@ -643,7 +706,10 @@ func main() {
 				Value:       lmcOffloadLayersDraft,
 				Category:    "Estimate/LLaMACpp",
 				Name:        "gpu-layers-draft",
-				Aliases:     []string{"ngld", "n-gpu-layers-draft"},
+				Aliases: []string{ // LLaMACpp compatibility
+					"ngld",
+					"n-gpu-layers-draft",
+				},
 				Usage: "Specify how many layers of the draft model to offload, " +
 					"which is used to estimate the usage, " +
 					"default is full offloaded.",
@@ -656,7 +722,7 @@ func main() {
 				Usage: "Specify the step of layers to offload, " +
 					"works with \"--gpu-layers\".",
 			},
-			&cli.IntFlag{
+			&cli.UintFlag{
 				Destination: &sdcBatchCount,
 				Value:       sdcBatchCount,
 				Category:    "Estimate/StableDiffusionCpp",
@@ -667,7 +733,7 @@ func main() {
 				},
 				Usage: "Specify the batch(generation) count of the image.",
 			},
-			&cli.IntFlag{
+			&cli.UintFlag{
 				Destination: &sdcHeight,
 				Value:       sdcHeight,
 				Category:    "Estimate/StableDiffusionCpp",
@@ -678,7 +744,7 @@ func main() {
 				},
 				Usage: "Specify the (maximum) height of the image.",
 			},
-			&cli.IntFlag{
+			&cli.UintFlag{
 				Destination: &sdcWidth,
 				Value:       sdcWidth,
 				Category:    "Estimate/StableDiffusionCpp",
@@ -892,13 +958,14 @@ var (
 	lmcNoKVOffload        bool
 	lmcSplitMode          = "layer"
 	lmcNoMMap             bool
+	lmcVisualMaxImageSize uint
 	lmcOffloadLayers      = -1
 	lmcOffloadLayersDraft = -1
 	lmcOffloadLayersStep  uint64
 	// estimate options for stable-diffusion.cpp
-	sdcBatchCount                   = 1
-	sdcHeight                       = 1024
-	sdcWidth                        = 1024
+	sdcBatchCount                   uint = 1
+	sdcHeight                       uint = 1024
+	sdcWidth                        uint = 1024
 	sdcNoConditionerOffload         bool
 	sdcNoAutoencoderOffload         bool
 	sdcAutoencoderTiling            bool
@@ -1060,6 +1127,9 @@ func mainAction(c *cli.Context) error {
 	default:
 		eopts = append(eopts, WithLLaMACppSplitMode(LLaMACppSplitModeLayer))
 	}
+	if lmcVisualMaxImageSize > 0 {
+		eopts = append(eopts, WithLLaMACppVisualMaxImageSize(uint32(lmcVisualMaxImageSize)))
+	}
 	if sdcBatchCount > 1 {
 		eopts = append(eopts, WithStableDiffusionCppBatchCount(int32(sdcBatchCount)))
 	}
@@ -1121,7 +1191,7 @@ func mainAction(c *cli.Context) error {
 		case olModel != "":
 			om := ParseOllamaModel(olModel, SetOllamaModelBaseURL(olBaseURL))
 			gf, err = ParseGGUFFileFromOllamaModel(ctx, om, ropts...)
-			if om != nil && olUsage {
+			if err == nil && om != nil && olUsage {
 				// Parameters override.
 				{
 					ps, _ := om.Params(ctx, nil)
@@ -1142,6 +1212,9 @@ func mainAction(c *cli.Context) error {
 					mls := om.SearchLayers(regexp.MustCompile(`^application/vnd\.ollama\.image\.projector$`))
 					if len(mls) > 0 {
 						lmcProjectGf, err = ParseGGUFFileRemote(ctx, mls[len(mls)-1].BlobURL().String(), ropts...)
+						if err != nil {
+							return fmt.Errorf("failed to parse GGUF file: %w", err)
+						}
 					}
 				}
 				// Adapter overlap.
@@ -1152,7 +1225,7 @@ func mainAction(c *cli.Context) error {
 						for i := range als {
 							adpgf, err = ParseGGUFFileRemote(ctx, als[i].BlobURL().String(), ropts...)
 							if err != nil {
-								break
+								return fmt.Errorf("failed to parse GGUF file: %w", err)
 							}
 							adapterGfs = append(adapterGfs, adpgf)
 						}
@@ -1333,6 +1406,7 @@ func mainAction(c *cli.Context) error {
 			if lmcOffloadLayersDraft >= 0 {
 				dlmceopts = append(dlmceopts, WithLLaMACppOffloadLayers(uint64(lmcOffloadLayersDraft)))
 			}
+			dlmceopts = append(dlmceopts, WithLLaMACppCacheKeyType(GGMLTypeF16), WithLLaMACppCacheValueType(GGMLTypeF16))
 			de := lmcDrafterGf.EstimateLLaMACppRun(dlmceopts...)
 			eopts = append(eopts, WithLLaMACppDrafter(&de))
 		}

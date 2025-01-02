@@ -20,6 +20,14 @@ type (
 		//
 		// All lowercase ASCII.
 		Architecture string `json:"architecture"`
+		// ClipProjectorType is the type of the projector used in the clip model.
+		//
+		// Only used when Architecture is "clip".
+		ClipProjectorType string `json:"clipProjectorType,omitempty"`
+		// AdapterType is the type of the adapter.
+		//
+		// Only used when Architecture is "adapter".
+		AdapterType string `json:"adapterType,omitempty"`
 		// FlashAttention is the flag to indicate whether enable the flash attention,
 		// true for enable.
 		FlashAttention bool `json:"flashAttention"`
@@ -179,6 +187,7 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...GGUFRunEstimateOption) (e LLaMAC
 		panic("split mode must be less than max")
 	}
 
+	// Init.
 	// Devices.
 	e.Devices = make([]LLaMACppRunDeviceUsage, len(o.TensorSplitFraction)+1)
 	for i := range e.Devices {
@@ -187,12 +196,38 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...GGUFRunEstimateOption) (e LLaMAC
 
 	// Metadata.
 	a := gf.Architecture()
-	t := gf.Tokenizer()
 	e.Type = a.Type
 	e.Architecture = a.Architecture
+	e.ClipProjectorType = a.ClipProjectorType
+	e.AdapterType = a.AdapterType
 
+	switch a.Type {
+	case "model":
+		t := gf.Tokenizer()
+		gf.estimateLLaMACppRunInModel(&o, &a, &t, &e)
+	case "projector":
+		// For projector model,
+		// see https://github.com/ggerganov/llama.cpp/blob/148ec970b62c3c5ae0a8bfdaad2fc237aaae350d/examples/llava/clip.cpp#L994-L1008.
+		if ptr.Deref(o.LMCOffloadLayers, a.BlockCount) != 0 {
+			// None model means full offload.
+			o.LMCOffloadLayers = ptr.To(a.BlockCount)
+		} else {
+			// None model means zero offload.
+			o.LMCOffloadLayers = ptr.To[uint64](0)
+		}
+		gf.estimateLLaMACppRunInProjector(&o, &a, &e)
+	case "adapter":
+		gf.estimateLLaMaCppRunInAdapter(&o, &a, &e)
+	}
+
+	return e
+}
+
+// estimateLLaMACppRunInModel estimates the inference result of the GGUF file in llama.cpp for model type,
+// including the usages of footprint, weight, KV cache, and computation.
+func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GGUFArchitecture, t *GGUFTokenizer, e *LLaMACppRunEstimate) {
 	// Flash attention.
-	if a.Type == "model" {
+	{
 		// Quantization requires flash attention,
 		// see https://github.com/ggerganov/llama.cpp/blob/172c8256840ffd882ab9992ecedbb587d9b21f15/llama.cpp#L16055-L16058.
 		if *o.LMCCacheValueType > GGMLTypeF16 && !o.FlashAttention {
@@ -208,7 +243,7 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...GGUFRunEstimateOption) (e LLaMAC
 	}
 
 	// Embedding.
-	if a.Type == "model" && !a.AttentionCausal {
+	if !a.AttentionCausal {
 		e.EmbeddingOnly = true
 		// Set context size/physical batch size/logical batch size to the training context size.
 		o.LMCContextSize = ptr.To(min(int32(a.MaximumContextLength), ptr.Deref(o.LMCContextSize, int32(a.MaximumContextLength))))
@@ -222,24 +257,19 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...GGUFRunEstimateOption) (e LLaMAC
 
 	// Distributable,
 	// see https://github.com/ggerganov/llama.cpp/blob/a07c32ea54850c989f0ef6989da5b955b77b7172/ggml/src/ggml-rpc.cpp#L391-L397.
-	{
-		e.Distributable = false
-		if a.Type == "model" {
-			e.Distributable = true
-			for i := range gf.TensorInfos {
-				if t, ok := gf.TensorInfos[i].Type.Trait(); ok && !t.Quantized {
-					continue
-				}
-				if len(gf.TensorInfos[i].Dimensions) == 0 {
-					continue
-				}
-				if gf.TensorInfos[i].Dimensions[0]%512 == 0 {
-					continue
-				}
-				e.Distributable = false
-				break
-			}
+	e.Distributable = true
+	for i := range gf.TensorInfos {
+		if t, ok := gf.TensorInfos[i].Type.Trait(); ok && !t.Quantized {
+			continue
 		}
+		if len(gf.TensorInfos[i].Dimensions) == 0 {
+			continue
+		}
+		if gf.TensorInfos[i].Dimensions[0]%512 == 0 {
+			continue
+		}
+		e.Distributable = false
+		break
 	}
 
 	// Batch size.
@@ -247,7 +277,7 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...GGUFRunEstimateOption) (e LLaMAC
 	e.PhysicalBatchSize = *o.LMCPhysicalBatchSize
 
 	// Init hyperparameters,
-	// https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L6957-L7000.
+	// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L6957-L7000.
 	var (
 		nContext  uint64
 		nTokens   uint64
@@ -281,7 +311,7 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...GGUFRunEstimateOption) (e LLaMAC
 
 		// For mamba,
 		// see https://github.com/ggerganov/llama.cpp/blob/7672adeec7a79ea271058c63106c142ba84f951a/llama.cpp#L16122-L16129.
-		if a.Type == "model" && a.Architecture == "mamba" {
+		if a.Architecture == "mamba" {
 			nKV = nParallel
 			o.LMCCacheKeyType = ptr.To(GGMLTypeF32)
 			o.LMCCacheValueType = ptr.To(GGMLTypeF32)
@@ -303,11 +333,6 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...GGUFRunEstimateOption) (e LLaMAC
 	{
 		var isOffloadOutputLayer bool
 
-		// For none model,
-		// see https://github.com/ggerganov/llama.cpp/blob/148ec970b62c3c5ae0a8bfdaad2fc237aaae350d/examples/llava/clip.cpp#L994-L1008.
-		if a.Type != "model" {
-			o.LMCOffloadLayers = ptr.To(a.BlockCount + 1) // None model means full offload.
-		}
 		switch v := o.LMCOffloadLayers; {
 		case v == nil:
 			o.LMCOffloadLayers = ptr.To(a.BlockCount)
@@ -359,57 +384,40 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...GGUFRunEstimateOption) (e LLaMAC
 
 	ls := gf.Layers()
 	ioLs, tfLs, _ := ls.Cut([]string{
-		"position_embd.weight",
-		"token_embd.weight",
-		"token_embd_norm.weight",
-		"token_embd_norm.bias",
-		"token_types.weight",
-		"cls.bias",
-		"cls.weight",
-		"cls.output.bias",
-		"cls.output.weight",
-		"output.weight",
-		"output.bias",
-		"output_norm.weight",
-		"output_norm.bias",
+		"position_*",
+		"token_*",
+		"cls.*",
+		"output.*",
+		"output_*",
 	})
 	ipLs, opLs, _ := ioLs.Cut([]string{
-		"position_embd.weight",
-		"token_embd.weight",
-		"token_embd_norm.weight",
-		"token_embd_norm.bias",
-		"token_types.weight",
+		"position_*",
+		"token_*",
 	})
 
 	// Weight & Parameter.
 	{
 		// Compute.
-		switch a.Type {
-		default:
-			e.Devices[1].Weight.Compute = GGUFBytesScalar(ls.Bytes())
-			e.Devices[1].Parameter.Compute = GGUFParametersScalar(ls.Elements())
-		case "model":
-			for i, j, offloadStart := 0, 0, len(tfLs)-int(nOffloadLayers); i < len(tfLs); i++ {
-				switch {
-				case i < int(nLoadLayers):
-					e.Devices[0].HandleLayers += 1
-					e.Devices[0].HandleLastLayer = i
-					e.Devices[0].Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
-					e.Devices[0].Parameter.Compute += GGUFParametersScalar(tfLs[i].Elements())
-				case i >= offloadStart:
-					x := float64(i-offloadStart) / float64(nActualOffloadLayers)
-					j = slicex.UpperBound(o.TensorSplitFraction, x)
-					e.Devices[j+1].HandleLayers += 1
-					e.Devices[j+1].HandleLastLayer = i
-					e.Devices[j+1].Remote = j < len(o.RPCServers)
-					if e.Devices[j+1].Remote {
-						e.Devices[j+1].Position = j
-					} else {
-						e.Devices[j+1].Position = j - len(o.RPCServers)
-					}
-					e.Devices[j+1].Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
-					e.Devices[j+1].Parameter.Compute += GGUFParametersScalar(tfLs[i].Elements())
+		for i, j, offloadStart := 0, 0, len(tfLs)-int(nOffloadLayers); i < len(tfLs); i++ {
+			switch {
+			case i < int(nLoadLayers):
+				e.Devices[0].HandleLayers += 1
+				e.Devices[0].HandleLastLayer = i
+				e.Devices[0].Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
+				e.Devices[0].Parameter.Compute += GGUFParametersScalar(tfLs[i].Elements())
+			case i >= offloadStart:
+				x := float64(i-offloadStart) / float64(nActualOffloadLayers)
+				j = slicex.UpperBound(o.TensorSplitFraction, x)
+				e.Devices[j+1].HandleLayers += 1
+				e.Devices[j+1].HandleLastLayer = i
+				e.Devices[j+1].Remote = j < len(o.RPCServers)
+				if e.Devices[j+1].Remote {
+					e.Devices[j+1].Position = j
+				} else {
+					e.Devices[j+1].Position = j - len(o.RPCServers)
 				}
+				e.Devices[j+1].Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
+				e.Devices[j+1].Parameter.Compute += GGUFParametersScalar(tfLs[i].Elements())
 			}
 		}
 
@@ -493,7 +501,7 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...GGUFRunEstimateOption) (e LLaMAC
 			inpSSeq   = GGMLTypeI32.RowSizeOf([]uint64{nKV, nBatch})               // I32 [n_kv, n_batch]
 		)
 		switch {
-		case a.Type == "model" && a.Architecture == "mamba":
+		case a.Architecture == "mamba":
 			e.Devices[0].Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + inpSMask + inpSSeq + inpOutIds)
 			if !zeroOffload {
 				v := GGUFBytesScalar(inpEmbd + inpSMask + inpSSeq + inpOutIds)
@@ -501,7 +509,7 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...GGUFRunEstimateOption) (e LLaMAC
 					e.Devices[i+1].Computation.Input += v
 				}
 			}
-		case a.Type == "model":
+		default:
 			e.Devices[0].Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + inpPos + inpKQMask + inpOutIds)
 			if !zeroOffload {
 				v := GGUFBytesScalar(inpEmbd + inpPos + inpKQMask + inpOutIds)
@@ -515,7 +523,7 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...GGUFRunEstimateOption) (e LLaMAC
 		// So, we only consider the usage of the largest layer,
 		// which is the last layer by default.
 		switch {
-		case a.Type == "model" && a.Architecture == "mamba":
+		case a.Architecture == "mamba":
 			convInc := GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingKeyGQA, nKV}) // F32 [n_embd_key_gqa, n_kv] reshape
 			for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.(attn_norm|ssm_in|ssm_conv1d)\.weight`)) {
 				if !strings.HasSuffix(l.Name, ".ssm_conv1d.weight") {
@@ -542,7 +550,7 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...GGUFRunEstimateOption) (e LLaMAC
 			for i := range e.Devices[1:] {
 				e.Devices[i+1].Computation.Compute = cp
 			}
-		case a.Type == "model":
+		default:
 			loadAttnInc, offloadAttnInc := uint64(0), uint64(0)
 			if o.FlashAttention {
 				// https://github.com/ggerganov/llama.cpp/blob/172c8256840ffd882ab9992ecedbb587d9b21f15/llama.cpp#L7387.
@@ -609,7 +617,7 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...GGUFRunEstimateOption) (e LLaMAC
 			}
 		}
 		// Finally, get the usage of output layer.
-		if a.Type == "model" && a.AttentionCausal {
+		if a.AttentionCausal {
 			var outInc uint64
 			if a.Architecture == "mamba" {
 				outInc += inpSMask + inpSSeq
@@ -670,8 +678,211 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...GGUFRunEstimateOption) (e LLaMAC
 		}
 		e.MaximumTokensPerSecond = ptr.To(GGUFTokensPerSecondScalar(1 / lt))
 	}
+}
 
-	return e
+func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a *GGUFArchitecture, e *LLaMACppRunEstimate) {
+	e.FullOffloaded = *o.LMCOffloadLayers == a.BlockCount
+	e.OffloadLayers = *o.LMCOffloadLayers
+
+	// Init hyperparameters,
+	// see https://github.com/ggerganov/llama.cpp/blob/0827b2c1da299805288abbd556d869318f2b121e/examples/llava/clip.cpp#L599-L636.
+	var (
+		imgHeightSize     uint64
+		imgWidthSize      uint64
+		imgPatchSize      uint64
+		nPatchesHeight    uint64
+		nPatchesWidth     uint64
+		nPatches          uint64
+		imgPatchesMaxSize uint64
+		imgPatches        uint64
+		projectionDim     uint64 // NB(thxCode): do not sure if there is the correct name.
+	)
+	{
+		// See https://github.com/ggerganov/llama.cpp/blob/0827b2c1da299805288abbd556d869318f2b121e/examples/llava/llava.cpp#L397-L411,
+		//     https://github.com/ggerganov/llama.cpp/blob/0827b2c1da299805288abbd556d869318f2b121e/examples/llava/clip.cpp#L2323-L2345,
+		//     https://github.com/ggerganov/llama.cpp/blob/0827b2c1da299805288abbd556d869318f2b121e/examples/llava/clip.cpp#L2767-L2794.
+		imgHeightSize = uint64(a.ClipVisionImageSize)
+		imgWidthSize = imgHeightSize
+		imgPatchSize = uint64(a.ClipVisionPatchSize)
+		if a.ClipHasQwen2VLMerger {
+			imgHeightSize = uint64(ptr.Deref(o.LMCVisualMaxImageSize, 224))
+			imgWidthSize = imgHeightSize
+		}
+		nPatchesHeight = imgHeightSize / imgPatchSize
+		nPatchesWidth = imgWidthSize / imgPatchSize
+		nPatches = nPatchesHeight * nPatchesWidth
+		imgPatchesMaxSize = 1
+		imgPatches = nPatches
+		switch {
+		case a.ClipHasLLaVAProjector:
+			if a.ClipVisionMMPatchMergeType != "flat" {
+				imgPatchesMaxSize = 6
+			}
+		case a.ClipHasMiniCPMVProjector:
+			imgPatchesMaxSize = 10
+		}
+		switch a.ClipProjectorType {
+		case "ldp":
+			imgPatches /= 4
+			if ti, ok := gf.TensorInfos.Get("mm.model.mb_block.1.block.2.1.bias"); ok {
+				projectionDim = ti.Dimensions[0]
+			}
+		case "ldpv2":
+			imgPatches /= 4
+			if ti, ok := gf.TensorInfos.Get("mm.model.peg.0.bias"); ok {
+				projectionDim = ti.Dimensions[0]
+			}
+		case "mlp":
+			if ti, ok := gf.TensorInfos.Get("mm.2.bias"); ok {
+				projectionDim = ti.Dimensions[0]
+			}
+		case "mlp_norm":
+			if ti, ok := gf.TensorInfos.Get("mm.3.bias"); ok {
+				projectionDim = ti.Dimensions[0]
+			}
+		case "resampler":
+			if ti, ok := gf.TensorInfos.Get("resampler.query"); ok {
+				imgPatches = ti.Dimensions[1]
+				projectionDim = ti.Dimensions[0]
+			}
+		case "qwen2vl_merger":
+			nSizePatch := uint64(a.ClipVisionPatchSize * 2)
+			imgHeightPatchSize := imgHeightSize / nSizePatch
+			if imgHeightSize%nSizePatch > 0 {
+				imgHeightPatchSize++
+			}
+			imgWidthPatchSize := imgWidthSize / nSizePatch
+			if imgWidthSize%nSizePatch > 0 {
+				imgWidthPatchSize++
+			}
+			imgPatches = imgHeightPatchSize * imgWidthPatchSize
+			if ti, ok := gf.TensorInfos.Get("mm.2.bias"); ok {
+				projectionDim = ti.Dimensions[0]
+			}
+		}
+	}
+
+	// Footprint.
+	{
+		// Bootstrap.
+		e.Devices[0].Footprint = GGUFBytesScalar(5*1024*1024) /* model load */ + (gf.Size - gf.ModelSize) /* metadata */
+
+		// Image Embed,
+		// see https://github.com/ggerganov/llama.cpp/blob/0827b2c1da299805288abbd556d869318f2b121e/examples/llava/llava.cpp#L401-L407.
+		e.Devices[0].Footprint += GGUFBytesScalar(imgPatchesMaxSize * imgPatches * projectionDim * 4 /* float32 size */)
+	}
+
+	ls := gf.Layers()
+	ioLs, tfLs, _ := ls.Cut([]string{
+		"v.patch_embd.*",
+		"v.class_embd",
+		"v.position_embd.*",
+		"v.pre_ln.*",
+		"model.*",
+		"v.post_ln.*",
+		"mm.*",
+		"resampler.*",
+	})
+	ipLs, opLs, _ := ioLs.Cut([]string{
+		"v.patch_embd.*",
+		"v.class_embd",
+		"v.position_embd.*",
+		"v.pre_ln.*",
+		"model.*",
+	})
+
+	idx := 0 // Default to the main host's RAM.
+	if *o.LMCOffloadLayers != 0 {
+		idx = 1
+	}
+
+	// Weight & Parameter.
+	{
+		// Compute.
+		e.Devices[idx].HandleLayers = *o.LMCOffloadLayers
+		e.Devices[idx].HandleLastLayer = int(e.Devices[idx].HandleLayers - 1)
+		e.Devices[idx].Weight.Compute = GGUFBytesScalar(tfLs.Bytes())
+		e.Devices[idx].Parameter.Compute = GGUFParametersScalar(tfLs.Elements())
+
+		// IO.
+		e.Devices[idx].Weight.Input = GGUFBytesScalar(ipLs.Bytes())
+		e.Devices[idx].Parameter.Input = GGUFParametersScalar(ipLs.Elements())
+		e.Devices[idx].Weight.Output = GGUFBytesScalar(opLs.Bytes())
+		e.Devices[idx].Parameter.Output = GGUFParametersScalar(opLs.Elements())
+	}
+
+	// Computation.
+	{
+		// Bootstrap, compute metadata,
+		// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L16135-L16136.
+		cm := GGMLTensorOverhead()*GGMLComputationGraphNodesMaximum +
+			GGMLComputationGraphOverhead(GGMLComputationGraphNodesMaximum, false)
+		e.Devices[0].Computation.Footprint = GGUFBytesScalar(cm)
+
+		// Scheduler overhead,
+		// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L16149.
+		e.Devices[0].Computation.Footprint += GGUFBytesScalar(4 * 1024 * 1024)
+
+		// GGML context,
+		// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L5015-L5036.
+		gc := 2 /* buffer count */ * GGMLTensorOverhead() * (uint64(len(gf.TensorInfos)) + 1 + a.BlockCount*3)
+		e.Devices[0].Computation.Footprint += GGUFBytesScalar(gc)
+
+		// Tensor usage.
+		var (
+			hasClassEmbd bool
+			nPositions   uint64
+			nPositionIDs uint64
+			nBatch       uint64
+			nEmbd        uint64
+			nHead        uint64
+		)
+		{
+			_, hasClassEmbd = ipLs.Get("v.class_embd")
+			nPositions = nPatches
+			if hasClassEmbd {
+				nPositions += 1
+			}
+			nPositionIDs = nPositions
+			if a.ClipHasQwen2VLMerger {
+				nPositionIDs *= 4
+			}
+			nBatch = 1
+			nEmbd = a.EmbeddingLength
+			nHead = a.AttentionHeadCount
+		}
+		// First, get the usage of input layer.
+		var (
+			inpRaw     = GGMLTypeF32.RowSizeOf([]uint64{imgWidthSize, imgHeightSize, 3, nBatch})                // F32 [img_width, img_height, 3, n_batch]
+			inpRawCnt  = GGMLTypeF32.RowSizeOf([]uint64{nPatches, nEmbd, nBatch})                               // I32 [n_patches, n_embd, n_batch]
+			inpEmbd    = GGMLTypeF32.RowSizeOf([]uint64{nEmbd, nPositions, nBatch})                             // F32 [n_embd, n_positions, n_batch]
+			inpPosEmbd = GGMLTypeF32.RowSizeOf([]uint64{projectionDim, nPatchesHeight * nPatchesWidth, nBatch}) // F32 [mmproj, pos_h * pos_w, n_batch]
+			inpPos     = GGMLTypeI32.RowSizeOf([]uint64{nPositionIDs})                                          // I32 [n_positions]
+			inpPatches = GGMLTypeI32.RowSizeOf([]uint64{nPatches})                                              // I32 [n_patches]
+		)
+		{
+			e.Devices[idx].Computation.Input = GGUFBytesScalar(inpRaw + inpRawCnt + inpPos + inpPatches)
+			if a.ClipHasMiniCPMVProjector {
+				e.Devices[idx].Computation.Input += GGUFBytesScalar(inpPosEmbd)
+			}
+			if hasClassEmbd {
+				e.Devices[idx].Computation.Input += GGUFBytesScalar(inpEmbd)
+			}
+		}
+		// Since the steps between transformer layers are serial,
+		// the allocated memory can be reused for the next layer.
+		// So, we only consider the usage of a certain layer.
+		{
+			compNorm := GGMLTypeF32.RowSizeOf([]uint64{nEmbd, nPositions}) * 2
+			compVcur := GGMLTypeF32.RowSizeOf([]uint64{nEmbd, nPositions})
+			compKcur := GGMLTypeF32.RowSizeOf([]uint64{nEmbd, nPositions})
+			compKQcur := GGMLTypeF32.RowSizeOf([]uint64{nPositions, nPositions, nHead})
+			e.Devices[idx].Computation.Compute = GGUFBytesScalar(compNorm + compVcur + compKcur + compKQcur)
+		}
+	}
+}
+
+func (gf *GGUFFile) estimateLLaMaCppRunInAdapter(o *_GGUFRunEstimateOptions, a *GGUFArchitecture, e *LLaMACppRunEstimate) {
 }
 
 // Types for LLaMACpp estimated summary.
@@ -691,6 +902,14 @@ type (
 		//
 		// All lowercase ASCII.
 		Architecture string `json:"architecture"`
+		// ClipProjectorType is the type of the projector used in the clip model.
+		//
+		// Only used when Architecture is "clip".
+		ClipProjectorType string `json:"clipProjectorType,omitempty"`
+		// AdapterType is the type of the adapter.
+		//
+		// Only used when Architecture is "adapter".
+		AdapterType string `json:"adapterType,omitempty"`
 		// ContextSize is the size of the context.
 		ContextSize uint64 `json:"contextSize"`
 		// FlashAttention is the flag to indicate whether enable the flash attention,
@@ -812,6 +1031,18 @@ func (e LLaMACppRunEstimate) SummarizeItem(mmap bool, nonUMARamFootprint, nonUMA
 				}
 			}
 
+			// NB(thxCode): this is a workaround for the qwen2 vl clip model.
+			if e.ClipProjectorType == "qwen2vl_merger" {
+				emi.RAM.UMA += emi.VRAMs[i].UMA
+				emi.VRAMs[i].UMA = 0
+				emi.RAM.HandleLayers += emi.VRAMs[i].HandleLayers
+				emi.VRAMs[i].HandleLayers = 0
+				emi.RAM.HandleLastLayer = emi.VRAMs[i].HandleLastLayer
+				emi.VRAMs[i].HandleLastLayer = -1
+				emi.RAM.HandleOutputLayer = emi.VRAMs[i].HandleOutputLayer
+				emi.VRAMs[i].HandleOutputLayer = false
+			}
+
 			// NonUMA.
 			emi.VRAMs[i].NonUMA = GGUFBytesScalar(nonUMAVramFootprint) + fp + wg + kv + cp
 			if !d.Remote && d.Position > 0 && d.HandleLastLayer < 0 {
@@ -833,7 +1064,7 @@ func (e LLaMACppRunEstimate) SummarizeItem(mmap bool, nonUMARamFootprint, nonUMA
 
 	// Add projector's usage.
 	if e.Projector != nil {
-		pemi := e.Projector.SummarizeItem(mmap, 0, 0)
+		pemi := e.Projector.SummarizeItem(false, 0, 0)
 		emi.RAM.UMA += pemi.RAM.UMA
 		emi.RAM.NonUMA += pemi.RAM.NonUMA
 		for i, v := range pemi.VRAMs {
@@ -844,7 +1075,7 @@ func (e LLaMACppRunEstimate) SummarizeItem(mmap bool, nonUMARamFootprint, nonUMA
 
 	// Add adapters' usage.
 	for i := range e.Adapters {
-		aemi := e.Adapters[i].SummarizeItem(mmap, 0, 0)
+		aemi := e.Adapters[i].SummarizeItem(false, 0, 0)
 		emi.RAM.UMA += aemi.RAM.UMA
 		emi.RAM.NonUMA += aemi.RAM.NonUMA
 		for j, v := range aemi.VRAMs {
@@ -866,6 +1097,8 @@ func (e LLaMACppRunEstimate) Summarize(mmap bool, nonUMARamFootprint, nonUMAVram
 	// Just copy from the original estimate.
 	es.Type = e.Type
 	es.Architecture = e.Architecture
+	es.ClipProjectorType = e.ClipProjectorType
+	es.AdapterType = e.AdapterType
 	es.ContextSize = e.ContextSize
 	es.FlashAttention = e.FlashAttention
 	es.NoMMap = e.NoMMap
