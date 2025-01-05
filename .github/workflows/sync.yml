@@ -32,7 +32,6 @@ on:
 
 jobs:
   gitcode:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-22.04
     timeout-minutes: 240
     steps:
@@ -49,10 +48,10 @@ jobs:
           gitcode-token: "${{ secrets.CI_GITCODE_TOKEN }}"
           max-releases: "${{ inputs.max_releases && inputs.max_releases || '1' }}"
           specific-release-tag: "${{ inputs.specific_release_tag && inputs.specific_release_tag || '' }}"
+          code-only: true
           dry-run: "${{ inputs.dry_run && inputs.dry_run || 'false' }}"
 
   gitee:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     steps:
@@ -68,6 +67,7 @@ jobs:
           gitee-token: "${{ secrets.CI_GITEE_TOKEN }}"
           max-releases: "${{ inputs.max_releases && inputs.max_releases || '1' }}"
           specific-release-tag: "${{ inputs.specific_release_tag && inputs.specific_release_tag || '' }}"
+          code-only: true
           dry-run: "${{ inputs.dry_run && inputs.dry_run || 'false' }}"
 
   tencent-cos:
