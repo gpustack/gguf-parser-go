@@ -256,21 +256,8 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 	}
 
 	// Distributable,
-	// see https://github.com/ggerganov/llama.cpp/blob/a07c32ea54850c989f0ef6989da5b955b77b7172/ggml/src/ggml-rpc.cpp#L391-L397.
+	// fix by https://github.com/ggerganov/llama.cpp/pull/11047.
 	e.Distributable = true
-	for i := range gf.TensorInfos {
-		if t, ok := gf.TensorInfos[i].Type.Trait(); ok && !t.Quantized {
-			continue
-		}
-		if len(gf.TensorInfos[i].Dimensions) == 0 {
-			continue
-		}
-		if gf.TensorInfos[i].Dimensions[0]%512 == 0 {
-			continue
-		}
-		e.Distributable = false
-		break
-	}
 
 	// Batch size.
 	e.LogicalBatchSize = *o.LMCLogicalBatchSize
