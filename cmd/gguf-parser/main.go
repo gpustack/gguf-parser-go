@@ -949,7 +949,7 @@ var (
 	deviceMetrics     cli.StringSlice
 	platformFootprint = "150,250"
 	// estimate options for llama.cpp
-	lmcCtxSize            = -1
+	lmcCtxSize            = 0
 	lmcInMaxCtxSize       bool
 	lmcLogicalBatchSize   = 2048
 	lmcPhysicalBatchSize  = 512
