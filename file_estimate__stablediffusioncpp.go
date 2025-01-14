@@ -346,6 +346,9 @@ func (gf *GGUFFile) EstimateStableDiffusionCppRun(opts ...GGUFRunEstimateOption)
 
 		// Decode usage.
 		if aeLs != nil && !*o.SDCFreeComputeMemoryImmediately {
+			// Bootstrap.
+			e.Autoencoder.Devices[aeDevIdx].Footprint += GGUFBytesScalar(100 * 1024 * 1024) /*100 MiB*/
+
 			var convDim uint64
 			{
 				m, _ := aeLs.Index([]string{
