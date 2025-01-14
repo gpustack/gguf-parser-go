@@ -1,6 +1,7 @@
 package gguf_parser
 
 import (
+	"math"
 	"strings"
 
 	"golang.org/x/exp/maps"
@@ -88,6 +89,9 @@ func (gf *GGUFFile) EstimateStableDiffusionCppRun(opts ...GGUFRunEstimateOption)
 		}
 		o.DeviceMetrics = o.DeviceMetrics[:len(o.TensorSplitFraction)+1]
 	}
+	if o.SDCOffloadLayers == nil {
+		o.SDCOffloadLayers = ptr.To[uint64](math.MaxUint64)
+	}
 	if o.SDCBatchCount == nil {
 		o.SDCBatchCount = ptr.To[int32](1)
 	}
@@ -111,7 +115,18 @@ func (gf *GGUFFile) EstimateStableDiffusionCppRun(opts ...GGUFRunEstimateOption)
 	}
 
 	// Devices.
+	initDevices := func(e *StableDiffusionCppRunEstimate) {
+		for j := range e.Devices[1:] {
+			e.Devices[j+1].Remote = j < len(o.RPCServers)
+			if e.Devices[j+1].Remote {
+				e.Devices[j+1].Position = j
+			} else {
+				e.Devices[j+1].Position = j - len(o.RPCServers)
+			}
+		}
+	}
 	e.Devices = make([]StableDiffusionCppRunDeviceUsage, len(o.TensorSplitFraction)+1)
+	initDevices(&e)
 
 	// Metadata.
 	a := gf.Architecture()
@@ -126,10 +141,10 @@ func (gf *GGUFFile) EstimateStableDiffusionCppRun(opts ...GGUFRunEstimateOption)
 	}
 
 	// Distributable.
-	e.Distributable = false // TODO: Implement this.
+	e.Distributable = true
 
 	// Offload.
-	e.FullOffloaded = true // TODO: Implement this.
+	e.FullOffloaded = *o.SDCOffloadLayers > 0
 
 	// NoMMap.
 	e.NoMMap = true // TODO: Implement this.
@@ -139,30 +154,34 @@ func (gf *GGUFFile) EstimateStableDiffusionCppRun(opts ...GGUFRunEstimateOption)
 
 	// Autoencoder.
 	if a.DiffusionAutoencoder != nil {
-		e.Autoencoder = &StableDiffusionCppRunEstimate{
+		ae := &StableDiffusionCppRunEstimate{
 			Type:           "model",
 			Architecture:   e.Architecture + "_vae",
 			FlashAttention: e.FlashAttention,
 			Distributable:  e.Distributable,
-			FullOffloaded:  e.FullOffloaded,
+			FullOffloaded:  e.FullOffloaded && *o.SDCOffloadAutoencoder,
 			NoMMap:         e.NoMMap,
 			Devices:        make([]StableDiffusionCppRunDeviceUsage, len(e.Devices)),
 		}
+		initDevices(ae)
+		e.Autoencoder = ae
 	}
 
 	// Conditioners.
 	if len(a.DiffusionConditioners) != 0 {
 		e.Conditioners = make([]StableDiffusionCppRunEstimate, 0, len(a.DiffusionConditioners))
 		for i := range a.DiffusionConditioners {
-			e.Conditioners = append(e.Conditioners, StableDiffusionCppRunEstimate{
+			cd := StableDiffusionCppRunEstimate{
 				Type:           "model",
 				Architecture:   normalizeArchitecture(a.DiffusionConditioners[i].Architecture),
 				FlashAttention: e.FlashAttention,
 				Distributable:  e.Distributable,
-				FullOffloaded:  e.FullOffloaded,
+				FullOffloaded:  e.FullOffloaded && *o.SDCOffloadConditioner,
 				NoMMap:         e.NoMMap,
 				Devices:        make([]StableDiffusionCppRunDeviceUsage, len(e.Devices)),
-			})
+			}
+			initDevices(&cd)
+			e.Conditioners = append(e.Conditioners, cd)
 		}
 	}
 
@@ -185,13 +204,24 @@ func (gf *GGUFFile) EstimateStableDiffusionCppRun(opts ...GGUFRunEstimateOption)
 
 	var cdDevIdx, aeDevIdx, dmDevIdx int
 	{
-		if *o.SDCOffloadConditioner {
+		if *o.SDCOffloadConditioner && *o.SDCOffloadLayers > 0 {
 			cdDevIdx = 1
 		}
-		if *o.SDCOffloadAutoencoder {
+		if *o.SDCOffloadAutoencoder && *o.SDCOffloadLayers > 0 {
 			aeDevIdx = 1
+			if len(e.Devices) > 3 {
+				aeDevIdx = 2
+			}
 		}
-		dmDevIdx = 1
+		if *o.SDCOffloadLayers > 0 {
+			dmDevIdx = 1
+			switch {
+			case len(e.Devices) > 3:
+				dmDevIdx = 3
+			case len(e.Devices) > 2:
+				dmDevIdx = 2
+			}
+		}
 	}
 
 	// Weight & Parameter.
@@ -227,7 +257,7 @@ func (gf *GGUFFile) EstimateStableDiffusionCppRun(opts ...GGUFRunEstimateOption)
 		//     https://github.com/leejet/stable-diffusion.cpp/blob/4570715727f35e5a07a76796d823824c8f42206c/stable-diffusion.cpp#L1675-L1679.
 		//
 		{
-			usage := uint64(50 * 1024 * 1024)
+			usage := uint64(100 * 1024 * 1024)                                                                        /* 100MiB */
 			usage += uint64(*o.SDCWidth) * uint64(*o.SDCHeight) * 3 /* output channels */ * 4 /* sizeof(float) */ * 3 /* include img2img*/
 			e.Devices[0].Computation += GGUFBytesScalar(usage * uint64(ptr.Deref(o.ParallelSize, 1)) /* max batch */)
 		}
@@ -429,8 +459,14 @@ func (e StableDiffusionCppRunEstimate) SummarizeItem(
 			wg := d.Weight
 			cp := d.Computation
 
+			emi.VRAMs[i].Remote = d.Remote
+			emi.VRAMs[i].Position = d.Position
+
 			// UMA.
 			emi.VRAMs[i].UMA = fp + wg + /* cp */ 0
+			if d.Remote {
+				emi.VRAMs[i].UMA += cp
+			}
 
 			// NonUMA.
 			emi.VRAMs[i].NonUMA = GGUFBytesScalar(nonUMAVramFootprint) + fp + wg + cp
@@ -464,9 +500,18 @@ func (e StableDiffusionCppRunEstimate) SummarizeItem(
 		uemi := e.Upscaler.SummarizeItem(mmap, 0, 0)
 		emi.RAM.UMA += uemi.RAM.UMA
 		emi.RAM.NonUMA += uemi.RAM.NonUMA
-		for i, v := range uemi.VRAMs {
-			emi.VRAMs[i].UMA += v.UMA
-			emi.VRAMs[i].NonUMA += v.NonUMA
+		// NB(thxCode): all VRAMs should offload to the first device at present.
+		var vramUMA, vramNonUMA GGUFBytesScalar
+		for _, v := range uemi.VRAMs {
+			vramUMA += v.UMA
+			vramNonUMA += v.NonUMA
+		}
+		if e.Upscaler.FullOffloaded {
+			emi.VRAMs[0].UMA += vramUMA
+			emi.VRAMs[0].NonUMA += vramNonUMA
+		} else {
+			emi.RAM.UMA += vramUMA
+			emi.RAM.NonUMA += vramNonUMA
 		}
 	}
 
@@ -475,9 +520,18 @@ func (e StableDiffusionCppRunEstimate) SummarizeItem(
 		cnemi := e.ControlNet.SummarizeItem(mmap, 0, 0)
 		emi.RAM.UMA += cnemi.RAM.UMA
 		emi.RAM.NonUMA += cnemi.RAM.NonUMA
-		for i, v := range cnemi.VRAMs {
-			emi.VRAMs[i].UMA += v.UMA
-			emi.VRAMs[i].NonUMA += v.NonUMA
+		// NB(thxCode): all VRAMs should offload to the first device at present.
+		var vramUMA, vramNonUMA GGUFBytesScalar
+		for _, v := range cnemi.VRAMs {
+			vramUMA += v.UMA
+			vramNonUMA += v.NonUMA
+		}
+		if e.ControlNet.FullOffloaded {
+			emi.VRAMs[0].UMA += vramUMA
+			emi.VRAMs[0].NonUMA += vramNonUMA
+		} else {
+			emi.RAM.UMA += vramUMA
+			emi.RAM.NonUMA += vramNonUMA
 		}
 	}
 

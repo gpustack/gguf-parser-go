@@ -32,6 +32,7 @@ type (
 		LMCAdapters           []LLaMACppRunEstimate
 
 		// StableDiffusionCpp (SDC) specific
+		SDCOffloadLayers                *uint64
 		SDCBatchCount                   *int32
 		SDCHeight                       *uint32
 		SDCWidth                        *uint32
@@ -276,6 +277,13 @@ func WithLLaMACppAdapters(adp []LLaMACppRunEstimate) GGUFRunEstimateOption {
 			return
 		}
 		o.LMCAdapters = adp
+	}
+}
+
+// WithStableDiffusionCppOffloadLayers sets the number of layers to offload.
+func WithStableDiffusionCppOffloadLayers(layers uint64) GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
+		o.SDCOffloadLayers = &layers
 	}
 }
 

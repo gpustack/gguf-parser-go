@@ -544,6 +544,19 @@ func main() {
 					"must explicitly set \"--tensor-split\" to indicate how many devices are used. " +
 					"To declare the devices belong to RPC servers, set \"--rpc\" please.",
 			},
+			&cli.IntFlag{
+				Destination: &offloadLayers,
+				Value:       offloadLayers,
+				Category:    "Estimate",
+				Name:        "gpu-layers",
+				Aliases: []string{ // LLaMACpp compatibility
+					"ngl",
+					"n-gpu-layers",
+				},
+				Usage: "Specify how many layers of the main model to offload, " +
+					"which is used to estimate the usage, " +
+					"default is full offloaded.",
+			},
 			&cli.StringSliceFlag{
 				Destination: &deviceMetrics,
 				Category:    "Estimate",
@@ -689,19 +702,6 @@ func main() {
 				Usage:       "Specify maximum image size when completion with vision model.",
 			},
 			&cli.IntFlag{
-				Destination: &lmcOffloadLayers,
-				Value:       lmcOffloadLayers,
-				Category:    "Estimate/LLaMACpp",
-				Name:        "gpu-layers",
-				Aliases: []string{ // LLaMACpp compatibility
-					"ngl",
-					"n-gpu-layers",
-				},
-				Usage: "Specify how many layers of the main model to offload, " +
-					"which is used to estimate the usage, " +
-					"default is full offloaded.",
-			},
-			&cli.IntFlag{
 				Destination: &lmcOffloadLayersDraft,
 				Value:       lmcOffloadLayersDraft,
 				Category:    "Estimate/LLaMACpp",
@@ -776,6 +776,17 @@ func main() {
 					"image-no-vae-model-offload", // LLaMABox compatibility
 				},
 				Usage: "Specify to offload the vae model to CPU.",
+			},
+			&cli.BoolFlag{
+				Destination: &sdcNoControlNetOffload,
+				Value:       sdcNoControlNetOffload,
+				Category:    "Estimate/StableDiffusionCpp",
+				Name:        "image-no-control-net-offload",
+				Aliases: []string{
+					"control-net-cpu",                    // StableDiffusionCpp compatibility
+					"image-no-control-net-model-offload", // LLaMABox compatibility
+				},
+				Usage: "Specify to offload the control net model to CPU.",
 			},
 			&cli.BoolFlag{
 				Destination: &sdcAutoencoderTiling,
@@ -946,6 +957,7 @@ var (
 	mainGPU           uint
 	rpcServers        string
 	tensorSplit       string
+	offloadLayers     = -1
 	deviceMetrics     cli.StringSlice
 	platformFootprint = "150,250"
 	// estimate options for llama.cpp
@@ -959,7 +971,6 @@ var (
 	lmcSplitMode          = "layer"
 	lmcNoMMap             bool
 	lmcVisualMaxImageSize uint
-	lmcOffloadLayers      = -1
 	lmcOffloadLayersDraft = -1
 	lmcOffloadLayersStep  uint64
 	// estimate options for stable-diffusion.cpp
@@ -968,6 +979,7 @@ var (
 	sdcWidth                        uint = 1024
 	sdcNoConditionerOffload         bool
 	sdcNoAutoencoderOffload         bool
+	sdcNoControlNetOffload          bool
 	sdcAutoencoderTiling            bool
 	sdcNoAutoencoderTiling          bool
 	sdcFreeComputeMemoryImmediately bool
@@ -1162,8 +1174,8 @@ func mainAction(c *cli.Context) error {
 		lmcProjectGf *GGUFFile
 		lmcDrafterGf *GGUFFile
 		// StableDiffusionCpp specific.
-		sdcUpscaleGf    *GGUFFile
 		sdcControlNetGf *GGUFFile
+		sdcUpscaleGf    *GGUFFile
 	)
 	{
 		var err error
@@ -1204,7 +1216,7 @@ func mainAction(c *cli.Context) error {
 						lmcNoMMap = true
 					}
 					if v, ok := ps["num_gpu"]; ok {
-						lmcOffloadLayers = anyx.Number[int](v)
+						offloadLayers = anyx.Number[int](v)
 					}
 				}
 				// Multimodal projector overlap.
@@ -1338,21 +1350,6 @@ func mainAction(c *cli.Context) error {
 			return fmt.Errorf("failed to parse multimodal projector GGUF file: %w", err)
 		}
 
-		// Upscaler for StableDiffusionCpp.
-		switch {
-		case upscalePath != "":
-			sdcUpscaleGf, err = ParseGGUFFile(upscalePath, ropts...)
-		case upscaleUrl != "":
-			sdcUpscaleGf, err = ParseGGUFFileRemote(ctx, upscaleUrl, ropts...)
-		case hfUpscaleRepo != "" && hfUpscaleFile != "":
-			sdcUpscaleGf, err = ParseGGUFFileFromHuggingFace(ctx, hfUpscaleRepo, hfUpscaleFile, ropts...)
-		case msUpscaleRepo != "" && msUpscaleFile != "":
-			sdcUpscaleGf, err = ParseGGUFFileFromModelScope(ctx, msUpscaleRepo, msUpscaleFile, ropts...)
-		}
-		if err != nil {
-			return fmt.Errorf("failed to parse upscaler GGUF file: %w", err)
-		}
-
 		// ControlNet for StableDiffusionCpp.
 		switch {
 		case controlNetPath != "":
@@ -1366,6 +1363,21 @@ func mainAction(c *cli.Context) error {
 		}
 		if err != nil {
 			return fmt.Errorf("failed to parse control net GGUF file: %w", err)
+		}
+
+		// Upscaler for StableDiffusionCpp.
+		switch {
+		case upscalePath != "":
+			sdcUpscaleGf, err = ParseGGUFFile(upscalePath, ropts...)
+		case upscaleUrl != "":
+			sdcUpscaleGf, err = ParseGGUFFileRemote(ctx, upscaleUrl, ropts...)
+		case hfUpscaleRepo != "" && hfUpscaleFile != "":
+			sdcUpscaleGf, err = ParseGGUFFileFromHuggingFace(ctx, hfUpscaleRepo, hfUpscaleFile, ropts...)
+		case msUpscaleRepo != "" && msUpscaleFile != "":
+			sdcUpscaleGf, err = ParseGGUFFileFromModelScope(ctx, msUpscaleRepo, msUpscaleFile, ropts...)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to parse upscaler GGUF file: %w", err)
 		}
 	}
 
@@ -1428,8 +1440,8 @@ func mainAction(c *cli.Context) error {
 		}
 
 		lmceopts := eopts[:len(eopts):len(eopts)]
-		if lmcOffloadLayers >= 0 {
-			lmceopts = append(lmceopts, WithLLaMACppOffloadLayers(uint64(lmcOffloadLayers)))
+		if offloadLayers >= 0 {
+			lmceopts = append(lmceopts, WithLLaMACppOffloadLayers(uint64(offloadLayers)))
 		}
 		lme = gf.EstimateLLaMACppRun(lmceopts...)
 	}
@@ -1443,11 +1455,17 @@ func mainAction(c *cli.Context) error {
 
 		if sdcControlNetGf != nil {
 			sdceopts := eopts[:len(eopts):len(eopts)]
+			if sdcNoControlNetOffload {
+				sdceopts = append(sdceopts, WithStableDiffusionCppOffloadLayers(0))
+			}
 			ce := sdcControlNetGf.EstimateStableDiffusionCppRun(sdceopts...)
 			eopts = append(eopts, WithStableDiffusionCppControlNet(&ce))
 		}
 
 		sdceopts := eopts[:len(eopts):len(eopts)]
+		if offloadLayers >= 0 {
+			sdceopts = append(sdceopts, WithStableDiffusionCppOffloadLayers(uint64(offloadLayers)))
+		}
 		sde = gf.EstimateStableDiffusionCppRun(sdceopts...)
 	}
 

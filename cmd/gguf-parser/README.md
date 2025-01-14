@@ -29,6 +29,7 @@ GLOBAL OPTIONS:
 
    --device-metric value [ --device-metric value ]        Specify the device metrics, which is used to estimate the throughput, in form of "FLOPS;Up Bandwidth[;Down Bandwidth]". The FLOPS unit, select from [PFLOPS, TFLOPS, GFLOPS, MFLOPS, KFLOPS]. The Up/Down Bandwidth unit, select from [PiBps, TiBps, GiBps, MiBps, KiBps, PBps, TBps, GBps, MBps, KBps, Pbps, Tbps, Gbps, Mbps, Kbps]. Up Bandwidth usually indicates the bandwidth to transmit the data to calculate, and Down Bandwidth indicates the bandwidth to transmit the calculated result to next layer. For example, "--device-metric 10TFLOPS;400GBps" means the device has 10 TFLOPS and 400 GBps Up/Down bandwidth, "--device-metric 10TFLOPS;400GBps;5000MBps" means the device has 5000MBps Down bandwidth. If the quantity specified by "--device-metric" is less than the number of estimation devices(determined by "--tensor-split" and "--rpc" to infer the device count), then replicate the last "--device-metric" to meet the required number of evaluation devices.
    --flash-attention, --flash-attn, --fa, --diffusion-fa  Specify enabling Flash Attention, which is used to estimate the usage. Flash Attention can reduce the usage of RAM/VRAM. (default: false)
+   --gpu-layers value, --ngl value, --n-gpu-layers value  Specify how many layers of the main model to offload, which is used to estimate the usage, default is full offloaded. (default: -1)
    --main-gpu value, --mg value                           Specify the GPU to use for the model (with "--split-mode=none") or for intermediate results and KV (with "--split-mode=row"), which is used to estimate the usage. Since gguf-parser cannot recognize the host GPU devices or RPC servers, "--main-gpu" only works when "--tensor-split" is set. (default: 0)
    --parallel-size value, --parallel value, --np value    Specify the number of parallel sequences to decode, which is used to estimate the usage. (default: 1)
    --platform-footprint value                             Specify the platform footprint(RAM,VRAM) of running host in MiB, which is used to estimate the NonUMA usage, default is "150,250". Different platform always gets different RAM and VRAM footprints, for example, within CUDA, "cudaMemGetInfo" would occupy some RAM and VRAM, see https://stackoverflow.com/questions/64854862/free-memory-occupied-by-cudamemgetinfo. (default: "150,250")
@@ -41,7 +42,6 @@ GLOBAL OPTIONS:
    --cache-type-k value, --ctk value                                   Specify the type of Key cache, which is used to estimate the usage, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1]. (default: "f16")
    --cache-type-v value, --ctv value                                   Specify the type of Value cache, which is used to estimate the usage, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1]. (default: "f16")
    --ctx-size value, -c value                                          Specify the size of prompt context, which is used to estimate the usage, default is equal to the model's maximum context size. (default: 0)
-   --gpu-layers value, --ngl value, --n-gpu-layers value               Specify how many layers of the main model to offload, which is used to estimate the usage, default is full offloaded. (default: -1)
    --gpu-layers-draft value, --ngld value, --n-gpu-layers-draft value  Specify how many layers of the draft model to offload, which is used to estimate the usage, default is full offloaded. (default: -1)
    --gpu-layers-step value                                             Specify the step of layers to offload, works with "--gpu-layers". (default: 0)
    --in-max-ctx-size                                                   Limit the context size to the maximum context size of the model, if the context size is larger than the maximum context size. (default: false)
@@ -54,14 +54,15 @@ GLOBAL OPTIONS:
 
    Estimate/StableDiffusionCpp
 
-   --image-autoencoder-tiling, --vae-tiling, --image-vae-tiling                          Specify to enable tiling for the vae model. (default: false)
-   --image-batch-count value, --batch-count value, --image-max-batch value               Specify the batch(generation) count of the image. (default: 1)
-   --image-free-compute-memory-immediately                                               Specify to free the compute memory immediately after the generation, which burst using VRAM. (default: false)
-   --image-height value, --height value, --image-max-height value                        Specify the (maximum) height of the image. (default: 1024)
-   --image-no-autoencoder-offload, --vae-on-cpu, --image-no-vae-model-offload            Specify to offload the vae model to CPU. (default: false)
-   --image-no-autoencoder-tiling, --image-no-vae-tiling                                  Specify to disable tiling for the vae model, it takes precedence over --image-autoencoder-tiling. (default: false)
-   --image-no-conditioner-offload, --clip-on-cpu, --image-no-text-encoder-model-offload  Specify to offload the text encoder model to CPU. (default: false)
-   --image-width value, --width value, --image-max-width value                           Specify the (maximum) width of the image. (default: 1024)
+   --image-autoencoder-tiling, --vae-tiling, --image-vae-tiling                             Specify to enable tiling for the vae model. (default: false)
+   --image-batch-count value, --batch-count value, --image-max-batch value                  Specify the batch(generation) count of the image. (default: 1)
+   --image-free-compute-memory-immediately                                                  Specify to free the compute memory immediately after the generation, which burst using VRAM. (default: false)
+   --image-height value, --height value, --image-max-height value                           Specify the (maximum) height of the image. (default: 1024)
+   --image-no-autoencoder-offload, --vae-on-cpu, --image-no-vae-model-offload               Specify to offload the vae model to CPU. (default: false)
+   --image-no-autoencoder-tiling, --image-no-vae-tiling                                     Specify to disable tiling for the vae model, it takes precedence over --image-autoencoder-tiling. (default: false)
+   --image-no-conditioner-offload, --clip-on-cpu, --image-no-text-encoder-model-offload     Specify to offload the text encoder model to CPU. (default: false)
+   --image-no-control-net-offload, --control-net-cpu, --image-no-control-net-model-offload  Specify to offload the control net model to CPU. (default: false)
+   --image-width value, --width value, --image-max-width value                              Specify the (maximum) width of the image. (default: 1024)
 
    Load
 
