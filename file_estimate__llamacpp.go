@@ -226,6 +226,61 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...GGUFRunEstimateOption) (e LLaMAC
 // estimateLLaMACppRunInModel estimates the inference result of the GGUF file in llama.cpp for model type,
 // including the usages of footprint, weight, KV cache, and computation.
 func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GGUFArchitecture, t *GGUFTokenizer, e *LLaMACppRunEstimate) {
+	ls := gf.Layers()
+	ioLs, tfLs, _ := ls.Cut([]string{
+		"position_*",
+		"token_*",
+		"cls.*",
+		"output.*",
+		"output_*",
+	})
+	ipLs, opLs, _ := ioLs.Cut([]string{
+		"position_*",
+		"token_*",
+	})
+
+	if a.BlockCount == 0 {
+		a.BlockCount = uint64(len(tfLs))
+	}
+
+	// Full offload: nLoadLayers == 0 && isOffloadOutputLayer
+	// Zero offload: nOffloadLayers == 0
+	// Partial offload: !Full offload && !Zero offload
+	var (
+		nOffloadLayers       uint64
+		nActualOffloadLayers uint64
+		nLoadLayers          = a.BlockCount
+
+		fullOffload, zeroOffload bool
+	)
+	{
+		var isOffloadOutputLayer bool
+
+		switch v := o.LMCOffloadLayers; {
+		case v == nil:
+			o.LMCOffloadLayers = ptr.To(a.BlockCount)
+			nOffloadLayers = a.BlockCount
+			isOffloadOutputLayer = true
+		case *v != 0:
+			nOffloadLayers = *v
+			if nOffloadLayers > a.BlockCount {
+				isOffloadOutputLayer = true
+				nOffloadLayers = a.BlockCount
+			}
+		}
+		nActualOffloadLayers = nOffloadLayers
+		if isOffloadOutputLayer {
+			nActualOffloadLayers += 1
+		}
+		nLoadLayers -= nOffloadLayers
+
+		fullOffload = nLoadLayers == 0 && isOffloadOutputLayer
+		zeroOffload = nOffloadLayers == 0
+
+		e.FullOffloaded = fullOffload
+		e.OffloadLayers = nOffloadLayers
+	}
+
 	// Flash attention.
 	{
 		// Quantization requires flash attention,
@@ -307,44 +362,6 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		e.ContextSize = nContext
 	}
 
-	// Full offload: nLoadLayers == 0 && isOffloadOutputLayer
-	// Zero offload: nOffloadLayers == 0
-	// Partial offload: !Full offload && !Zero offload
-	var (
-		nOffloadLayers       uint64
-		nActualOffloadLayers uint64
-		nLoadLayers          = a.BlockCount
-
-		fullOffload, zeroOffload bool
-	)
-	{
-		var isOffloadOutputLayer bool
-
-		switch v := o.LMCOffloadLayers; {
-		case v == nil:
-			o.LMCOffloadLayers = ptr.To(a.BlockCount)
-			nOffloadLayers = a.BlockCount
-			isOffloadOutputLayer = true
-		case *v != 0:
-			nOffloadLayers = *v
-			if nOffloadLayers > a.BlockCount {
-				isOffloadOutputLayer = true
-				nOffloadLayers = a.BlockCount
-			}
-		}
-		nActualOffloadLayers = nOffloadLayers
-		if isOffloadOutputLayer {
-			nActualOffloadLayers += 1
-		}
-		nLoadLayers -= nOffloadLayers
-
-		fullOffload = nLoadLayers == 0 && isOffloadOutputLayer
-		zeroOffload = nOffloadLayers == 0
-
-		e.FullOffloaded = fullOffload
-		e.OffloadLayers = nOffloadLayers
-	}
-
 	// Footprint.
 	{
 		// Bootstrap.
@@ -368,19 +385,6 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			e.Devices[0].Footprint += GGUFBytesScalar(ob)
 		}
 	}
-
-	ls := gf.Layers()
-	ioLs, tfLs, _ := ls.Cut([]string{
-		"position_*",
-		"token_*",
-		"cls.*",
-		"output.*",
-		"output_*",
-	})
-	ipLs, opLs, _ := ioLs.Cut([]string{
-		"position_*",
-		"token_*",
-	})
 
 	// Weight & Parameter.
 	{
@@ -668,6 +672,29 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 }
 
 func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a *GGUFArchitecture, e *LLaMACppRunEstimate) {
+	ls := gf.Layers()
+	ioLs, tfLs, _ := ls.Cut([]string{
+		"v.patch_embd.*",
+		"v.class_embd",
+		"v.position_embd.*",
+		"v.pre_ln.*",
+		"model.*",
+		"v.post_ln.*",
+		"mm.*",
+		"resampler.*",
+	})
+	ipLs, opLs, _ := ioLs.Cut([]string{
+		"v.patch_embd.*",
+		"v.class_embd",
+		"v.position_embd.*",
+		"v.pre_ln.*",
+		"model.*",
+	})
+
+	if a.BlockCount == 0 {
+		a.BlockCount = uint64(len(tfLs))
+	}
+
 	e.FullOffloaded = *o.LMCOffloadLayers == a.BlockCount
 	e.OffloadLayers = *o.LMCOffloadLayers
 
@@ -758,25 +785,6 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 		// see https://github.com/ggerganov/llama.cpp/blob/0827b2c1da299805288abbd556d869318f2b121e/examples/llava/llava.cpp#L401-L407.
 		e.Devices[0].Footprint += GGUFBytesScalar(imgPatchesMaxSize * imgPatches * projectionDim * 4 /* float32 size */)
 	}
-
-	ls := gf.Layers()
-	ioLs, tfLs, _ := ls.Cut([]string{
-		"v.patch_embd.*",
-		"v.class_embd",
-		"v.position_embd.*",
-		"v.pre_ln.*",
-		"model.*",
-		"v.post_ln.*",
-		"mm.*",
-		"resampler.*",
-	})
-	ipLs, opLs, _ := ioLs.Cut([]string{
-		"v.patch_embd.*",
-		"v.class_embd",
-		"v.position_embd.*",
-		"v.pre_ln.*",
-		"model.*",
-	})
 
 	idx := 0 // Default to the main host's RAM.
 	if *o.LMCOffloadLayers != 0 {
@@ -870,6 +878,120 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 }
 
 func (gf *GGUFFile) estimateLLaMaCppRunInAdapter(o *_GGUFRunEstimateOptions, a *GGUFArchitecture, e *LLaMACppRunEstimate) {
+	ls := gf.Layers()
+	ioLs, tfLs, _ := ls.Cut([]string{
+		"position_*",
+		"token_*",
+		"cls.*",
+		"output.*",
+		"output_*",
+	})
+	ipLs, opLs, _ := ioLs.Cut([]string{
+		"position_*",
+		"token_*",
+	})
+
+	if a.BlockCount == 0 {
+		a.BlockCount = uint64(len(tfLs))
+	}
+
+	// Full offload: nLoadLayers == 0 && isOffloadOutputLayer
+	// Zero offload: nOffloadLayers == 0
+	// Partial offload: !Full offload && !Zero offload
+	var (
+		nOffloadLayers       uint64
+		nActualOffloadLayers uint64
+		nLoadLayers          = a.BlockCount
+
+		fullOffload bool
+	)
+	{
+		var isOffloadOutputLayer bool
+
+		switch v := o.LMCOffloadLayers; {
+		case v == nil:
+			o.LMCOffloadLayers = ptr.To(a.BlockCount)
+			nOffloadLayers = a.BlockCount
+			isOffloadOutputLayer = true
+		case *v != 0:
+			nOffloadLayers = *v
+			if nOffloadLayers > a.BlockCount {
+				isOffloadOutputLayer = true
+				nOffloadLayers = a.BlockCount
+			}
+		}
+		nActualOffloadLayers = nOffloadLayers
+		if isOffloadOutputLayer {
+			nActualOffloadLayers += 1
+		}
+		nLoadLayers -= nOffloadLayers
+
+		fullOffload = nLoadLayers == 0 && isOffloadOutputLayer
+
+		e.FullOffloaded = fullOffload
+		e.OffloadLayers = nOffloadLayers
+	}
+
+	// Distributable.
+	e.Distributable = false
+
+	// Footprint.
+	{
+		// Bootstrap.
+		e.Devices[0].Footprint = GGUFBytesScalar(5*1024*1024) /* model load */ + (gf.Size - gf.ModelSize) /* metadata */
+	}
+
+	// Weight & Parameter.
+	{
+		// Compute.
+		for i, j, offloadStart := 0, 0, len(tfLs)-int(nOffloadLayers); i < len(tfLs); i++ {
+			switch {
+			case i < int(nLoadLayers):
+				e.Devices[0].HandleLayers += 1
+				e.Devices[0].HandleLastLayer = i
+				e.Devices[0].Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
+				e.Devices[0].Parameter.Compute += GGUFParametersScalar(tfLs[i].Elements())
+			case i >= offloadStart:
+				x := float64(i-offloadStart) / float64(nActualOffloadLayers)
+				j = slicex.UpperBound(o.TensorSplitFraction, x)
+				e.Devices[j+1].HandleLayers += 1
+				e.Devices[j+1].HandleLastLayer = i
+				e.Devices[j+1].Remote = j < len(o.RPCServers)
+				if e.Devices[j+1].Remote {
+					e.Devices[j+1].Position = j
+				} else {
+					e.Devices[j+1].Position = j - len(o.RPCServers)
+				}
+				e.Devices[j+1].Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
+				e.Devices[j+1].Parameter.Compute += GGUFParametersScalar(tfLs[i].Elements())
+			}
+		}
+
+		// IO,
+		// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L4930-L5002.
+		e.Devices[0].Weight.Input = GGUFBytesScalar(ipLs.Bytes())
+		e.Devices[0].Parameter.Input = GGUFParametersScalar(ipLs.Elements())
+		var (
+			wg GGUFBytesScalar
+			ps GGUFParametersScalar
+		)
+		if _, ok := opLs.Get("output.weight"); ok {
+			wg = GGUFBytesScalar(opLs.Bytes())
+			ps = GGUFParametersScalar(opLs.Elements())
+		} else if a.AttentionCausal {
+			wg = GGUFBytesScalar(opLs.Bytes()) + e.Devices[0].Weight.Input /* duplicate the input layer */
+			ps = GGUFParametersScalar(opLs.Elements() + ipLs.Elements())
+		}
+		e.Devices[0].Weight.Output = wg
+		if fullOffload {
+			e.Devices[len(e.Devices)-1].HandleOutputLayer = true
+			e.Devices[len(e.Devices)-1].Weight.Output = wg
+			e.Devices[len(e.Devices)-1].Parameter.Output = ps
+		} else {
+			e.Devices[0].HandleOutputLayer = true
+			e.Devices[0].Parameter.Output = ps
+		}
+	}
 }
 
 // Types for LLaMACpp estimated summary.
