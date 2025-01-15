@@ -1163,6 +1163,9 @@ func mainAction(c *cli.Context) error {
 	if sdcFreeComputeMemoryImmediately {
 		eopts = append(eopts, WithStableDiffusionCppFreeComputeMemoryImmediately())
 	}
+	if offloadLayers >= 0 {
+		eopts = append(eopts, WithLLaMACppOffloadLayers(uint64(offloadLayers)), WithStableDiffusionCppOffloadLayers(uint64(offloadLayers)))
+	}
 
 	// Parse GGUF file.
 
@@ -1439,11 +1442,7 @@ func mainAction(c *cli.Context) error {
 			eopts = append(eopts, WithLLaMACppAdapters(adps))
 		}
 
-		lmceopts := eopts[:len(eopts):len(eopts)]
-		if offloadLayers >= 0 {
-			lmceopts = append(lmceopts, WithLLaMACppOffloadLayers(uint64(offloadLayers)))
-		}
-		lme = gf.EstimateLLaMACppRun(lmceopts...)
+		lme = gf.EstimateLLaMACppRun(eopts...)
 	}
 
 	if !skipEstimate && m.Architecture == "diffusion" {
@@ -1462,11 +1461,7 @@ func mainAction(c *cli.Context) error {
 			eopts = append(eopts, WithStableDiffusionCppControlNet(&ce))
 		}
 
-		sdceopts := eopts[:len(eopts):len(eopts)]
-		if offloadLayers >= 0 {
-			sdceopts = append(sdceopts, WithStableDiffusionCppOffloadLayers(uint64(offloadLayers)))
-		}
-		sde = gf.EstimateStableDiffusionCppRun(sdceopts...)
+		sde = gf.EstimateStableDiffusionCppRun(eopts...)
 	}
 
 	// Then, output as JSON or table.

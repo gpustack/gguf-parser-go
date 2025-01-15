@@ -1135,7 +1135,7 @@ func (e LLaMACppRunEstimate) SummarizeItem(mmap bool, nonUMARamFootprint, nonUMA
 			emi.VRAMs[i].UMA = fp + wg + kv + /* cp */ 0
 			if !e.NoMMap && mmap {
 				emi.VRAMs[i].UMA -= wg
-				if d.Remote || d.Position > 0 && d.HandleLastLayer >= 0 {
+				if d.Remote || d.Position > 0 && d.HandleLastLayer >= 0 || e.Type == "projector" {
 					emi.VRAMs[i].UMA += wg
 				}
 			}
@@ -1173,7 +1173,7 @@ func (e LLaMACppRunEstimate) SummarizeItem(mmap bool, nonUMARamFootprint, nonUMA
 
 	// Add projector's usage.
 	if e.Projector != nil {
-		pemi := e.Projector.SummarizeItem(false, 0, 0)
+		pemi := e.Projector.SummarizeItem(mmap, 0, 0)
 		emi.RAM.UMA += pemi.RAM.UMA
 		emi.RAM.NonUMA += pemi.RAM.NonUMA
 		for i, v := range pemi.VRAMs {
