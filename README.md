@@ -58,6 +58,9 @@ download it.
 
 - **Since v0.13.0 (BREAKING CHANGE)**, GGUF Parser can parse files
   for [StableDiffusion.Cpp](https://github.com/leejet/stable-diffusion.cpp) or StableDiffusion.Cpp like application.
+    + [LLaMA Box](https://github.com/gpustack/llama-box) is able to offload different components of the all-in-one model
+      to different devices, e.g. with `-ts 1,1,1`, GGUF Parser return the usage of Text Encoder Models in 1st device,
+      VAE Model in 2nd device, and Diffusion Model in 3rd device.
 - Experimentally, GGUF Parser can estimate the maximum tokens per second(`MAX TPS`) for a (V)LM model according to the
   `--device-metric` options.
 - GGUF Parser distinguishes the remote devices from `--tensor-split` via `--rpc`.
