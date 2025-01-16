@@ -257,8 +257,13 @@ func (gf *GGUFFile) EstimateStableDiffusionCppRun(opts ...GGUFRunEstimateOption)
 		//     https://github.com/leejet/stable-diffusion.cpp/blob/4570715727f35e5a07a76796d823824c8f42206c/stable-diffusion.cpp#L1675-L1679.
 		//
 		{
-			usage := uint64(100 * 1024 * 1024)                                                                        /* 100MiB */
-			usage += uint64(*o.SDCWidth) * uint64(*o.SDCHeight) * 3 /* output channels */ * 4 /* sizeof(float) */ * 3 /* include img2img*/
+			zChannels := uint64(4)
+			if a.DiffusionTransformer {
+				zChannels = 16
+			}
+			// See https://github.com/thxCode/stable-diffusion.cpp/blob/1ae97f8a8ca3615bdaf9c1fd32c13562e2471833/stable-diffusion.cpp#L2682-L2691.
+			usage := uint64(128 * 1024 * 1024) /* 128MiB, LLaMA Box */
+			usage += uint64(*o.SDCWidth) * uint64(*o.SDCHeight) * 3 /* output channels */ * 4 /* sizeof(float) */ * zChannels
 			e.Devices[0].Computation += GGUFBytesScalar(usage * uint64(ptr.Deref(o.ParallelSize, 1)) /* max batch */)
 		}
 
