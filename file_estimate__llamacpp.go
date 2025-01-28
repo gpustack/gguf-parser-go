@@ -233,6 +233,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		"cls.*",
 		"output.*",
 		"output_*",
+		"rope_factors_*",
 	})
 	ipLs, opLs, _ := ioLs.Cut([]string{
 		"position_*",
@@ -495,7 +496,10 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		case a.Architecture == "mamba":
 			e.Devices[0].Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + inpSMask + inpSSeq + inpOutIds)
 			if !zeroOffload {
-				v := GGUFBytesScalar(inpEmbd + inpSMask + inpSSeq + inpOutIds)
+				v := GGUFBytesScalar(inpEmbd + inpSMask + inpSSeq)
+				if len(o.RPCServers) == 0 && len(o.TensorSplitFraction) > 1 {
+					v *= 2 * GGUFBytesScalar(len(o.TensorSplitFraction))
+				}
 				for i := range e.Devices[1:] {
 					e.Devices[i+1].Computation.Input += v
 				}
@@ -503,7 +507,10 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		default:
 			e.Devices[0].Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + inpPos + inpKQMask + inpOutIds)
 			if !zeroOffload {
-				v := GGUFBytesScalar(inpEmbd + inpPos + inpKQMask + inpOutIds)
+				v := GGUFBytesScalar(inpEmbd + inpPos + inpKQMask)
+				if len(o.RPCServers) == 0 && len(o.TensorSplitFraction) > 1 {
+					v *= 2 * GGUFBytesScalar(len(o.TensorSplitFraction))
+				}
 				for i := range e.Devices[1:] {
 					e.Devices[i+1].Computation.Input += v
 				}
@@ -571,20 +578,26 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 						offloadAttnInc += rs
 					case strings.HasSuffix(l.Name, ".attn_q.weight"):
 						rs = GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[0], nTokens})
-						offloadAttnInc += rs * 2 // Qcur, Qcur + RoPE.
+						offloadAttnInc += rs * 2 // Qcur.
 						loadAttnInc = rs         // Vcur.
 						rs = GGMLTypeF32.RowSizeOf([]uint64{nKV, nTokens, a.AttentionHeadCount})
 						offloadAttnInc += rs // kq.
-						rs = o.LMCCacheKeyType.RowSizeOf([]uint64{uint64(a.AttentionKeyLength), nKV, a.AttentionHeadCountKV})
-						offloadAttnInc += rs * 2 // k-?, v-?.
+						if !zeroOffload && !fullOffload {
+							rs = o.LMCCacheKeyType.RowSizeOf([]uint64{uint64(a.AttentionKeyLength), nKV, a.AttentionHeadCountKV})
+							offloadAttnInc += rs * 2 // k-?, v-?.
+						}
 					case strings.HasSuffix(l.Name, ".attn_qkv.weight"):
 						rs = GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[0], nTokens})
-						offloadAttnInc += rs * 2 // Qcur, Qcur + RoPE.
+						offloadAttnInc += rs * 2 // Qcur.
 						loadAttnInc = rs         // Vcur.
 						rs = GGMLTypeF32.RowSizeOf([]uint64{nKV, nTokens, a.AttentionHeadCount})
 						offloadAttnInc += rs // kq.
-						rs = o.LMCCacheKeyType.RowSizeOf([]uint64{uint64(a.AttentionKeyLength), nKV, a.AttentionHeadCountKV})
-						offloadAttnInc += rs * 2 // k-?, v-?.
+						rs = GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingLength, a.EmbeddingLength * 3})
+						offloadAttnInc += rs // wqkv.
+						if !zeroOffload && !fullOffload {
+							rs = o.LMCCacheKeyType.RowSizeOf([]uint64{uint64(a.AttentionKeyLength), nKV, a.AttentionHeadCountKV})
+							offloadAttnInc += rs * 2 // k-?, v-?.
+						}
 					}
 				}
 			}
