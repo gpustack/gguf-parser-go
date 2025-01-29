@@ -498,7 +498,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			if !zeroOffload {
 				v := GGUFBytesScalar(inpEmbd + inpSMask + inpSSeq)
 				if len(o.RPCServers) == 0 && len(o.TensorSplitFraction) > 1 {
-					v *= 2 * GGUFBytesScalar(len(o.TensorSplitFraction))
+					v *= 4
 				}
 				for i := range e.Devices[1:] {
 					e.Devices[i+1].Computation.Input += v
@@ -509,7 +509,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			if !zeroOffload {
 				v := GGUFBytesScalar(inpEmbd + inpPos + inpKQMask)
 				if len(o.RPCServers) == 0 && len(o.TensorSplitFraction) > 1 {
-					v *= 2 * GGUFBytesScalar(len(o.TensorSplitFraction))
+					v *= 4
 				}
 				for i := range e.Devices[1:] {
 					e.Devices[i+1].Computation.Input += v
@@ -611,9 +611,11 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			} else {
 				e.Devices[0].Computation.Compute = GGUFBytesScalar(loadAttnInc)
 			}
-			cp := GGUFBytesScalar(max(offloadAttnInc, ffnInc))
-			for i := range e.Devices[1:] {
-				e.Devices[i+1].Computation.Compute = cp
+			if !zeroOffload {
+				cp := GGUFBytesScalar(max(offloadAttnInc, ffnInc))
+				for i := range e.Devices[1:] {
+					e.Devices[i+1].Computation.Compute = cp
+				}
 			}
 			// Special case: we cannot use mmap for splitting expert weights in MoE.
 			if a.ExpertCount > 0 {

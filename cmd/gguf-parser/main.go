@@ -582,7 +582,7 @@ func main() {
 					"which is used to estimate the NonUMA usage, " +
 					"default is \"150,250\". " +
 					"Different platform always gets different RAM and VRAM footprints, " +
-					"for example, within CUDA, \"cudaMemGetInfo\" would occupy some RAM and VRAM, " +
+					"for example, within CUDA, \"cudaMemGetInfo\" or \"cudaSetDevice\" would occupy some RAM and VRAM, " +
 					"see https://stackoverflow.com/questions/64854862/free-memory-occupied-by-cudamemgetinfo.",
 			},
 			&cli.IntFlag{
