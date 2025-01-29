@@ -187,11 +187,18 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...GGUFRunEstimateOption) (e LLaMAC
 		panic("split mode must be less than max")
 	}
 
-	// Init.
 	// Devices.
 	e.Devices = make([]LLaMACppRunDeviceUsage, len(o.TensorSplitFraction)+1)
 	for i := range e.Devices {
 		e.Devices[i].HandleLastLayer = -1
+	}
+	for j := range e.Devices[1:] {
+		e.Devices[j+1].Remote = j < len(o.RPCServers)
+		if e.Devices[j+1].Remote {
+			e.Devices[j+1].Position = j
+		} else {
+			e.Devices[j+1].Position = j - len(o.RPCServers)
+		}
 	}
 
 	// Metadata.
@@ -402,12 +409,6 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 				j = slicex.UpperBound(o.TensorSplitFraction, x)
 				e.Devices[j+1].HandleLayers += 1
 				e.Devices[j+1].HandleLastLayer = i
-				e.Devices[j+1].Remote = j < len(o.RPCServers)
-				if e.Devices[j+1].Remote {
-					e.Devices[j+1].Position = j
-				} else {
-					e.Devices[j+1].Position = j - len(o.RPCServers)
-				}
 				e.Devices[j+1].Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
 				e.Devices[j+1].Parameter.Compute += GGUFParametersScalar(tfLs[i].Elements())
 			}
