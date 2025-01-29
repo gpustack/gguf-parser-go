@@ -258,6 +258,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		nOffloadLayers       uint64
 		nActualOffloadLayers uint64
 		nLoadLayers          = a.BlockCount
+		idxOutputDevice      int
 
 		fullOffload, zeroOffload bool
 	)
@@ -287,6 +288,24 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 
 		e.FullOffloaded = fullOffload
 		e.OffloadLayers = nOffloadLayers
+
+		for i, j, offloadStart := 0, 0, len(tfLs)-int(nOffloadLayers); i < len(tfLs); i++ {
+			switch {
+			case i < int(nLoadLayers):
+				e.Devices[0].HandleLayers += 1
+				e.Devices[0].HandleLastLayer = i
+			case i >= offloadStart:
+				x := float64(i-offloadStart) / float64(nActualOffloadLayers)
+				j = slicex.UpperBound(o.TensorSplitFraction, x)
+				e.Devices[j+1].HandleLayers += 1
+				e.Devices[j+1].HandleLastLayer = i
+				if fullOffload && i == len(tfLs)-1 {
+					idxOutputDevice = j + 1
+				}
+			}
+		}
+
+		e.Devices[idxOutputDevice].HandleOutputLayer = true
 	}
 
 	// Flash attention.
@@ -388,7 +407,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		// see https://github.com/ggerganov/llama.cpp/blob/7672adeec7a79ea271058c63106c142ba84f951a/llama.cpp#L11940-L12003.
 		ob := 4 /* float32 size */ * (a.VocabularyLength + a.EmbeddingLength) * nParallel
 		if fullOffload {
-			e.Devices[len(e.Devices)-1].Footprint += GGUFBytesScalar(ob)
+			e.Devices[idxOutputDevice].Footprint += GGUFBytesScalar(ob)
 		} else {
 			e.Devices[0].Footprint += GGUFBytesScalar(ob)
 		}
@@ -398,20 +417,14 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 	{
 		// Compute.
 		for i, j, offloadStart := 0, 0, len(tfLs)-int(nOffloadLayers); i < len(tfLs); i++ {
-			switch {
-			case i < int(nLoadLayers):
-				e.Devices[0].HandleLayers += 1
-				e.Devices[0].HandleLastLayer = i
-				e.Devices[0].Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
-				e.Devices[0].Parameter.Compute += GGUFParametersScalar(tfLs[i].Elements())
-			case i >= offloadStart:
+			idx := 0
+			if i >= offloadStart {
 				x := float64(i-offloadStart) / float64(nActualOffloadLayers)
 				j = slicex.UpperBound(o.TensorSplitFraction, x)
-				e.Devices[j+1].HandleLayers += 1
-				e.Devices[j+1].HandleLastLayer = i
-				e.Devices[j+1].Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
-				e.Devices[j+1].Parameter.Compute += GGUFParametersScalar(tfLs[i].Elements())
+				idx = j + 1
 			}
+			e.Devices[idx].Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
+			e.Devices[idx].Parameter.Compute += GGUFParametersScalar(tfLs[i].Elements())
 		}
 
 		// IO,
@@ -431,11 +444,9 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		}
 		e.Devices[0].Weight.Output = wg
 		if fullOffload {
-			e.Devices[len(e.Devices)-1].HandleOutputLayer = true
-			e.Devices[len(e.Devices)-1].Weight.Output = wg
-			e.Devices[len(e.Devices)-1].Parameter.Output = ps
+			e.Devices[idxOutputDevice].Weight.Output = wg
+			e.Devices[idxOutputDevice].Parameter.Output = ps
 		} else {
-			e.Devices[0].HandleOutputLayer = true
 			e.Devices[0].Parameter.Output = ps
 		}
 	}
@@ -636,16 +647,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 				rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
 				outInc += rs
 			}
-			idx := 0 // Default to the main host's RAM.
-			if !fullOffload {
-				if len(e.Devices) != len(o.RPCServers)+1 { // If the main host has a GPU.
-					outInc += uint64(e.Devices[0].Weight.Output)
-					idx = o.MainGPUIndex + 1
-				}
-			} else {
-				idx = len(e.Devices) - 1 // The last device is the output device.
-			}
-			e.Devices[idx].Computation.Output += GGUFBytesScalar(outInc)
+			e.Devices[idxOutputDevice].Computation.Output += GGUFBytesScalar(outInc)
 		}
 	}
 
@@ -918,6 +920,7 @@ func (gf *GGUFFile) estimateLLaMaCppRunInAdapter(o *_GGUFRunEstimateOptions, a *
 		nOffloadLayers       uint64
 		nActualOffloadLayers uint64
 		nLoadLayers          = a.BlockCount
+		idxOutputDevice      int
 
 		fullOffload bool
 	)
@@ -946,6 +949,24 @@ func (gf *GGUFFile) estimateLLaMaCppRunInAdapter(o *_GGUFRunEstimateOptions, a *
 
 		e.FullOffloaded = fullOffload
 		e.OffloadLayers = nOffloadLayers
+
+		for i, j, offloadStart := 0, 0, len(tfLs)-int(nOffloadLayers); i < len(tfLs); i++ {
+			switch {
+			case i < int(nLoadLayers):
+				e.Devices[0].HandleLayers += 1
+				e.Devices[0].HandleLastLayer = i
+			case i >= offloadStart:
+				x := float64(i-offloadStart) / float64(nActualOffloadLayers)
+				j = slicex.UpperBound(o.TensorSplitFraction, x)
+				e.Devices[j+1].HandleLayers += 1
+				e.Devices[j+1].HandleLastLayer = i
+				if fullOffload && i == len(tfLs)-1 {
+					idxOutputDevice = j + 1
+				}
+			}
+		}
+
+		e.Devices[idxOutputDevice].HandleOutputLayer = true
 	}
 
 	// Distributable.
@@ -961,26 +982,14 @@ func (gf *GGUFFile) estimateLLaMaCppRunInAdapter(o *_GGUFRunEstimateOptions, a *
 	{
 		// Compute.
 		for i, j, offloadStart := 0, 0, len(tfLs)-int(nOffloadLayers); i < len(tfLs); i++ {
-			switch {
-			case i < int(nLoadLayers):
-				e.Devices[0].HandleLayers += 1
-				e.Devices[0].HandleLastLayer = i
-				e.Devices[0].Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
-				e.Devices[0].Parameter.Compute += GGUFParametersScalar(tfLs[i].Elements())
-			case i >= offloadStart:
+			idx := 0
+			if i >= offloadStart {
 				x := float64(i-offloadStart) / float64(nActualOffloadLayers)
 				j = slicex.UpperBound(o.TensorSplitFraction, x)
-				e.Devices[j+1].HandleLayers += 1
-				e.Devices[j+1].HandleLastLayer = i
-				e.Devices[j+1].Remote = j < len(o.RPCServers)
-				if e.Devices[j+1].Remote {
-					e.Devices[j+1].Position = j
-				} else {
-					e.Devices[j+1].Position = j - len(o.RPCServers)
-				}
-				e.Devices[j+1].Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
-				e.Devices[j+1].Parameter.Compute += GGUFParametersScalar(tfLs[i].Elements())
+				idx = j + 1
 			}
+			e.Devices[idx].Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
+			e.Devices[idx].Parameter.Compute += GGUFParametersScalar(tfLs[i].Elements())
 		}
 
 		// IO,
@@ -1000,11 +1009,9 @@ func (gf *GGUFFile) estimateLLaMaCppRunInAdapter(o *_GGUFRunEstimateOptions, a *
 		}
 		e.Devices[0].Weight.Output = wg
 		if fullOffload {
-			e.Devices[len(e.Devices)-1].HandleOutputLayer = true
-			e.Devices[len(e.Devices)-1].Weight.Output = wg
-			e.Devices[len(e.Devices)-1].Parameter.Output = ps
+			e.Devices[idxOutputDevice].Weight.Output = wg
+			e.Devices[idxOutputDevice].Parameter.Output = ps
 		} else {
-			e.Devices[0].HandleOutputLayer = true
 			e.Devices[0].Parameter.Output = ps
 		}
 	}
