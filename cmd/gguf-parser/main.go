@@ -1043,6 +1043,9 @@ func mainAction(c *cli.Context) error {
 	}
 	if tensorSplit != "" {
 		tss := strings.Split(tensorSplit, ",")
+		if len(tss) > 128 {
+			return errors.New("--tensor-split exceeds the number of devices")
+		}
 		var vs float64
 		vv := make([]float64, len(tss))
 		vf := make([]float64, len(tss))
