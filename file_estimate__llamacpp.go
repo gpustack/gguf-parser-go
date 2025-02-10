@@ -320,10 +320,10 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		if a.AttentionKeyLength != a.AttentionValueLength {
 			o.FlashAttention = false
 		}
-		// Quantization value requires flash attention,
+		// Fallback to FP16 if the value type is quantized when disabling flash attention,
 		// see https://github.com/ggerganov/llama.cpp/blob/19d3c8293b1f61acbe2dab1d49a17950fd788a4a/src/llama.cpp#L9576-L9579.
 		if o.LMCCacheValueType.IsQuantized() && !o.FlashAttention {
-			o.FlashAttention = true
+			o.LMCCacheValueType = ptr.To(GGMLTypeF16)
 		}
 
 		e.FlashAttention = o.FlashAttention
