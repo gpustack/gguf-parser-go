@@ -512,25 +512,26 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		switch {
 		case a.Architecture == "mamba":
 			e.Devices[0].Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + inpSMask + inpSSeq + inpOutIds)
-			if !zeroOffload {
-				v := GGUFBytesScalar(inpEmbd + inpSMask + inpSSeq)
-				if len(o.RPCServers) == 0 && len(o.TensorSplitFraction) > 1 {
-					v *= 4
-				}
-				for i := range e.Devices[1:] {
-					e.Devices[i+1].Computation.Input += v
-				}
-			}
 		default:
 			e.Devices[0].Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + inpPos + inpKQMask + inpOutIds)
-			if !zeroOffload {
-				v := GGUFBytesScalar(inpEmbd + inpPos + inpKQMask)
-				if len(o.RPCServers) == 0 && len(o.TensorSplitFraction) > 1 {
+		}
+		if !zeroOffload {
+			var v GGUFBytesScalar
+			switch {
+			case a.Architecture == "mamba":
+				v = GGUFBytesScalar(inpEmbd + inpSMask + inpSSeq)
+			default:
+				v = GGUFBytesScalar(inpEmbd + inpPos + inpKQMask)
+			}
+			if len(o.RPCServers) == 0 && len(o.TensorSplitFraction) > 1 {
+				if a.ExpertCount > 0 {
+					v *= 2
+				} else {
 					v *= 4
 				}
-				for i := range e.Devices[1:] {
-					e.Devices[i+1].Computation.Input += v
-				}
+			}
+			for i := range e.Devices[1:] {
+				e.Devices[i+1].Computation.Input += v
 			}
 		}
 		// Since the steps between transformer layers are serial,
@@ -587,7 +588,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 				offloadAttnInc += rs
 			} else {
 				offloadAttnInc = uint64(0)
-				for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.attn_(norm|q|qkv)\.weight`)) {
+				for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.attn_(norm|q|qkv|q_b)\.weight`)) {
 					var rs uint64
 					switch {
 					default: // norm.
@@ -615,6 +616,13 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 							rs = o.LMCCacheKeyType.RowSizeOf([]uint64{uint64(a.AttentionKeyLength), nKV, a.AttentionHeadCountKV})
 							offloadAttnInc += rs * 2 // k-?, v-?.
 						}
+					case strings.HasSuffix(l.Name, ".attn_q_b.weight"):
+						rs = GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
+						offloadAttnInc += rs * 2 // q-?
+						rs = GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingKeyGQA + a.EmbeddingValueGQA, nTokens, uint64(a.ExpertUsedCount)})
+						loadAttnInc = rs // k-?/v-?
+						rs = GGMLTypeF32.RowSizeOf([]uint64{nKV, nTokens, a.AttentionHeadCount})
+						offloadAttnInc += rs // kq.
 					}
 				}
 			}
@@ -622,6 +630,14 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.(attn_norm|ffn_norm|ffn_gate|ffn_up)\.weight`)) {
 				rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
 				ffnInc += rs
+			}
+			if a.ExpertCount > 0 || a.ExpertUsedCount > 0 {
+				rs := GGMLTypeF32.RowSizeOf([]uint64{uint64(a.ExpertCount), a.EmbeddingLength})
+				ffnInc += rs // ffn_gate_input
+				rs = GGMLTypeF32.RowSizeOf([]uint64{uint64(a.ExpertCount), nTokens})
+				ffnInc += rs // ffn_moe_logits
+				rs = GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingLength, uint64(a.ExpertUsedCount), nTokens})
+				ffnInc += rs // ffn_moe_down
 			}
 			if !zeroOffload {
 				e.Devices[0].Computation.Compute = GGUFBytesScalar(loadAttnInc + ffnInc)
