@@ -505,6 +505,18 @@ func main() {
 					"which is used to estimate the usage. " +
 					"Flash Attention can reduce the usage of RAM/VRAM.",
 			},
+			&cli.BoolFlag{ // LLaMABox compatibility
+				Category: "Estimate",
+				Name:     "no-flash-attention",
+				Aliases: []string{
+					"no-flash-attn",
+				},
+				Usage: "Specify disabling Flash Attention.",
+				Action: func(context *cli.Context, b bool) error {
+					flashAttention = !b
+					return nil
+				},
+			},
 			&cli.UintFlag{
 				Destination: &mainGPU,
 				Value:       mainGPU,
