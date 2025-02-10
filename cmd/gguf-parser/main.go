@@ -636,7 +636,7 @@ func main() {
 					"ctk",
 				},
 				Usage: "Specify the type of Key cache, " +
-					"which is used to estimate the usage, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1].",
+					"which is used to estimate the usage, select from [f32, f16, bf16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1].",
 			},
 			&cli.StringFlag{
 				Destination: &lmcCacheValueType,
@@ -647,7 +647,7 @@ func main() {
 					"ctv",
 				},
 				Usage: "Specify the type of Value cache, " +
-					"which is used to estimate the usage, select from [f32, f16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1].",
+					"which is used to estimate the usage, select from [f32, f16, bf16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1].",
 			},
 			&cli.BoolFlag{
 				Destination: &lmcNoKVOffload,

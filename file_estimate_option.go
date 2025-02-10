@@ -189,6 +189,7 @@ func WithLLaMACppPhysicalBatchSize(size int32) GGUFRunEstimateOption {
 var _GGUFEstimateCacheTypeAllowList = []GGMLType{
 	GGMLTypeF32,
 	GGMLTypeF16,
+	GGMLTypeBF16,
 	GGMLTypeQ8_0,
 	GGMLTypeQ4_0, GGMLTypeQ4_1,
 	GGMLTypeIQ4_NL,

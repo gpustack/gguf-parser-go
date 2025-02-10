@@ -116,6 +116,15 @@ func (t GGMLType) Trait() (GGMLTypeTrait, bool) {
 	return tt, ok
 }
 
+// IsQuantized returns whether the GGMLType is quantized.
+func (t GGMLType) IsQuantized() bool {
+	tt, ok := t.Trait()
+	if !ok {
+		return false
+	}
+	return tt.Quantized
+}
+
 // RowSizeOf returns the size of the given dimensions according to the GGMLType's GGMLTypeTrait,
 // which is inspired by
 // https://github.com/ggerganov/ggml/blob/0cbb7c0e053f5419cfbebb46fbf4d4ed60182cf5/src/ggml.c#L3142-L3145.

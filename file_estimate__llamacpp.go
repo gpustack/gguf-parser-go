@@ -310,15 +310,20 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 
 	// Flash attention.
 	{
-		// Quantization requires flash attention,
-		// see https://github.com/ggerganov/llama.cpp/blob/172c8256840ffd882ab9992ecedbb587d9b21f15/llama.cpp#L16055-L16058.
-		if *o.LMCCacheValueType > GGMLTypeF16 && !o.FlashAttention {
-			o.FlashAttention = true
-		}
 		// Grok is not compatible with flash attention,
-		// see https://github.com/ggerganov/llama.cpp/blob/172c8256840ffd882ab9992ecedbb587d9b21f15/llama.cpp#L16050-L16053.
+		// see https://github.com/ggerganov/llama.cpp/blob/19d3c8293b1f61acbe2dab1d49a17950fd788a4a/src/llama.cpp#L9566-L9569.
 		if a.Architecture == "grok" {
 			o.FlashAttention = false
+		}
+		// Attention key length must be equal to attention value length,
+		// see https://github.com/ggerganov/llama.cpp/blob/19d3c8293b1f61acbe2dab1d49a17950fd788a4a/src/llama.cpp#L9571-L9574.
+		if a.AttentionKeyLength != a.AttentionValueLength {
+			o.FlashAttention = false
+		}
+		// Quantization value requires flash attention,
+		// see https://github.com/ggerganov/llama.cpp/blob/19d3c8293b1f61acbe2dab1d49a17950fd788a4a/src/llama.cpp#L9576-L9579.
+		if o.LMCCacheValueType.IsQuantized() && !o.FlashAttention {
+			o.FlashAttention = true
 		}
 
 		e.FlashAttention = o.FlashAttention
