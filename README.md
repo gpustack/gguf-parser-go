@@ -75,7 +75,7 @@ download it.
     + `VRAM *` indicates the local GPU memory usage.
     + `RPC * (V)RAM` indicates the remote memory usage. The kind of memory is determined by which backend the RPC server
       uses, check the running logs for more details.
-    + `UMA` indicates the memory usage of Apple macOS only. `NONUMA` adapts to other cases, including none GPU devices.
+    + `UMA` indicates the memory usage of Apple macOS only. `NONUMA` adapts to other cases, including non-GPU devices.
     + `LAYERS`(`I`/`T`/`O`) indicates the count for input layers, transformer layers, and output layers. Input layers
       are not offloaded at present.
 
@@ -1112,7 +1112,7 @@ $ gguf-parser --hf-repo="etemiz/Llama-3.1-405B-Inst-GGUF" --hf-file="llama-3.1-4
 +--------------------+------------+------------+----------------+---------+------------+
 | LAYERS (I + T + O) |     UMA    |   NONUMA   | LAYERS (T + O) |   UMA   |   NONUMA   |
 +--------------------+------------+------------+----------------+---------+------------+
-|     1 + 126 + 1    | 126.37 GiB | 126.52 GiB |      0 + 0     |   0 B   |  32.34 GiB |
+|     1 + 126 + 1    | 126.59 GiB | 126.73 GiB |      0 + 0     |   0 B   |   250 MiB  |
 +--------------------+------------+------------+----------------+---------+------------+
 |     1 + 120 + 1    | 120.64 GiB | 120.78 GiB |      6 + 0     |  6 GiB  |  43.68 GiB |
 +--------------------+------------+------------+----------------+---------+------------+

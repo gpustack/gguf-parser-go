@@ -621,6 +621,8 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 		embeddingLengthKey,
 		blockCountKey,
 		feedForwardLengthKey,
+		expertFeedForwardLengthKey,
+		expertSharedFeedForwardLengthKey,
 		expertCountKey,
 		expertUsedCountKey,
 		attentionHeadCountKey,

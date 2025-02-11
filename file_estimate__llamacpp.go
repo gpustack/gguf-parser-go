@@ -619,8 +619,10 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 					case strings.HasSuffix(l.Name, ".attn_q_b.weight"):
 						rs = GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
 						offloadAttnInc += rs * 2 // q-?
-						rs = GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingKeyGQA + a.EmbeddingValueGQA, nTokens, uint64(a.ExpertUsedCount)})
-						loadAttnInc = rs // k-?/v-?
+						rs = o.LMCCacheKeyType.RowSizeOf([]uint64{uint64(a.AttentionKeyLength), nKV, a.AttentionHeadCountKV})
+						loadAttnInc = rs // k-?
+						rs = o.LMCCacheValueType.RowSizeOf([]uint64{uint64(a.AttentionValueLength), nKV, a.AttentionHeadCountKV})
+						loadAttnInc += rs // v-?
 						rs = GGMLTypeF32.RowSizeOf([]uint64{nKV, nTokens, a.AttentionHeadCount})
 						offloadAttnInc += rs // kq.
 					}
@@ -648,6 +650,15 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 				cp := GGUFBytesScalar(max(offloadAttnInc, ffnInc))
 				for i := range e.Devices[1:] {
 					e.Devices[i+1].Computation.Compute = cp
+				}
+				if nLoadLayers > 1 {
+					for i := range e.Devices[1:] {
+						if e.Devices[i+1].Remote {
+							continue
+						}
+						e.Devices[i+1].Computation.Compute += GGUFBytesScalar(loadAttnInc)
+						break
+					}
 				}
 			}
 			// Special case: we cannot use mmap for splitting expert weights in MoE.
