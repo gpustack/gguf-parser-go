@@ -836,7 +836,12 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 
 	idx := 0 // Default to the main host's RAM.
 	if *o.LMCOffloadLayers != 0 {
-		idx = 1
+		for i := 1; i < len(e.Devices); i++ {
+			if !e.Devices[i].Remote {
+				idx = i
+				break
+			}
+		}
 	}
 
 	// Weight & Parameter.
