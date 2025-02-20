@@ -40,7 +40,7 @@ func (c GGUFFileCache) Get(key string, exp time.Duration) (*GGUFFile, error) {
 		if !stat.Mode().IsRegular() {
 			return false
 		}
-		return time.Since(stat.ModTime()) < exp
+		return exp == 0 || time.Since(stat.ModTime()) < exp
 	}) {
 		return nil, ErrGGUFFileCacheMissed
 	}

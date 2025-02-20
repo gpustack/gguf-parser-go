@@ -1033,7 +1033,7 @@ func mainAction(c *cli.Context) error {
 	if skipRangDownloadDetect {
 		ropts = append(ropts, SkipRangeDownloadDetection())
 	}
-	if cacheExpiration > 0 {
+	if cacheExpiration >= 0 {
 		ropts = append(ropts, UseCacheExpiration(cacheExpiration))
 	}
 	if cachePath != "" {
