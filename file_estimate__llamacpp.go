@@ -777,11 +777,16 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 		imgPatches = nPatches
 		switch {
 		case a.ClipHasLLaVAProjector:
+			// LLaVA 1.6 uses up to 6 patches
 			if a.ClipVisionMMPatchMergeType != "flat" {
 				imgPatchesMaxSize = 6
 			}
 		case a.ClipHasMiniCPMVProjector:
+			// MiniCPM-V uses up to 10 patches
 			imgPatchesMaxSize = 10
+		case a.ClipProjectorType == "adapter":
+			// Granite vision uses up to 10 patches + base patch
+			imgPatchesMaxSize = 11
 		}
 		switch a.ClipProjectorType {
 		case "ldp":
@@ -806,6 +811,10 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 			if ti, ok := gf.TensorInfos.Get("resampler.query"); ok {
 				imgPatches = ti.Dimensions[1]
 				projectionDim = ti.Dimensions[0]
+			}
+		case "adapter":
+			if ti, ok := gf.TensorInfos.Get("adapter.linear.dense_4h_to_h.weight"); ok {
+				projectionDim = ti.Dimensions[1]
 			}
 		case "qwen2vl_merger":
 			nSizePatch := uint64(a.ClipVisionPatchSize * 2)
