@@ -199,6 +199,9 @@ func main() {
 				Value:       token,
 				Category:    "Model/Remote",
 				Name:        "token",
+				EnvVars: []string{
+					"TOKEN",
+				},
 				Usage: "Bearer auth token to load GGUF file, optional, " +
 					"works with \"--url/--draft-url\".",
 			},
@@ -297,6 +300,9 @@ func main() {
 				Aliases: []string{ // LLaMACpp compatibility
 					"hft",
 				},
+				EnvVars: []string{
+					"HF_TOKEN",
+				},
 				Usage: "User access token of HuggingFace, optional, " +
 					"works with \"--hf-repo/--hf-file pair\" or \"--hf-draft-repo/--hf-draft-file\" pair. " +
 					"See https://huggingface.co/settings/tokens.",
@@ -387,6 +393,10 @@ func main() {
 				Value:       msToken,
 				Category:    "Model/Remote/ModelScope",
 				Name:        "ms-token",
+				EnvVars: []string{
+					"HF_TOKEN", // Compatible with HuggingFace
+					"MS_TOKEN",
+				},
 				Usage: "Git access token of ModelScope, optional, " +
 					"works with \"--ms-repo/--ms-file\" pair or \"--ms-draft-repo/--ms-draft-file\" pair. " +
 					"See https://modelscope.cn/my/myaccesstoken.",

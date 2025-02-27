@@ -92,7 +92,7 @@ GLOBAL OPTIONS:
    --draft-url value                                          Url where the GGUF file to load for the draft model, optional, e.g. "https://huggingface.co/QuantFactory/Qwen2-1.5B-Instruct-GGUF/resolve/main/Qwen2-1.5B-Instruct.Q5_K_M.gguf". Note that gguf-parser does not need to download the entire GGUF file.
    --lora-url value [ --lora-url value ]                      Url where the GGUF file to load for the LoRA adapter, optional.
    --mmproj-url value                                         Url where the GGUF file to load for the multimodal projector, optional.
-   --token value                                              Bearer auth token to load GGUF file, optional, works with "--url/--draft-url".
+   --token value                                              Bearer auth token to load GGUF file, optional, works with "--url/--draft-url". [$TOKEN]
    --upscale-url value                                        Url where the GGUF file to load for the Upscale model, optional.
    --url value, --model-url value, --mu value                 Url where the GGUF file to load for the main model, e.g. "https://huggingface.co/QuantFactory/Qwen2-7B-Instruct-GGUF/resolve/main/Qwen2-7B-Instruct.Q5_K_M.gguf". Note that gguf-parser does not need to download the entire GGUF file.
 
@@ -107,7 +107,7 @@ GLOBAL OPTIONS:
    --hf-lora-file value [ --hf-lora-file value ]                      LoRA adapter file below the "--hf-repo".
    --hf-mmproj-file value                                             Multimodal projector file below the "--hf-repo".
    --hf-repo value, --hfr value                                       Repository of HuggingFace which the GGUF file store for the main model, e.g. "QuantFactory/Qwen2-7B-Instruct-GGUF", works with "--hf-file".
-   --hf-token value, --hft value                                      User access token of HuggingFace, optional, works with "--hf-repo/--hf-file pair" or "--hf-draft-repo/--hf-draft-file" pair. See https://huggingface.co/settings/tokens.
+   --hf-token value, --hft value                                      User access token of HuggingFace, optional, works with "--hf-repo/--hf-file pair" or "--hf-draft-repo/--hf-draft-file" pair. See https://huggingface.co/settings/tokens. [$HF_TOKEN]
    --hf-upscale-file value                                            Model file below the "--hf-upscale-repo", optional.
    --hf-upscale-repo value                                            Repository of HuggingFace which the GGUF file store for the Upscale model, optional, works with "--hf-upscale-file".
 
@@ -122,7 +122,7 @@ GLOBAL OPTIONS:
    --ms-lora-file value [ --ms-lora-file value ]                      LoRA adapter file below the "--ms-repo".
    --ms-mmproj-file value                                             Multimodal projector file below the "--ms-repo".
    --ms-repo value                                                    Repository of ModelScope which the GGUF file store for the main model, e.g. "qwen/Qwen1.5-7B-Chat-GGUF", works with "--ms-file".
-   --ms-token value                                                   Git access token of ModelScope, optional, works with "--ms-repo/--ms-file" pair or "--ms-draft-repo/--ms-draft-file" pair. See https://modelscope.cn/my/myaccesstoken.
+   --ms-token value                                                   Git access token of ModelScope, optional, works with "--ms-repo/--ms-file" pair or "--ms-draft-repo/--ms-draft-file" pair. See https://modelscope.cn/my/myaccesstoken. [$HF_TOKEN, $MS_TOKEN]
    --ms-upscale-file value                                            Model file below the "--ms-upscale-repo", optional.
    --ms-upscale-repo value                                            Repository of ModelScope which the GGUF file store for the Upscale model, optional, works with "--ms-upscale-file".
 
@@ -146,6 +146,14 @@ GLOBAL OPTIONS:
    --skip-tokenizer     Skip to display tokenizer. By default, gguf-parser always displays the tokenizer of the file which types with "model". (default: false)
 
 ```
+
+### Environment Variables Support
+
+- `TOKEN`: The bearer auth token to load GGUF file, works with `--url/--draft-url`.
+- `HF_ENDPOINT`: The HuggingFace endpoint, default is `https://huggingface.co`.
+- `HF_TOKEN`: The HuggingFace token, see [HuggingFace token](https://huggingface.co/settings/tokens).
+- `MS_ENDPOINT`: The ModelScope endpoint, default is `https://modelscope.cn`.
+- `MS_TOKEN`: The ModelScope token, see [ModelScope token](https://modelscope.cn/my/myaccesstoken).
 
 ## License
 
