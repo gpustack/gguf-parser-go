@@ -44,7 +44,7 @@ func main() {
 	name := filepath.Base(os.Args[0])
 	app := &cli.App{
 		Name:            name,
-		Usage:           "Review/Check GGUF files and estimate the memory usage.",
+		Usage:           "Review/Check GGUF files and estimate the memory usage and provide optimization suggestions.",
 		UsageText:       name + " [GLOBAL OPTIONS]",
 		Version:         Version,
 		Reader:          os.Stdin,
