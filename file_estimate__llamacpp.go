@@ -1207,18 +1207,6 @@ func (e LLaMACppRunEstimate) SummarizeItem(mmap bool, nonUMARamFootprint, nonUMA
 				}
 			}
 
-			// NB(thxCode): this is a workaround for the qwen2 vl clip model.
-			if e.ClipProjectorType == "qwen2vl_merger" {
-				emi.RAM.UMA += emi.VRAMs[i].UMA
-				emi.VRAMs[i].UMA = 0
-				emi.RAM.HandleLayers += emi.VRAMs[i].HandleLayers
-				emi.VRAMs[i].HandleLayers = 0
-				emi.RAM.HandleLastLayer = emi.VRAMs[i].HandleLastLayer
-				emi.VRAMs[i].HandleLastLayer = -1
-				emi.RAM.HandleOutputLayer = emi.VRAMs[i].HandleOutputLayer
-				emi.VRAMs[i].HandleOutputLayer = false
-			}
-
 			// NonUMA.
 			emi.VRAMs[i].NonUMA = GGUFBytesScalar(nonUMAVramFootprint) + fp + wg + kv + cp
 			if !d.Remote && d.Position > 0 && d.HandleLastLayer < 0 {
