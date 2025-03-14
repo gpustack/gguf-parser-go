@@ -830,6 +830,11 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 			if ti, ok := gf.TensorInfos.Get("mm.2.bias"); ok {
 				projectionDim = ti.Dimensions[0]
 			}
+		case "gemma3":
+			if ti, ok := gf.TensorInfos.Get("mm.input_projection.weight"); ok {
+				imgPatches = 256
+				projectionDim = ti.Dimensions[0]
+			}
 		}
 	}
 
