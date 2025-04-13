@@ -32,7 +32,7 @@ type (
 		// This does not include the input or embedding layers.
 		BlockCount uint64 `json:"blockCount,omitempty"`
 		// FeedForwardLength(n_ff) is the length of the feed-forward layer.
-		FeedForwardLength uint64 `json:"feedForwardLength,omitempty"`
+		FeedForwardLength []uint64 `json:"feedForwardLength,omitempty"`
 		// ExpertFeedForwardLength(expert_feed_forward_length) is the length of the feed-forward layer in the expert model.
 		ExpertFeedForwardLength uint64 `json:"expertFeedForwardLength,omitempty"`
 		// ExpertSharedFeedForwardLength(expert_shared_feed_forward_length) is the length of the shared feed-forward layer in the expert model.
@@ -502,7 +502,15 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 		ga.BlockCount = ValueNumeric[uint64](v)
 	}
 	if v, ok := m[textFeedForwardLengthKey]; ok {
-		ga.FeedForwardLength = ValueNumeric[uint64](v)
+		if v.ValueType == GGUFMetadataValueTypeArray {
+			ga.FeedForwardLength = ValuesNumeric[uint64](v.ValueArray())
+		} else {
+			vx := ValueNumeric[uint64](v)
+			ga.FeedForwardLength = make([]uint64, ga.BlockCount)
+			for i := range ga.FeedForwardLength {
+				ga.FeedForwardLength[i] = vx
+			}
+		}
 	}
 	if v, ok := m[textAttentionHeadCountKey]; ok {
 		ga.AttentionHeadCount = ValueNumeric[uint64](v)
@@ -518,7 +526,15 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 		ga.BlockCount = ValueNumeric[uint64](v)
 	}
 	if v, ok := m[visionFeedForwardLengthKey]; ok {
-		ga.FeedForwardLength = ValueNumeric[uint64](v)
+		if v.ValueType == GGUFMetadataValueTypeArray {
+			ga.FeedForwardLength = ValuesNumeric[uint64](v.ValueArray())
+		} else {
+			vx := ValueNumeric[uint64](v)
+			ga.FeedForwardLength = make([]uint64, ga.BlockCount)
+			for i := range ga.FeedForwardLength {
+				ga.FeedForwardLength[i] = vx
+			}
+		}
 	}
 	if v, ok := m[visionAttentionHeadCountKey]; ok {
 		ga.AttentionHeadCount = ValueNumeric[uint64](v)
@@ -670,7 +686,15 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 		ga.BlockCount = ValueNumeric[uint64](v)
 	}
 	if v, ok := m[feedForwardLengthKey]; ok {
-		ga.FeedForwardLength = ValueNumeric[uint64](v)
+		if v.ValueType == GGUFMetadataValueTypeArray {
+			ga.FeedForwardLength = ValuesNumeric[uint64](v.ValueArray())
+		} else {
+			vx := ValueNumeric[uint64](v)
+			ga.FeedForwardLength = make([]uint64, ga.BlockCount)
+			for i := range ga.FeedForwardLength {
+				ga.FeedForwardLength[i] = vx
+			}
+		}
 	}
 
 	if v, ok := m[expertCountKey]; ok {
@@ -687,10 +711,18 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 	}
 
 	if v, ok := m[attentionHeadCountKey]; ok {
-		ga.AttentionHeadCount = ValueNumeric[uint64](v)
+		if v.ValueType == GGUFMetadataValueTypeArray {
+			ga.AttentionHeadCount = ValuesNumeric[uint64](v.ValueArray())[0]
+		} else {
+			ga.AttentionHeadCount = ValueNumeric[uint64](v)
+		}
 	}
 	if v, ok := m[attentionHeadCountKVKey]; ok {
-		ga.AttentionHeadCountKV = ValueNumeric[uint64](v)
+		if v.ValueType == GGUFMetadataValueTypeArray {
+			ga.AttentionHeadCountKV = ValuesNumeric[uint64](v.ValueArray())[0]
+		} else {
+			ga.AttentionHeadCountKV = ValueNumeric[uint64](v)
+		}
 	} else {
 		ga.AttentionHeadCountKV = ga.AttentionHeadCount
 	}

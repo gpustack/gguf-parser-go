@@ -15,6 +15,7 @@ import (
 	"github.com/gpustack/gguf-parser-go/util/bytex"
 	"github.com/gpustack/gguf-parser-go/util/funcx"
 	"github.com/gpustack/gguf-parser-go/util/osx"
+	"github.com/gpustack/gguf-parser-go/util/stringx"
 )
 
 // GGUFFile represents a GGUF file,
@@ -469,70 +470,70 @@ func (gf *GGUFFile) Layers(ignores ...string) GGUFLayerTensorInfos {
 
 func (kv GGUFMetadataKV) ValueUint8() uint8 {
 	if kv.ValueType != GGUFMetadataValueTypeUint8 {
-		panic(fmt.Errorf("invalid type: %v", kv.ValueType))
+		panic(fmt.Errorf("key %q try to get type Uint8 but type %v", kv.Key, kv.ValueType))
 	}
 	return anyx.Number[uint8](kv.Value)
 }
 
 func (kv GGUFMetadataKV) ValueInt8() int8 {
 	if kv.ValueType != GGUFMetadataValueTypeInt8 {
-		panic(fmt.Errorf("invalid type: %v", kv.ValueType))
+		panic(fmt.Errorf("key %q try to get type Int8 but type %v", kv.Key, kv.ValueType))
 	}
 	return anyx.Number[int8](kv.Value)
 }
 
 func (kv GGUFMetadataKV) ValueUint16() uint16 {
 	if kv.ValueType != GGUFMetadataValueTypeUint16 {
-		panic(fmt.Errorf("invalid type: %v", kv.ValueType))
+		panic(fmt.Errorf("key %q try to get type Uint16 but type %v", kv.Key, kv.ValueType))
 	}
 	return anyx.Number[uint16](kv.Value)
 }
 
 func (kv GGUFMetadataKV) ValueInt16() int16 {
 	if kv.ValueType != GGUFMetadataValueTypeInt16 {
-		panic(fmt.Errorf("invalid type: %v", kv.ValueType))
+		panic(fmt.Errorf("key %q try to get type Int16 but type %v", kv.Key, kv.ValueType))
 	}
 	return anyx.Number[int16](kv.Value)
 }
 
 func (kv GGUFMetadataKV) ValueUint32() uint32 {
 	if kv.ValueType != GGUFMetadataValueTypeUint32 {
-		panic(fmt.Errorf("invalid type: %v", kv.ValueType))
+		panic(fmt.Errorf("key %q try to get type Uint32 but type %v", kv.Key, kv.ValueType))
 	}
 	return anyx.Number[uint32](kv.Value)
 }
 
 func (kv GGUFMetadataKV) ValueInt32() int32 {
 	if kv.ValueType != GGUFMetadataValueTypeInt32 {
-		panic(fmt.Errorf("invalid type: %v", kv.ValueType))
+		panic(fmt.Errorf("key %q try to get type Int32 but type %v", kv.Key, kv.ValueType))
 	}
 	return anyx.Number[int32](kv.Value)
 }
 
 func (kv GGUFMetadataKV) ValueFloat32() float32 {
 	if kv.ValueType != GGUFMetadataValueTypeFloat32 {
-		panic(fmt.Errorf("invalid type: %v", kv.ValueType))
+		panic(fmt.Errorf("key %q try to get type Float32 but type %v", kv.Key, kv.ValueType))
 	}
 	return anyx.Number[float32](kv.Value)
 }
 
 func (kv GGUFMetadataKV) ValueBool() bool {
 	if kv.ValueType != GGUFMetadataValueTypeBool {
-		panic(fmt.Errorf("invalid type: %v", kv.ValueType))
+		panic(fmt.Errorf("key %q try to get type Bool but type %v", kv.Key, kv.ValueType))
 	}
 	return anyx.Bool(kv.Value)
 }
 
 func (kv GGUFMetadataKV) ValueString() string {
 	if kv.ValueType != GGUFMetadataValueTypeString {
-		panic(fmt.Errorf("invalid type: %v", kv.ValueType))
+		panic(fmt.Errorf("key %q try to get type String but type %v", kv.Key, kv.ValueType))
 	}
 	return anyx.String(kv.Value)
 }
 
 func (kv GGUFMetadataKV) ValueArray() GGUFMetadataKVArrayValue {
 	if kv.ValueType != GGUFMetadataValueTypeArray {
-		panic(fmt.Errorf("invalid type: %v", kv.ValueType))
+		panic(fmt.Errorf("key %q try to get type Array but type %v", kv.Key, kv.ValueType))
 	}
 	switch t := kv.Value.(type) {
 	case GGUFMetadataKVArrayValue:
@@ -551,27 +552,27 @@ func (kv GGUFMetadataKV) ValueArray() GGUFMetadataKVArrayValue {
 			Size:        anyx.Number[int64](t["size"]),
 		}
 	default:
-		panic(fmt.Errorf("invalid type: %T", kv.Value))
+		panic(fmt.Errorf("key %q try to get type Array but type %T", kv.Key, kv.Value))
 	}
 }
 
 func (kv GGUFMetadataKV) ValueUint64() uint64 {
 	if kv.ValueType != GGUFMetadataValueTypeUint64 {
-		panic(fmt.Errorf("invalid type: %v", kv.ValueType))
+		panic(fmt.Errorf("key %q try to get type Uint64 but type %v", kv.Key, kv.ValueType))
 	}
 	return anyx.Number[uint64](kv.Value)
 }
 
 func (kv GGUFMetadataKV) ValueInt64() int64 {
 	if kv.ValueType != GGUFMetadataValueTypeInt64 {
-		panic(fmt.Errorf("invalid type: %v", kv.ValueType))
+		panic(fmt.Errorf("key %q try to get type Int64 but type %v", kv.Key, kv.ValueType))
 	}
 	return anyx.Number[int64](kv.Value)
 }
 
 func (kv GGUFMetadataKV) ValueFloat64() float64 {
 	if kv.ValueType != GGUFMetadataValueTypeFloat64 {
-		panic(fmt.Errorf("invalid type: %v", kv.ValueType))
+		panic(fmt.Errorf("key %q try to get type Float64 but type %v", kv.Key, kv.ValueType))
 	}
 	return anyx.Number[float64](kv.Value)
 }
@@ -596,14 +597,14 @@ func ValueNumeric[T constraints.Integer | constraints.Float](kv GGUFMetadataKV) 
 	case GGUFMetadataValueTypeInt64:
 	case GGUFMetadataValueTypeFloat64:
 	default:
-		panic(fmt.Errorf("invalid type: %v", kv.ValueType))
+		panic(fmt.Errorf("key %q try to get type Numeric but got type %v", kv.Key, kv.ValueType))
 	}
 	return anyx.Number[T](kv.Value)
 }
 
 func (av GGUFMetadataKVArrayValue) ValuesUint8() []uint8 {
 	if av.Type != GGUFMetadataValueTypeUint8 {
-		panic(fmt.Errorf("invalid type: %v", av.Type))
+		panic(fmt.Errorf("try to get type Uint8 but got type %v", av.Type))
 	}
 	v := make([]uint8, av.Len)
 	for i := uint64(0); i < av.Len; i++ {
@@ -614,7 +615,7 @@ func (av GGUFMetadataKVArrayValue) ValuesUint8() []uint8 {
 
 func (av GGUFMetadataKVArrayValue) ValuesInt8() []int8 {
 	if av.Type != GGUFMetadataValueTypeInt8 {
-		panic(fmt.Errorf("invalid type: %v", av.Type))
+		panic(fmt.Errorf("try to get type Int8 but got type %v", av.Type))
 	}
 	v := make([]int8, av.Len)
 	for i := uint64(0); i < av.Len; i++ {
@@ -625,7 +626,7 @@ func (av GGUFMetadataKVArrayValue) ValuesInt8() []int8 {
 
 func (av GGUFMetadataKVArrayValue) ValuesUint16() []uint16 {
 	if av.Type != GGUFMetadataValueTypeUint16 {
-		panic(fmt.Errorf("invalid type: %v", av.Type))
+		panic(fmt.Errorf("try to get type Uint16 but got type %v", av.Type))
 	}
 	v := make([]uint16, av.Len)
 	for i := uint64(0); i < av.Len; i++ {
@@ -636,7 +637,7 @@ func (av GGUFMetadataKVArrayValue) ValuesUint16() []uint16 {
 
 func (av GGUFMetadataKVArrayValue) ValuesInt16() []int16 {
 	if av.Type != GGUFMetadataValueTypeInt16 {
-		panic(fmt.Errorf("invalid type: %v", av.Type))
+		panic(fmt.Errorf("try to get type Int16 but got type %v", av.Type))
 	}
 	v := make([]int16, av.Len)
 	for i := uint64(0); i < av.Len; i++ {
@@ -647,7 +648,7 @@ func (av GGUFMetadataKVArrayValue) ValuesInt16() []int16 {
 
 func (av GGUFMetadataKVArrayValue) ValuesUint32() []uint32 {
 	if av.Type != GGUFMetadataValueTypeUint32 {
-		panic(fmt.Errorf("invalid type: %v", av.Type))
+		panic(fmt.Errorf("try to get type Uint8 but got type %v", av.Type))
 	}
 	v := make([]uint32, av.Len)
 	for i := uint64(0); i < av.Len; i++ {
@@ -658,7 +659,7 @@ func (av GGUFMetadataKVArrayValue) ValuesUint32() []uint32 {
 
 func (av GGUFMetadataKVArrayValue) ValuesInt32() []int32 {
 	if av.Type != GGUFMetadataValueTypeInt32 {
-		panic(fmt.Errorf("invalid type: %v", av.Type))
+		panic(fmt.Errorf("try to get type Int32 but got type %v", av.Type))
 	}
 	v := make([]int32, av.Len)
 	for i := uint64(0); i < av.Len; i++ {
@@ -669,7 +670,7 @@ func (av GGUFMetadataKVArrayValue) ValuesInt32() []int32 {
 
 func (av GGUFMetadataKVArrayValue) ValuesFloat32() []float32 {
 	if av.Type != GGUFMetadataValueTypeFloat32 {
-		panic(fmt.Errorf("invalid type: %v", av.Type))
+		panic(fmt.Errorf("try to get type Float32 but got type %v", av.Type))
 	}
 	v := make([]float32, av.Len)
 	for i := uint64(0); i < av.Len; i++ {
@@ -680,7 +681,7 @@ func (av GGUFMetadataKVArrayValue) ValuesFloat32() []float32 {
 
 func (av GGUFMetadataKVArrayValue) ValuesBool() []bool {
 	if av.Type != GGUFMetadataValueTypeBool {
-		panic(fmt.Errorf("invalid type: %v", av.Type))
+		panic(fmt.Errorf("try to get type Bool but got type %v", av.Type))
 	}
 	v := make([]bool, av.Len)
 	for i := uint64(0); i < av.Len; i++ {
@@ -691,7 +692,7 @@ func (av GGUFMetadataKVArrayValue) ValuesBool() []bool {
 
 func (av GGUFMetadataKVArrayValue) ValuesString() []string {
 	if av.Type != GGUFMetadataValueTypeString {
-		panic(fmt.Errorf("invalid type: %v", av.Type))
+		panic(fmt.Errorf("try to get type String but got type %v", av.Type))
 	}
 	v := make([]string, av.Len)
 	for i := uint64(0); i < av.Len; i++ {
@@ -702,7 +703,7 @@ func (av GGUFMetadataKVArrayValue) ValuesString() []string {
 
 func (av GGUFMetadataKVArrayValue) ValuesArray() []GGUFMetadataKVArrayValue {
 	if av.Type != GGUFMetadataValueTypeArray {
-		panic(fmt.Errorf("invalid type: %v", av.Type))
+		panic(fmt.Errorf("try to get type Array but got type %v", av.Type))
 	}
 	v := make([]GGUFMetadataKVArrayValue, av.Len)
 	for i := uint64(0); i < av.Len; i++ {
@@ -723,7 +724,7 @@ func (av GGUFMetadataKVArrayValue) ValuesArray() []GGUFMetadataKVArrayValue {
 				Size:        anyx.Number[int64](t["size"]),
 			}
 		default:
-			panic(fmt.Errorf("invalid type: %T", av.Array[i]))
+			panic(fmt.Errorf("try to get type Array but got type %T", av.Array[i]))
 		}
 	}
 	return v
@@ -731,7 +732,7 @@ func (av GGUFMetadataKVArrayValue) ValuesArray() []GGUFMetadataKVArrayValue {
 
 func (av GGUFMetadataKVArrayValue) ValuesUint64() []uint64 {
 	if av.Type != GGUFMetadataValueTypeUint64 {
-		panic(fmt.Errorf("invalid type: %v", av.Type))
+		panic(fmt.Errorf("try to get type Uint16 but got type %v", av.Type))
 	}
 	v := make([]uint64, av.Len)
 	for i := uint64(0); i < av.Len; i++ {
@@ -742,7 +743,7 @@ func (av GGUFMetadataKVArrayValue) ValuesUint64() []uint64 {
 
 func (av GGUFMetadataKVArrayValue) ValuesInt64() []int64 {
 	if av.Type != GGUFMetadataValueTypeInt64 {
-		panic(fmt.Errorf("invalid type: %v", av.Type))
+		panic(fmt.Errorf("try to get type Int64 but got type %v", av.Type))
 	}
 	v := make([]int64, av.Len)
 	for i := uint64(0); i < av.Len; i++ {
@@ -753,7 +754,7 @@ func (av GGUFMetadataKVArrayValue) ValuesInt64() []int64 {
 
 func (av GGUFMetadataKVArrayValue) ValuesFloat64() []float64 {
 	if av.Type != GGUFMetadataValueTypeFloat64 {
-		panic(fmt.Errorf("invalid type: %v", av.Type))
+		panic(fmt.Errorf("try to get type Float64 but got type %v", av.Type))
 	}
 	v := make([]float64, av.Len)
 	for i := uint64(0); i < av.Len; i++ {
@@ -784,9 +785,11 @@ func ValuesNumeric[T constraints.Integer | constraints.Float](av GGUFMetadataKVA
 		case GGUFMetadataValueTypeInt64:
 		case GGUFMetadataValueTypeFloat64:
 		default:
-			panic(fmt.Errorf("invalid type: %v", av.Type))
+			panic(fmt.Errorf("try to get type Numeric but got type %v", av.Type))
 		}
-		v[i] = anyx.Number[T](av.Array[i])
+		if av.Array != nil {
+			v[i] = anyx.Number[T](av.Array[i])
+		}
 	}
 	return v
 }
@@ -1486,7 +1489,7 @@ func (rd _GGUFReader) SkipReadingString() (err error) {
 	return nil
 }
 
-func (rd _GGUFReader) ReadArray() (v GGUFMetadataKVArrayValue, err error) {
+func (rd _GGUFReader) ReadArray(key string) (v GGUFMetadataKVArrayValue, err error) {
 	v.StartOffset, err = rd.f.Seek(0, io.SeekCurrent)
 	if err != nil {
 		return v, fmt.Errorf("read array start: %w", err)
@@ -1510,10 +1513,10 @@ func (rd _GGUFReader) ReadArray() (v GGUFMetadataKVArrayValue, err error) {
 		return v, fmt.Errorf("seek array item start: %w", err)
 	}
 
-	if !rd.o.SkipLargeMetadata {
+	if !rd.o.SkipLargeMetadata || stringx.HasSuffixes(key, ".feed_forward_length", ".attention.head_count") {
 		v.Array = make([]any, v.Len)
 		for i := uint64(0); i < v.Len; i++ {
-			v.Array[i], err = rd.ReadValue(v.Type)
+			v.Array[i], err = rd.ReadValue(key, v.Type)
 			if err != nil {
 				return v, fmt.Errorf("read array item %d: %w", i, err)
 			}
@@ -1584,7 +1587,7 @@ func (rd _GGUFReader) ReadFloat64() (v float64, err error) {
 	return v, nil
 }
 
-func (rd _GGUFReader) ReadValue(vt GGUFMetadataValueType) (v any, err error) {
+func (rd _GGUFReader) ReadValue(vk string, vt GGUFMetadataValueType) (v any, err error) {
 	if vt >= _GGUFMetadataValueTypeCount {
 		return nil, fmt.Errorf("invalid type: %v", vt)
 	}
@@ -1609,7 +1612,7 @@ func (rd _GGUFReader) ReadValue(vt GGUFMetadataValueType) (v any, err error) {
 	case GGUFMetadataValueTypeString:
 		v, err = rd.ReadString()
 	case GGUFMetadataValueTypeArray:
-		v, err = rd.ReadArray()
+		v, err = rd.ReadArray(vk)
 	case GGUFMetadataValueTypeUint64:
 		v, err = rd.ReadUint64()
 	case GGUFMetadataValueTypeInt64:
@@ -1647,7 +1650,7 @@ func (rd _GGUFMetadataReader) Read() (kv GGUFMetadataKV, err error) {
 		}
 	}
 
-	kv.Value, err = rd.ReadValue(kv.ValueType)
+	kv.Value, err = rd.ReadValue(kv.Key, kv.ValueType)
 	if err != nil {
 		return kv, fmt.Errorf("read %s value: %w", kv.Key, err)
 	}

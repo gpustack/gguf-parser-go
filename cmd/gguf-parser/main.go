@@ -1620,8 +1620,14 @@ func mainAction(c *cli.Context) error {
 				sprintf(a.ClipProjectorType),
 				sprintf(a.EmbeddingLength),
 				sprintf(a.BlockCount),
-				sprintf(a.FeedForwardLength),
-				sprintf(tenary(a.ClipHasTextEncoder, tenary(a.ClipHasVisionEncoder, "Text & Vision", "Text"), tenary(a.ClipHasVisionEncoder, "Vision", "N/A"))),
+				sprintf(tenary(
+					a.FeedForwardLength[0] == a.FeedForwardLength[1],
+					a.FeedForwardLength[0],
+					sprintf("[%d, %d, ...]", a.FeedForwardLength[0], a.FeedForwardLength[1]))),
+				sprintf(tenary(
+					a.ClipHasTextEncoder,
+					tenary(a.ClipHasVisionEncoder, "Text & Vision", "Text"),
+					tenary(a.ClipHasVisionEncoder, "Vision", "N/A"))),
 			}
 		case "adapter":
 			hd = []any{
@@ -1666,9 +1672,15 @@ func mainAction(c *cli.Context) error {
 					sprintf(a.EmbeddingLength),
 					sprintf(a.EmbeddingGQA),
 					sprintf(a.AttentionCausal),
-					sprintf(tenary(a.AttentionHeadCountKV == 0 || a.AttentionHeadCountKV == a.AttentionHeadCount, "N/A", a.AttentionHeadCount)),
+					sprintf(tenary(
+						a.AttentionHeadCountKV == 0 || a.AttentionHeadCountKV == a.AttentionHeadCount,
+						"N/A",
+						a.AttentionHeadCount)),
 					sprintf(a.BlockCount),
-					sprintf(a.FeedForwardLength),
+					sprintf(tenary(
+						a.FeedForwardLength[0] == a.FeedForwardLength[1],
+						a.FeedForwardLength[0],
+						sprintf("[%d, %d, ...]", a.FeedForwardLength[0], a.FeedForwardLength[1]))),
 					sprintf(a.ExpertCount),
 					sprintf(a.VocabularyLength),
 				}

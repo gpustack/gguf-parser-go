@@ -34,3 +34,13 @@ func ReplaceAllFunc(s string, f func(rune) rune) string {
 	}
 	return b.String()
 }
+
+// HasSuffixes checks if s has any of the suffixes in prefixes.
+func HasSuffixes(s string, suffixes ...string) bool {
+	for _, suffix := range suffixes {
+		if strings.HasSuffix(s, suffix) {
+			return true
+		}
+	}
+	return false
+}
