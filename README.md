@@ -56,6 +56,8 @@ download it.
 
 ## Notes
 
+- **Since v0.14.0 (BREAKING CHANGE)**, GGUF Parser parses `*.feed_forward_length` metadata as `[]uint64`,
+  which means the architecture `feedForwardLength` is a list of integers.
 - **Since v0.13.0 (BREAKING CHANGE)**, GGUF Parser can parse files
   for [StableDiffusion.Cpp](https://github.com/leejet/stable-diffusion.cpp) or StableDiffusion.Cpp like application.
     + [LLaMA Box](https://github.com/gpustack/llama-box) is able to offload different components of the all-in-one model

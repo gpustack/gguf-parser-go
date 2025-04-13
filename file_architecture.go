@@ -31,7 +31,7 @@ type (
 		// i.e. the bulk of the LLM.
 		// This does not include the input or embedding layers.
 		BlockCount uint64 `json:"blockCount,omitempty"`
-		// FeedForwardLength(n_ff) is the length of the feed-forward layer.
+		// FeedForwardLength(n_ff) stores the length of each feed-forward layer.
 		FeedForwardLength []uint64 `json:"feedForwardLength,omitempty"`
 		// ExpertFeedForwardLength(expert_feed_forward_length) is the length of the feed-forward layer in the expert model.
 		ExpertFeedForwardLength uint64 `json:"expertFeedForwardLength,omitempty"`
