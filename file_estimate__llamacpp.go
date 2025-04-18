@@ -659,10 +659,6 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 					}
 				}
 			}
-			// Special case: we cannot use mmap for splitting expert weights in MoE.
-			if a.ExpertCount > 0 {
-				e.NoMMap = len(tfLs[0].Search(regexp.MustCompile(`.*\.\d+\.ffn_gate_exps\.weight`))) == 0
-			}
 		}
 		// Finally, get the usage of output layer.
 		if a.AttentionCausal {
