@@ -150,6 +150,10 @@ type (
 		//
 		// Only used when Architecture is "clip" and ClipHasVisionEncoder is true.
 		ClipVisionMMPatchMergeType string `json:"clipVisionMMPatchMergeType,omitempty"`
+		// ClipVisionProjectorScaleFactor is the scale factor of the projector.
+		//
+		// Only used when Architecture is "clip" and ClipHasVisionEncoder is true.
+		ClipVisionProjectorScaleFactor uint32 `json:"clipVisionProjectorScaleFactor,omitempty"`
 
 		// AdapterType is the type of the adapter.
 		//
@@ -401,18 +405,19 @@ func (gf *GGUFFile) diffuserArchitecture() (ga GGUFArchitecture) {
 
 func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 	const (
-		projectorTypeKey       = "clip.projector_type"
-		hasLLaVAProjectorKey   = "clip.has_llava_projector"
-		hasMiniCPMVProjector   = "clip.has_minicpmv_projector"
-		miniCPMVVersionKey     = "clip.minicpmv_version"
-		hasGLMProjectorKey     = "clip.has_glm_projector"
-		hasQwen2VLMergerKey    = "clip.has_qwen2vl_merger"
-		hasTextEncoderKey      = "clip.has_text_encoder"
-		hasVisionEncoderKey    = "clip.has_vision_encoder"
-		visionImageSizeKey     = "clip.vision.image_size"
-		visionPatchSizeKey     = "clip.vision.patch_size"
-		visionProjectionDim    = "clip.vision.projection_dim"
-		visionMMPatchMergeType = "clip.vision.mm_patch_merge_type"
+		projectorTypeKey           = "clip.projector_type"
+		hasLLaVAProjectorKey       = "clip.has_llava_projector"
+		hasMiniCPMVProjector       = "clip.has_minicpmv_projector"
+		miniCPMVVersionKey         = "clip.minicpmv_version"
+		hasGLMProjectorKey         = "clip.has_glm_projector"
+		hasQwen2VLMergerKey        = "clip.has_qwen2vl_merger"
+		hasTextEncoderKey          = "clip.has_text_encoder"
+		hasVisionEncoderKey        = "clip.has_vision_encoder"
+		visionImageSizeKey         = "clip.vision.image_size"
+		visionPatchSizeKey         = "clip.vision.patch_size"
+		visionProjectionDim        = "clip.vision.projection_dim"
+		visionMMPatchMergeType     = "clip.vision.mm_patch_merge_type"
+		visionProjectorScaleFactor = "clip.vision.projector.scale_factor"
 
 		textEmbeddingLengthKey              = "clip.text.embedding_length"
 		textBlockCountKey                   = "clip.text.block_count"
@@ -443,6 +448,7 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 		visionPatchSizeKey,
 		visionProjectionDim,
 		visionMMPatchMergeType,
+		visionProjectorScaleFactor,
 		textEmbeddingLengthKey,
 		textBlockCountKey,
 		textFeedForwardLengthKey,
@@ -493,6 +499,10 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 	ga.ClipVisionMMPatchMergeType = "flat"
 	if v, ok := m[visionMMPatchMergeType]; ok {
 		ga.ClipVisionMMPatchMergeType = v.ValueString()
+	}
+	ga.ClipVisionProjectorScaleFactor = 1
+	if v, ok := m[visionProjectorScaleFactor]; ok {
+		ga.ClipVisionProjectorScaleFactor = ValueNumeric[uint32](v)
 	}
 
 	if v, ok := m[textEmbeddingLengthKey]; ok {
