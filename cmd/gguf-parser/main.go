@@ -883,6 +883,19 @@ func main() {
 					"By default, gguf-parser always estimates the file which types with \"model\".",
 			},
 			&cli.BoolFlag{
+				Category: "Output",
+				Name:     "estimate",
+				Usage:    "Skip all the information except the estimate result.",
+				Action: func(_ *cli.Context, estimateOnly bool) error {
+					if estimateOnly {
+						skipMetadata = true
+						skipArchitecture = true
+						skipTokenizer = true
+					}
+					return nil
+				},
+			},
+			&cli.BoolFlag{
 				Destination: &inShort,
 				Value:       inShort,
 				Category:    "Output",

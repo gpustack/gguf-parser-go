@@ -134,6 +134,7 @@ GLOBAL OPTIONS:
 
    Output
 
+   --estimate           Skip all the information except the estimate result. (default: false)
    --in-mib             Display the estimated result in table with MiB. (default: false)
    --in-short           Display the estimated result in table in short form. (default: false)
    --json               Output as JSON. (default: false)
