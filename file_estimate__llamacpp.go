@@ -315,11 +315,6 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		if a.Architecture == "grok" {
 			o.FlashAttention = false
 		}
-		// Attention key length must be equal to attention value length,
-		// see https://github.com/ggerganov/llama.cpp/blob/19d3c8293b1f61acbe2dab1d49a17950fd788a4a/src/llama.cpp#L9571-L9574.
-		if a.AttentionKeyLength != a.AttentionValueLength {
-			o.FlashAttention = false
-		}
 		// Fallback to FP16 if the value type is quantized when disabling flash attention,
 		// see https://github.com/ggerganov/llama.cpp/blob/19d3c8293b1f61acbe2dab1d49a17950fd788a4a/src/llama.cpp#L9576-L9579.
 		if o.LMCCacheValueType.IsQuantized() && !o.FlashAttention {
@@ -577,7 +572,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			if o.FlashAttention {
 				// https://github.com/ggerganov/llama.cpp/blob/172c8256840ffd882ab9992ecedbb587d9b21f15/llama.cpp#L7387.
 				offloadAttnInc = GGMLTypeF16.RowSizeOf([]uint64{nKV, nTokens})
-				for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.attn_(norm|q|qkv)\.weight`)) {
+				for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.attn_(norm|q|qkv|q_b)\.weight`)) {
 					if strings.HasSuffix(l.Name, ".attn_norm.weight") {
 						rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
 						offloadAttnInc += rs

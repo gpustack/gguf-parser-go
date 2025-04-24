@@ -41,6 +41,8 @@ type (
 		ExpertCount uint32 `json:"expertCount,omitempty"`
 		// ExpertUsedCount(n_expert_used) is the number of experts used during each token evaluation in MoE models.
 		ExpertUsedCount uint32 `json:"expertUsedCount,omitempty"`
+		// ExpertSharedCount(n_expert_shared) is the number of shared experts in MoE models.
+		ExpertSharedCount uint32 `json:"expertSharedCount,omitempty"`
 		// AttentionHeadCount(n_head) is the number of attention heads.
 		AttentionHeadCount uint64 `json:"attentionHeadCount,omitempty"`
 		// AttentionHeadCountKV(n_head_kv) is the number of attention heads per group used in Grouped-Query-Attention.
@@ -58,14 +60,30 @@ type (
 		// AttentionLayerNormRMSEpsilon is the epsilon value used in the RMSNorm(root Mean Square Layer Normalization),
 		// which is a simplification of the original LayerNorm.
 		AttentionLayerNormRMSEpsilon float32 `json:"attentionLayerNormRMSEpsilon,omitempty"`
+		// AttentionQueryLORARank is the LORA rank of the query matrix.
+		//
+		// Zero means no LORA.
+		AttentionQueryLORARank uint32 `json:"attentionQueryLORARank,omitempty"`
+		// AttentionKeyValueLORARank is the LORA rank of the key/value matrix.
+		//
+		// Zero means no LORA.
+		AttentionKeyValueLORARank uint32 `json:"attentionKeyValueLORARank,omitempty"`
 		// AttentionKeyLength(n_embd_head_k) is the size of a key head.
 		//
 		// Defaults to `EmbeddingLength / AttentionHeadCount`.
 		AttentionKeyLength uint32 `json:"attentionKeyLength,omitempty"`
+		// AttentionKeyLengthMLA(n_embd_head_k_mla) is the size of a key head in MLA(Multi-Layer Attention).
+		//
+		// Zero means no MLA.
+		AttentionKeyLengthMLA uint32 `json:"attentionKeyLengthMLA,omitempty"`
 		// AttentionValueLength(n_embd_head_v) is the size of a value head.
 		//
 		// Defaults to `EmbeddingLength / AttentionHeadCount`.
 		AttentionValueLength uint32 `json:"attentionValueLength,omitempty"`
+		// AttentionValueLengthMLA(n_embd_head_v_mla) is the size of a value head in MLA(Multi-Layer Attention).
+		//
+		// Zero means no MLA.
+		AttentionValueLengthMLA uint32 `json:"attentionValueLengthMLA,omitempty"`
 		// AttentionCausal is true if the attention is causal.
 		AttentionCausal bool `json:"attentionCausal,omitempty"`
 		// RoPEDimensionCount is the number of dimensions in the RoPE(Rotary Positional Encoding).
@@ -561,8 +579,12 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 			ga.EmbeddingGQA = ga.AttentionHeadCount / ga.AttentionHeadCountKV
 		}
 		if ga.AttentionHeadCount > 0 {
-			ga.EmbeddingKeyGQA = uint64(ga.AttentionKeyLength) * ga.AttentionHeadCountKV
-			ga.EmbeddingValueGQA = uint64(ga.AttentionValueLength) * ga.AttentionHeadCountKV
+			akl, avl := uint64(ga.AttentionKeyLength), uint64(ga.AttentionValueLength)
+			if ga.AttentionKeyLengthMLA > 0 && ga.AttentionValueLengthMLA > 0 {
+				akl, avl = uint64(ga.AttentionKeyLengthMLA), uint64(ga.AttentionValueLengthMLA)
+			}
+			ga.EmbeddingKeyGQA = akl * ga.AttentionHeadCountKV
+			ga.EmbeddingValueGQA = avl * ga.AttentionHeadCountKV
 		}
 		if ga.Architecture == "mamba" {
 			ga.EmbeddingKeyGQA = uint64((ga.SSMConvolutionKernel - 1) * ga.SSMInnerSize)
@@ -619,6 +641,7 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 		expertSharedFeedForwardLengthKey = arch + ".expert_shared_feed_forward_length"
 		expertCountKey                   = arch + ".expert_count"
 		expertUsedCountKey               = arch + ".expert_used_count"
+		expertSharedCountKey             = arch + ".expert_shared_count"
 
 		attentionHeadCountKey           = arch + ".attention.head_count"
 		attentionHeadCountKVKey         = arch + ".attention.head_count_kv"
@@ -628,8 +651,12 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 		attentionClampKQVKey2           = arch + ".attention.clip_kqv"
 		attentionLayerNormEpsilonKey    = arch + ".attention.layer_norm_epsilon"
 		attentionLayerNormRMSEpsilonKey = arch + ".attention.layer_norm_rms_epsilon"
+		attentionQueryLORARankKey       = arch + ".attention.q_lora_rank"
+		attentionKeyValueLORARankKey    = arch + ".attention.kv_lora_rank"
 		attentionKeyLengthKey           = arch + ".attention.key_length"
+		attentionKeyLengthMLAKey        = arch + ".attention.key_length_mla"
 		attentionValueLengthKey         = arch + ".attention.value_length"
+		attentionValueLengthMLAKey      = arch + ".attention.value_length_mla"
 		attentionCausalKey              = arch + ".attention.causal"
 
 		ropeDimensionCountKey         = arch + ".rope.dimension_count"
@@ -661,6 +688,7 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 		expertSharedFeedForwardLengthKey,
 		expertCountKey,
 		expertUsedCountKey,
+		expertSharedCountKey,
 		attentionHeadCountKey,
 		attentionHeadCountKVKey,
 		attentionMaxALiBIBiasKey,
@@ -669,8 +697,12 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 		attentionClampKQVKey2,
 		attentionLayerNormEpsilonKey,
 		attentionLayerNormRMSEpsilonKey,
+		attentionQueryLORARankKey,
+		attentionKeyValueLORARankKey,
 		attentionKeyLengthKey,
+		attentionKeyLengthMLAKey,
 		attentionValueLengthKey,
+		attentionValueLengthMLAKey,
 		attentionCausalKey,
 		ropeDimensionCountKey,
 		ropeFrequencyBaseKey,
@@ -714,6 +746,9 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 	if v, ok := m[expertUsedCountKey]; ok {
 		ga.ExpertUsedCount = ValueNumeric[uint32](v)
 	}
+	if v, ok := m[expertSharedCountKey]; ok {
+		ga.ExpertSharedCount = ValueNumeric[uint32](v)
+	}
 	if v, ok := m[expertFeedForwardLengthKey]; ok {
 		ga.ExpertFeedForwardLength = ValueNumeric[uint64](v)
 	}
@@ -753,15 +788,27 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 	if v, ok := m[attentionLayerNormRMSEpsilonKey]; ok {
 		ga.AttentionLayerNormRMSEpsilon = ValueNumeric[float32](v)
 	}
+	if v, ok := m[attentionQueryLORARankKey]; ok {
+		ga.AttentionQueryLORARank = ValueNumeric[uint32](v)
+	}
+	if v, ok := m[attentionKeyValueLORARankKey]; ok {
+		ga.AttentionKeyValueLORARank = ValueNumeric[uint32](v)
+	}
 	if v, ok := m[attentionKeyLengthKey]; ok {
 		ga.AttentionKeyLength = ValueNumeric[uint32](v)
 	} else if ga.AttentionHeadCount != 0 {
 		ga.AttentionKeyLength = uint32(ga.EmbeddingLength / ga.AttentionHeadCount)
 	}
+	if v, ok := m[attentionKeyLengthMLAKey]; ok {
+		ga.AttentionKeyLengthMLA = ValueNumeric[uint32](v)
+	}
 	if v, ok := m[attentionValueLengthKey]; ok {
 		ga.AttentionValueLength = ValueNumeric[uint32](v)
 	} else if ga.AttentionHeadCount != 0 {
 		ga.AttentionValueLength = uint32(ga.EmbeddingLength / ga.AttentionHeadCount)
+	}
+	if v, ok := m[attentionValueLengthMLAKey]; ok {
+		ga.AttentionValueLengthMLA = ValueNumeric[uint32](v)
 	}
 	if v, ok := m[attentionCausalKey]; ok {
 		ga.AttentionCausal = v.ValueBool()
