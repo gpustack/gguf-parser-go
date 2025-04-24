@@ -745,8 +745,8 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 	// Init hyperparameters,
 	// see https://github.com/ggerganov/llama.cpp/blob/0827b2c1da299805288abbd556d869318f2b121e/examples/llava/clip.cpp#L599-L636.
 	var (
-		imgHeightSize     uint64
-		imgWidthSize      uint64
+		imgMaxHeightSize  uint64
+		imgMaxWidthSize   uint64
 		imgPatchSize      uint64
 		nPatchesHeight    uint64
 		nPatchesWidth     uint64
@@ -759,15 +759,15 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 		// See https://github.com/ggerganov/llama.cpp/blob/0827b2c1da299805288abbd556d869318f2b121e/examples/llava/llava.cpp#L397-L411,
 		//     https://github.com/ggerganov/llama.cpp/blob/0827b2c1da299805288abbd556d869318f2b121e/examples/llava/clip.cpp#L2323-L2345,
 		//     https://github.com/ggerganov/llama.cpp/blob/0827b2c1da299805288abbd556d869318f2b121e/examples/llava/clip.cpp#L2767-L2794.
-		imgHeightSize = uint64(a.ClipVisionImageSize)
-		imgWidthSize = imgHeightSize
+		imgMaxHeightSize = uint64(a.ClipVisionImageSize)
+		imgMaxWidthSize = imgMaxHeightSize
 		imgPatchSize = uint64(a.ClipVisionPatchSize)
 		if a.ClipHasQwen2VLMerger {
-			imgHeightSize = uint64(ptr.Deref(o.LMCVisualMaxImageSize, 224))
-			imgWidthSize = imgHeightSize
+			imgMaxHeightSize = uint64(ptr.Deref(o.LMCVisualMaxImageSize, 224))
+			imgMaxWidthSize = imgMaxHeightSize
 		}
-		nPatchesHeight = imgHeightSize / imgPatchSize
-		nPatchesWidth = imgWidthSize / imgPatchSize
+		nPatchesHeight = imgMaxHeightSize / imgPatchSize
+		nPatchesWidth = imgMaxWidthSize / imgPatchSize
 		nPatches = nPatchesHeight * nPatchesWidth
 		imgPatchesMaxSize = 1
 		imgPatches = nPatches
@@ -814,12 +814,12 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 			}
 		case "qwen2vl_merger":
 			nSizePatch := uint64(a.ClipVisionPatchSize * 2)
-			imgHeightPatchSize := imgHeightSize / nSizePatch
-			if imgHeightSize%nSizePatch > 0 {
+			imgHeightPatchSize := imgMaxHeightSize / nSizePatch
+			if imgMaxHeightSize%nSizePatch > 0 {
 				imgHeightPatchSize++
 			}
-			imgWidthPatchSize := imgWidthSize / nSizePatch
-			if imgWidthSize%nSizePatch > 0 {
+			imgWidthPatchSize := imgMaxWidthSize / nSizePatch
+			if imgMaxWidthSize%nSizePatch > 0 {
 				imgWidthPatchSize++
 			}
 			imgPatches = imgHeightPatchSize * imgWidthPatchSize
@@ -835,6 +835,13 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 			imgPatches /= uint64(a.ClipVisionProjectorScaleFactor)
 			if ti, ok := gf.TensorInfos.Get("mm.model.fc.weight"); ok {
 				projectionDim = ti.Dimensions[1]
+			}
+		case "pixtral":
+			imgHeightPatchSize := imgMaxHeightSize / uint64(a.ClipVisionPatchSize)
+			imgWidthPatchSize := imgMaxWidthSize / uint64(a.ClipVisionPatchSize)
+			imgPatches = imgHeightPatchSize*imgWidthPatchSize + imgHeightPatchSize - 1 /* [IMG_BREAK] per row */
+			if ti, ok := gf.TensorInfos.Get("mm.2.bias"); ok {
+				projectionDim = ti.Dimensions[0]
 			}
 		}
 	}
@@ -916,7 +923,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 		}
 		// First, get the usage of input layer.
 		var (
-			inpRaw     = GGMLTypeF32.RowSizeOf([]uint64{imgWidthSize, imgHeightSize, 3, nBatch})                // F32 [img_width, img_height, 3, n_batch]
+			inpRaw     = GGMLTypeF32.RowSizeOf([]uint64{imgMaxWidthSize, imgMaxHeightSize, 3, nBatch})          // F32 [img_width, img_height, 3, n_batch]
 			inpRawCnt  = GGMLTypeF32.RowSizeOf([]uint64{nPatches, nEmbd, nBatch})                               // I32 [n_patches, n_embd, n_batch]
 			inpEmbd    = GGMLTypeF32.RowSizeOf([]uint64{nEmbd, nPositions, nBatch})                             // F32 [n_embd, n_positions, n_batch]
 			inpPosEmbd = GGMLTypeF32.RowSizeOf([]uint64{projectionDim, nPatchesHeight * nPatchesWidth, nBatch}) // F32 [mmproj, pos_h * pos_w, n_batch]

@@ -490,6 +490,7 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 	if v, ok := m[visionImageSizeKey]; ok {
 		ga.ClipVisionImageSize = ValueNumeric[uint32](v)
 	}
+	ga.ClipVisionPatchSize = 1
 	if v, ok := m[visionPatchSizeKey]; ok {
 		ga.ClipVisionPatchSize = ValueNumeric[uint32](v)
 	}
