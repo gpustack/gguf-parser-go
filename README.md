@@ -56,6 +56,7 @@ download it.
 
 ## Notes
 
+- **Since v0.16.0**, GGUF Parser can estimate MLA-supported model file, like DeepSeek series.
 - **Since v0.14.0 (BREAKING CHANGE)**, GGUF Parser parses `*.feed_forward_length` metadata as `[]uint64`,
   which means the architecture `feedForwardLength` is a list of integers.
 - **Since v0.13.0 (BREAKING CHANGE)**, GGUF Parser can parse files
