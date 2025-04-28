@@ -807,7 +807,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 			if ti, ok := gf.TensorInfos.Get("adapter.linear.dense_4h_to_h.weight"); ok {
 				projectionDim = ti.Dimensions[1]
 			}
-		case "qwen2vl_merger":
+		case "qwen2vl_merger", "qwen2.5vl_merger":
 			nSizePatch := uint64(a.ClipVisionPatchSize * 2)
 			imgHeightPatchSize := imgMaxHeightSize / nSizePatch
 			if imgMaxHeightSize%nSizePatch > 0 {
