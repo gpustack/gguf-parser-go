@@ -757,7 +757,9 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 		imgMaxHeightSize = uint64(a.ClipVisionImageSize)
 		imgMaxWidthSize = imgMaxHeightSize
 		imgPatchSize = uint64(a.ClipVisionPatchSize)
-		if a.ClipHasQwen2VLMerger {
+		if a.ClipHasQwen2VLMerger ||
+			a.ClipProjectorType == "qwen2vl_merger" ||
+			a.ClipProjectorType == "qwen2.5vl_merger" {
 			imgMaxHeightSize = uint64(ptr.Deref(o.LMCVisualMaxImageSize, 224))
 			imgMaxWidthSize = imgMaxHeightSize
 		}
@@ -767,12 +769,17 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 		imgPatchesMaxSize = 1
 		imgPatches = nPatches
 		switch {
-		case a.ClipHasLLaVAProjector:
+		case a.ClipHasLLaVAProjector ||
+			a.ClipProjectorType == "mlp" ||
+			a.ClipProjectorType == "mlp_norm" ||
+			a.ClipProjectorType == "ldp" ||
+			a.ClipProjectorType == "ldpv2":
 			// LLaVA 1.6 uses up to 6 patches
 			if a.ClipVisionMMPatchMergeType != "flat" {
 				imgPatchesMaxSize = 6
 			}
-		case a.ClipHasMiniCPMVProjector:
+		case a.ClipHasMiniCPMVProjector ||
+			a.ClipProjectorType == "resampler":
 			// MiniCPM-V uses up to 10 patches
 			imgPatchesMaxSize = 10
 		case a.ClipProjectorType == "adapter":
@@ -909,7 +916,9 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 				nPositions += 1
 			}
 			nPositionIDs = nPositions
-			if a.ClipHasQwen2VLMerger {
+			if a.ClipHasQwen2VLMerger ||
+				a.ClipProjectorType == "qwen2vl_merger" ||
+				a.ClipProjectorType == "qwen2.5vl_merger" {
 				nPositionIDs *= 4
 			}
 			nBatch = 1

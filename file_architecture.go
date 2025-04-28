@@ -127,10 +127,14 @@ type (
 		// ClipHasLLaVAProjector indicates whether the clip model has LLaVA projector or not.
 		//
 		// Only used when Architecture is "clip".
+		//
+		// Deprecated: use ClipProjectorType instead.
 		ClipHasLLaVAProjector bool `json:"clipHasLLaVAProjector,omitempty"`
 		// ClipHasMiniCPMVProjector indicates whether the clip model has MiniCPMV projector or not.
 		//
 		// Only used when Architecture is "clip".
+		//
+		// Deprecated: use ClipProjectorType instead.
 		ClipHasMiniCPMVProjector bool `json:"clipHasMiniCPMVProject,omitempty"`
 		// ClipMiniCPMVVersion is the version of the MiniCPMV projector.
 		//
@@ -139,10 +143,14 @@ type (
 		// ClipHasGLMProjector indicates whether the clip model has GLM projector or not.
 		//
 		// Only used when Architecture is "clip".
+		//
+		// Deprecated: use ClipProjectorType instead.
 		ClipHasGLMProjector bool `json:"clipHasGLMProjector,omitempty"`
 		// ClipHasQwen2VLMerger indicates whether the clip model has Qwen2VL merger or not.
 		//
 		// Only used when Architecture is "clip".
+		//
+		// Deprecated: use ClipProjectorType instead.
 		ClipHasQwen2VLMerger bool `json:"clipHasQwen2VLMerger,omitempty"`
 		// ClipHasTextEncoder indicates whether the clip model has text encoder or not.
 		//
