@@ -18,7 +18,7 @@ USAGE:
    gguf-parser [GLOBAL OPTIONS]
 
 VERSION:
-   ...
+   main
 
 GLOBAL OPTIONS:
    --debug        Enable debugging, verbosity. (default: false)
@@ -67,13 +67,13 @@ GLOBAL OPTIONS:
 
    Load
 
-   --cache-expiration value                                   Specify the expiration of cache, works with "--url/--hf-*/--ms-*/--ol-*". (default: 24h0m0s)
-   --cache-path value                                         Cache the read result to the path, works with "--url/--hf-*/--ms-*/--ol-*". (default: "/Users/thxcode/.cache/gguf-parser")
-   --skip-cache                                               Skip cache, works with "--url/--hf-*/--ms-*/--ol-*", default is caching the read result. (default: false)
-   --skip-dns-cache                                           Skip DNS cache, works with "--url/--hf-*/--ms-*/--ol-*", default is caching the DNS lookup result. (default: false)
-   --skip-proxy                                               Skip proxy settings, works with "--url/--hf-*/--ms-*/--ol-*", default is respecting the environment variables "HTTP_PROXY/HTTPS_PROXY/NO_PROXY". (default: false)
-   --skip-range-download-detect, --skip-rang-download-detect  Skip range download detect, works with "--url/--hf-*/--ms-*/--ol-*", default is detecting the range download support. (default: false)
-   --skip-tls-verify                                          Skip TLS verification, works with "--url/--hf-*/--ms-*/--ol-*", default is verifying the TLS certificate on HTTPs request. (default: false)
+   --cache-expiration value      Specify the expiration of cache, works with "--url/--hf-*/--ms-*/--ol-*". (default: 24h0m0s)
+   --cache-path value            Cache the read result to the path, works with "--url/--hf-*/--ms-*/--ol-*". (default: "/Users/thxcode/.cache/gguf-parser")
+   --skip-cache                  Skip cache, works with "--url/--hf-*/--ms-*/--ol-*", default is caching the read result. (default: false)
+   --skip-dns-cache              Skip DNS cache, works with "--url/--hf-*/--ms-*/--ol-*", default is caching the DNS lookup result. (default: false)
+   --skip-proxy                  Skip proxy settings, works with "--url/--hf-*/--ms-*/--ol-*", default is respecting the environment variables "HTTP_PROXY/HTTPS_PROXY/NO_PROXY". (default: false)
+   --skip-range-download-detect  Skip range download detect, works with "--url/--hf-*/--ms-*/--ol-*", default is detecting the range download support. (default: false)
+   --skip-tls-verify             Skip TLS verification, works with "--url/--hf-*/--ms-*/--ol-*", default is verifying the TLS certificate on HTTPs request. (default: false)
 
    Model/Local
 
