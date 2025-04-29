@@ -1603,7 +1603,7 @@ func mainAction(c *cli.Context) error {
 					m.Type,
 					sprintf(tenary(len(m.Name) == 0, "N/A", tenary(len([]rune(m.Name)) <= 20, m.Name, string([]rune(m.Name)[:20])+"..."))),
 					m.Architecture,
-					sprintf(m.FileType),
+					m.FileTypeDescriptor,
 					sprintf(m.LittleEndian),
 					sprintf(m.Size),
 					sprintf(m.Parameters),

@@ -53,6 +53,10 @@ type GGUFMetadata struct {
 	License string `json:"license,omitempty"`
 	// FileType describes the type of the majority of the tensors in the GGUF file.
 	FileType GGUFFileType `json:"fileType"`
+	// FileTypeDescriptor describes the type of the GGUF file according to the FileType and trait layer.
+	//
+	// This supplies the FileType with more detail.
+	FileTypeDescriptor string `json:"fileTypeDetail"`
 
 	/* Appendix */
 
@@ -70,50 +74,55 @@ type GGUFMetadata struct {
 }
 
 // GGUFFileType is a type of GGUF file,
-// see https://github.com/ggerganov/llama.cpp/blob/278d0e18469aacf505be18ce790a63c7cc31be26/ggml/include/ggml.h#L404-L433.
+// see https://github.com/ggerganov/llama.cpp/blob/278d0e18469aacf505be18ce790a63c7cc31be26/ggml/include/ggml.h#L404-L433,
+// and https://github.com/huggingface/huggingface.js/blob/2475d6d316135c0a4fceff6b3fe2aed0dde36ac1/packages/gguf/src/types.ts#L11-L48.
 type GGUFFileType uint32
 
 // GGUFFileType constants.
 //
 // GGUFFileTypeMostlyQ4_2, GGUFFileTypeMostlyQ4_3 are deprecated.
+// GGUFFileTypeMostlyQ4_0_4_4, GGUFFileTypeMostlyQ4_0_4_8, GGUFFileTypeMostlyQ4_0_8_8 are deprecated.
 //
-// GGUFFileTypeMostlyQ4_1_F16 is a special case where the majority of the tensors are Q4_1,
+// GGUFFileTypeMostlyQ4_1_SOME_F16 is a special case where the majority of the tensors are Q4_1,
 // but 'token_embd.weight' and 'output.weight' tensors are F16.
 const (
-	GGUFFileTypeAllF32           GGUFFileType = iota // F32
-	GGUFFileTypeMostlyF16                            // F16
-	GGUFFileTypeMostlyQ4_0                           // Q4_0
-	GGUFFileTypeMostlyQ4_1                           // Q4_1
-	GGUFFileTypeMostlyQ4_1_F16                       // Q4_1_F16
-	GGUFFileTypeMostlyQ4_2                           // Q4_2
-	GGUFFileTypeMostlyQ4_3                           // Q4_3
-	GGUFFileTypeMostlyQ8_0                           // Q8_0
-	GGUFFileTypeMostlyQ5_0                           // Q5_0
-	GGUFFileTypeMostlyQ5_1                           // Q5_1
-	GGUFFileTypeMostlyQ2_K                           // Q2_K
-	GGUFFileTypeMostlyQ3_K                           // Q3_K/Q3_K_S
-	GGUFFileTypeMostlyQ4_K                           // Q4_K/Q3_K_M
-	GGUFFileTypeMostlyQ5_K                           // Q5_K/Q3_K_L
-	GGUFFileTypeMostlyQ6_K                           // Q6_K/Q4_K_S
-	GGUFFileTypeMostlyIQ2_XXS                        // IQ2_XXS/Q4_K_M
-	GGUFFileTypeMostlyIQ2_XS                         // IQ2_XS/Q5_K_S
-	GGUFFileTypeMostlyIQ3_XXS                        // IQ3_XXS/Q5_K_M
-	GGUFFileTypeMostlyIQ1_S                          // IQ1_S/Q6_K
-	GGUFFileTypeMostlyIQ4_NL                         // IQ4_NL
-	GGUFFileTypeMostlyIQ3_S                          // IQ3_S
-	GGUFFileTypeMostlyIQ2_S                          // IQ2_S
-	GGUFFileTypeMostlyIQ4_XS                         // IQ4_XS
-	GGUFFileTypeMostlyIQ1_M                          // IQ1_M
-	GGUFFileTypeMostlyBF16                           // BF16
-	GGUFFileTypeMostlyQ4_0_4_4                       // Q4_0_4x4
-	GGUFFileTypeMostlyQ4_0_4_8                       // Q4_0_4x8
-	GGUFFileTypeMostlyQ4_0_8_8                       // Q4_0_8x8
-	GGUFFileTypeMostlyTQ1_0                          // TQ1_0
-	GGUFFileTypeMostlyTQ2_0                          // TQ2_0
-	GGUFFileTypeMostlyIQ4_NL_4_4                     // IQ4_NL_4x4
-	GGUFFileTypeMostlyIQ4_NL_4_8                     // IQ4_NL_4x8
-	GGUFFileTypeMostlyIQ4_NL_8_8                     // IQ4_NL_8x8
-	_GGUFFileTypeCount                               // Unknown
+	GGUFFileTypeMostlyF32           GGUFFileType = iota // MOSTLY_F32
+	GGUFFileTypeMostlyF16                               // MOSTLY_F16
+	GGUFFileTypeMostlyQ4_0                              // MOSTLY_Q4_0
+	GGUFFileTypeMostlyQ4_1                              // MOSTLY_Q4_1
+	GGUFFileTypeMostlyQ4_1_SOME_F16                     // MOSTLY_Q4_1_SOME_F16
+	GGUFFileTypeMostlyQ4_2                              // MOSTLY_Q4_2
+	GGUFFileTypeMostlyQ4_3                              // MOSTLY_Q4_3
+	GGUFFileTypeMostlyQ8_0                              // MOSTLY_Q8_0
+	GGUFFileTypeMostlyQ5_0                              // MOSTLY_Q5_0
+	GGUFFileTypeMostlyQ5_1                              // MOSTLY_Q5_1
+	GGUFFileTypeMostlyQ2_K                              // MOSTLY_Q2_K
+	GGUFFileTypeMostlyQ3_K_S                            // MOSTLY_Q3_K_S
+	GGUFFileTypeMostlyQ3_K_M                            // MOSTLY_Q3_K_M
+	GGUFFileTypeMostlyQ3_K_L                            // MOSTLY_Q3_K_L
+	GGUFFileTypeMostlyQ4_K_S                            // MOSTLY_Q4_K_S
+	GGUFFileTypeMostlyQ4_K_M                            // MOSTLY_Q4_K_M
+	GGUFFileTypeMostlyQ5_K_S                            // MOSTLY_Q5_K_S
+	GGUFFileTypeMostlyQ5_K_M                            // MOSTLY_Q5_K_M
+	GGUFFileTypeMostlyQ6_K                              // MOSTLY_Q6_K
+	GGUFFileTypeMostlyIQ2_XXS                           // MOSTLY_IQ2_XXS
+	GGUFFileTypeMostlyIQ2_XS                            // MOSTLY_IQ2_XS
+	GGUFFileTypeMostlyQ2_K_S                            // MOSTLY_Q2_K_S
+	GGUFFileTypeMostlyIQ3_XS                            // MOSTLY_IQ3_XS
+	GGUFFileTypeMostlyIQ3_XXS                           // MOSTLY_IQ3_XXS
+	GGUFFileTypeMostlyIQ1_S                             // MOSTLY_IQ1_S
+	GGUFFileTypeMostlyIQ4_NL                            // MOSTLY_IQ4_NL
+	GGUFFileTypeMostlyIQ3_S                             // MOSTLY_IQ3_S
+	GGUFFileTypeMostlyIQ3_M                             // MOSTLY_IQ3_M
+	GGUFFileTypeMostlyIQ2_S                             // MOSTLY_IQ2_S
+	GGUFFileTypeMostlyIQ2_M                             // MOSTLY_IQ2_M
+	GGUFFileTypeMostlyIQ4_XS                            // MOSTLY_IQ4_XS
+	GGUFFileTypeMostlyIQ1_M                             // MOSTLY_IQ1_M
+	GGUFFileTypeMostlyBF16                              // MOSTLY_BF16
+	GGUFFileTypeMostlyQ4_0_4_4                          // MOSTLY_Q4_0_4_4
+	GGUFFileTypeMostlyQ4_0_4_8                          // MOSTLY_Q4_0_4_8
+	GGUFFileTypeMostlyQ4_0_8_8                          // MOSTLY_Q4_0_8_8
+	_GGUFFileTypeCount                                  // Unknown
 )
 
 // Metadata returns the metadata of the GGUF file.
@@ -128,12 +137,9 @@ func (gf *GGUFFile) Metadata() (gm GGUFMetadata) {
 		urlKey          = "general.url"
 		descriptionKey  = "general.description"
 		licenseKey      = "general.license"
-		fileTypeKey     = "general.file_type"
 
 		controlVectorModelHintKey = "controlvector.model_hint"
 	)
-
-	gm.FileType = _GGUFFileTypeCount
 
 	m, _ := gf.Header.MetadataKV.Index([]string{
 		typeKey,
@@ -145,7 +151,6 @@ func (gf *GGUFFile) Metadata() (gm GGUFMetadata) {
 		urlKey,
 		descriptionKey,
 		licenseKey,
-		fileTypeKey,
 		controlVectorModelHintKey,
 	})
 
@@ -194,13 +199,7 @@ func (gf *GGUFFile) Metadata() (gm GGUFMetadata) {
 	if v, ok := m[licenseKey]; ok {
 		gm.License = v.ValueString()
 	}
-	if v, ok := m[fileTypeKey]; ok {
-		gm.FileType = GGUFFileType(ValueNumeric[uint32](v))
-	}
-
-	if gm.FileType >= _GGUFFileTypeCount {
-		gm.FileType = gf.guessFileType(gm.Architecture)
-	}
+	gm.FileType, gm.FileTypeDescriptor = gf.extractFileType(gm.Architecture)
 
 	gm.LittleEndian = gf.Header.Version < GGUFVersionV3 || gf.Header.Magic == GGUFMagicGGUFLe
 	gm.FileSize = gf.Size
@@ -216,13 +215,15 @@ func (gf *GGUFFile) Metadata() (gm GGUFMetadata) {
 // https://github.com/ggerganov/ggml/blob/a10a8b880c059b3b29356eb9a9f8df72f03cdb6a/src/ggml.c#L2730-L2763.
 func (t GGUFFileType) GGMLType() GGMLType {
 	switch t {
-	case GGUFFileTypeAllF32:
+	case GGUFFileTypeMostlyF32:
 		return GGMLTypeF32
 	case GGUFFileTypeMostlyF16:
 		return GGMLTypeF16
 	case GGUFFileTypeMostlyQ4_0:
 		return GGMLTypeQ4_0
 	case GGUFFileTypeMostlyQ4_1:
+		return GGMLTypeQ4_1
+	case GGUFFileTypeMostlyQ4_1_SOME_F16:
 		return GGMLTypeQ4_1
 	case GGUFFileTypeMostlyQ4_2:
 		return GGMLTypeQ4_2
@@ -236,11 +237,19 @@ func (t GGUFFileType) GGMLType() GGMLType {
 		return GGMLTypeQ5_1
 	case GGUFFileTypeMostlyQ2_K:
 		return GGMLTypeQ2_K
-	case GGUFFileTypeMostlyQ3_K:
+	case GGUFFileTypeMostlyQ3_K_S:
 		return GGMLTypeQ3_K
-	case GGUFFileTypeMostlyQ4_K:
+	case GGUFFileTypeMostlyQ3_K_M:
 		return GGMLTypeQ4_K
-	case GGUFFileTypeMostlyQ5_K:
+	case GGUFFileTypeMostlyQ3_K_L:
+		return GGMLTypeQ5_K
+	case GGUFFileTypeMostlyQ4_K_S:
+		return GGMLTypeQ6_K
+	case GGUFFileTypeMostlyQ4_K_M:
+		return GGMLTypeQ4_K
+	case GGUFFileTypeMostlyQ5_K_S:
+		return GGMLTypeQ5_K
+	case GGUFFileTypeMostlyQ5_K_M:
 		return GGMLTypeQ5_K
 	case GGUFFileTypeMostlyQ6_K:
 		return GGMLTypeQ6_K
@@ -248,6 +257,10 @@ func (t GGUFFileType) GGMLType() GGMLType {
 		return GGMLTypeIQ2_XXS
 	case GGUFFileTypeMostlyIQ2_XS:
 		return GGMLTypeIQ2_XS
+	case GGUFFileTypeMostlyQ2_K_S:
+		return GGMLTypeQ2_K
+	case GGUFFileTypeMostlyIQ3_XS:
+		return GGMLTypeIQ3_S
 	case GGUFFileTypeMostlyIQ3_XXS:
 		return GGMLTypeIQ3_XXS
 	case GGUFFileTypeMostlyIQ1_S:
@@ -256,7 +269,11 @@ func (t GGUFFileType) GGMLType() GGMLType {
 		return GGMLTypeIQ4_NL
 	case GGUFFileTypeMostlyIQ3_S:
 		return GGMLTypeIQ3_S
+	case GGUFFileTypeMostlyIQ3_M:
+		return GGMLTypeIQ3_S
 	case GGUFFileTypeMostlyIQ2_S:
+		return GGMLTypeIQ2_XS
+	case GGUFFileTypeMostlyIQ2_M:
 		return GGMLTypeIQ2_S
 	case GGUFFileTypeMostlyIQ4_XS:
 		return GGMLTypeIQ4_XS
@@ -270,43 +287,120 @@ func (t GGUFFileType) GGMLType() GGMLType {
 		return GGMLTypeQ4_0_4_8
 	case GGUFFileTypeMostlyQ4_0_8_8:
 		return GGMLTypeQ4_0_8_8
-	case GGUFFileTypeMostlyTQ1_0:
-		return GGMLTypeTQ1_0
-	case GGUFFileTypeMostlyTQ2_0:
-		return GGMLTypeTQ2_0
-	case GGUFFileTypeMostlyIQ4_NL_4_4:
-		return GGMLTypeIQ4_NL_4_4
-	case GGUFFileTypeMostlyIQ4_NL_4_8:
-		return GGMLTypeIQ4_NL_4_8
-	case GGUFFileTypeMostlyIQ4_NL_8_8:
-		return GGMLTypeIQ4_NL_8_8
 	default:
 	}
 	return _GGMLTypeCount
 }
 
-// guessFileType guesses the GGUF file type by
-// statistically analyzing the tensor types,
-// which is inspired by
-// https://huggingface.co/TheBloke/Llama-2-13B-chat-GGML#provided-files.
-func (gf *GGUFFile) guessFileType(arch string) GGUFFileType {
-	if len(gf.TensorInfos) == 0 {
-		return _GGUFFileTypeCount
+// extractFileType extracts the GGUF file type from the metadata,
+// it tries to return the descriptor of the file type.
+func (gf *GGUFFile) extractFileType(arch string) (fileType GGUFFileType, fileTypeDescriptor string) {
+	fileType, fileTypeDescriptor = _GGUFFileTypeCount, "Unknown"
+
+	const fileTypeKey = "general.file_type"
+	m, _ := gf.Header.MetadataKV.Index([]string{
+		fileTypeKey,
+	})
+	if v, ok := m[fileTypeKey]; ok {
+		fileType = GGUFFileType(ValueNumeric[uint32](v))
 	}
 
-	// Count.
-	cm := make(map[GGMLType]int)
-	for i := range gf.TensorInfos {
-		switch {
-		case arch != "diffusion" && !strings.HasPrefix(gf.TensorInfos[i].Name, "blk."):
-			continue
-		case arch == "diffusion" && !strings.HasSuffix(gf.TensorInfos[i].Name, ".weight"):
-			continue
+	if fileType == _GGUFFileTypeCount {
+		// Guess.
+		if len(gf.TensorInfos) != 0 {
+			cm := make(map[GGMLType]int)
+			for i := range gf.TensorInfos {
+				switch {
+				case arch != "diffusion" &&
+					!strings.HasPrefix(gf.TensorInfos[i].Name, "token_embd") &&
+					!strings.HasPrefix(gf.TensorInfos[i].Name, "blk.") &&
+					!strings.Contains(gf.TensorInfos[i].Name, "_norm") &&
+					!strings.HasSuffix(gf.TensorInfos[i].Name, ".weight"):
+					continue
+				case arch == "diffusion" &&
+					!strings.HasSuffix(gf.TensorInfos[i].Name, ".weight"):
+					continue
+				}
+				cm[gf.TensorInfos[i].Type]++
+			}
+			fileType = GetFileType(cm)
 		}
-		cm[gf.TensorInfos[i].Type]++
+	}
+	if fileType == _GGUFFileTypeCount {
+		return fileType, fileTypeDescriptor
 	}
 
-	return GetFileType(cm)
+	fileTypeDescriptor = strings.TrimPrefix(fileType.String(), "MOSTLY_")
+
+	const tokenEmbedWeightTensorName = "token_embd.weight"
+
+	switch fileType {
+	case GGUFFileTypeMostlyQ4_0:
+		tis, _ := gf.TensorInfos.Index([]string{tokenEmbedWeightTensorName})
+		if v, ok := tis[tokenEmbedWeightTensorName]; ok {
+			if v.Type == GGMLTypeQ8_0 || v.Type == GGMLTypeQ5_0 || v.Type == GGMLTypeQ5_1 {
+				fileTypeDescriptor = "Q4_0_L"
+			}
+		}
+	case GGUFFileTypeMostlyQ4_1:
+		tis, _ := gf.TensorInfos.Index([]string{tokenEmbedWeightTensorName})
+		if v, ok := tis[tokenEmbedWeightTensorName]; ok {
+			if v.Type == GGMLTypeQ8_0 || v.Type == GGMLTypeQ5_0 || v.Type == GGMLTypeQ5_1 {
+				fileTypeDescriptor = "Q4_1_L"
+			}
+		}
+	case GGUFFileTypeMostlyQ5_0:
+		tis, _ := gf.TensorInfos.Index([]string{tokenEmbedWeightTensorName})
+		if v, ok := tis[tokenEmbedWeightTensorName]; ok {
+			if v.Type == GGMLTypeQ8_0 {
+				fileTypeDescriptor = "Q5_0_L"
+			}
+		}
+	case GGUFFileTypeMostlyQ5_1:
+		tis, _ := gf.TensorInfos.Index([]string{tokenEmbedWeightTensorName})
+		if v, ok := tis[tokenEmbedWeightTensorName]; ok {
+			if v.Type == GGMLTypeQ8_0 {
+				fileTypeDescriptor = "Q5_1_L"
+			}
+		}
+	case GGUFFileTypeMostlyQ2_K:
+		tis, _ := gf.TensorInfos.Index([]string{tokenEmbedWeightTensorName})
+		if v, ok := tis[tokenEmbedWeightTensorName]; ok {
+			if v.Type == GGMLTypeQ8_0 || v.Type == GGMLTypeQ4_K {
+				fileTypeDescriptor = "Q2_K_L"
+			}
+		}
+	case GGUFFileTypeMostlyQ3_K_M:
+		tis, _ := gf.TensorInfos.Index([]string{tokenEmbedWeightTensorName})
+		if v, ok := tis[tokenEmbedWeightTensorName]; ok {
+			if v.Type == GGMLTypeQ8_0 {
+				fileTypeDescriptor = "Q3_K_L"
+			}
+		}
+	case GGUFFileTypeMostlyQ4_K_M:
+		tis, _ := gf.TensorInfos.Index([]string{tokenEmbedWeightTensorName})
+		if v, ok := tis[tokenEmbedWeightTensorName]; ok {
+			if v.Type == GGMLTypeQ8_0 {
+				fileTypeDescriptor = "Q4_K_L"
+			}
+		}
+	case GGUFFileTypeMostlyQ5_K_M:
+		tis, _ := gf.TensorInfos.Index([]string{tokenEmbedWeightTensorName})
+		if v, ok := tis[tokenEmbedWeightTensorName]; ok {
+			if v.Type == GGMLTypeQ8_0 {
+				fileTypeDescriptor = "Q5_K_L"
+			}
+		}
+	case GGUFFileTypeMostlyQ6_K:
+		tis, _ := gf.TensorInfos.Index([]string{tokenEmbedWeightTensorName})
+		if v, ok := tis[tokenEmbedWeightTensorName]; ok {
+			if v.Type == GGMLTypeQ8_0 {
+				fileTypeDescriptor = "Q6_K_L"
+			}
+		}
+	}
+
+	return fileType, fileTypeDescriptor
 }
 
 // GetFileType returns the GGUFFileType represented the mostly GGMLType of the given tensors counter.
@@ -326,7 +420,7 @@ func GetFileType(cm map[GGMLType]int) GGUFFileType {
 	// Guess.
 	if ts[0] == GGMLTypeF32 {
 		if len(ts) == 1 {
-			return GGUFFileTypeAllF32
+			return GGUFFileTypeMostlyF32
 		}
 		ts[0] = ts[1]
 	}
@@ -348,42 +442,54 @@ func GetFileType(cm map[GGMLType]int) GGUFFileType {
 	case GGMLTypeQ8_0:
 		return GGUFFileTypeMostlyQ8_0
 	case GGMLTypeQ2_K:
+		if ts[len(ts)-1] == GGMLTypeQ5_K {
+			return GGUFFileTypeMostlyQ2_K_S
+		}
 		return GGUFFileTypeMostlyQ2_K
 	case GGMLTypeQ3_K:
-		switch ts[1] {
-		case GGMLTypeQ4_K: // Legacy, Q3_K_M.
-			return GGUFFileTypeMostlyQ4_K
-		case GGMLTypeQ5_K: // Legacy, Q3_K_L.
-			return GGUFFileTypeMostlyQ5_K
-		default: // Legacy. Q3_K_S
-			return GGUFFileTypeMostlyQ3_K
+		if cm[GGMLTypeQ8_0] > 0 ||
+			(cm[GGMLTypeQ5_K] > 1 && cm[GGMLTypeQ4_K] == 0) {
+			return GGUFFileTypeMostlyQ3_K_L
 		}
+		if cm[GGMLTypeQ4_K] > 1 {
+			return GGUFFileTypeMostlyQ3_K_M
+		}
+		return GGUFFileTypeMostlyQ3_K_S
 	case GGMLTypeQ4_K:
-		if len(ts) > 2 && ts[2] == GGMLTypeQ6_K { // Legacy, Q4_K_M.
-			return GGUFFileTypeMostlyIQ2_XXS
+		if cm[GGMLTypeQ6_K] > 1 {
+			return GGUFFileTypeMostlyQ4_K_M
 		}
-		return GGUFFileTypeMostlyQ6_K // Legacy. Q4_K_S
+		if cm[GGMLTypeQ3_K] > 1 {
+			return GGUFFileTypeMostlyQ3_K_M
+		}
+		return GGUFFileTypeMostlyQ4_K_S
 	case GGMLTypeQ5_K:
-		if len(ts) > 2 && ts[2] == GGMLTypeQ6_K { // Legacy, Q5_K_M.
-			return GGUFFileTypeMostlyIQ3_XXS
+		if cm[GGMLTypeQ6_K] > 1 {
+			return GGUFFileTypeMostlyQ5_K_M
 		}
-		return GGUFFileTypeMostlyIQ2_XS // Legacy. Q5_K_S
+		return GGUFFileTypeMostlyQ5_K_S
 	case GGMLTypeQ6_K:
-		return GGUFFileTypeMostlyIQ1_S // Legacy. Q6_K
+		return GGUFFileTypeMostlyQ6_K
 	case GGMLTypeIQ2_XXS:
 		return GGUFFileTypeMostlyIQ2_XXS
 	case GGMLTypeIQ2_XS:
+		if cm[GGMLTypeIQ4_XS] > 1 {
+			return GGUFFileTypeMostlyIQ2_S
+		}
 		return GGUFFileTypeMostlyIQ2_XS
+	case GGMLTypeIQ2_S:
+		return GGUFFileTypeMostlyIQ2_M
 	case GGMLTypeIQ3_XXS:
 		return GGUFFileTypeMostlyIQ3_XXS
+	case GGMLTypeIQ3_S:
+		if cm[GGMLTypeIQ3_XXS] > 1 {
+			return GGUFFileTypeMostlyIQ3_XS
+		}
+		return GGUFFileTypeMostlyIQ3_S
 	case GGMLTypeIQ1_S:
 		return GGUFFileTypeMostlyIQ1_S
 	case GGMLTypeIQ4_NL:
 		return GGUFFileTypeMostlyIQ4_NL
-	case GGMLTypeIQ3_S:
-		return GGUFFileTypeMostlyIQ3_S
-	case GGMLTypeIQ2_S:
-		return GGUFFileTypeMostlyIQ2_S
 	case GGMLTypeIQ4_XS:
 		return GGUFFileTypeMostlyIQ4_XS
 	case GGMLTypeIQ1_M:
@@ -396,16 +502,6 @@ func GetFileType(cm map[GGMLType]int) GGUFFileType {
 		return GGUFFileTypeMostlyQ4_0_4_8
 	case GGMLTypeQ4_0_8_8:
 		return GGUFFileTypeMostlyQ4_0_8_8
-	case GGMLTypeTQ1_0:
-		return GGUFFileTypeMostlyTQ1_0
-	case GGMLTypeTQ2_0:
-		return GGUFFileTypeMostlyTQ2_0
-	case GGMLTypeIQ4_NL_4_4:
-		return GGUFFileTypeMostlyIQ4_NL_4_4
-	case GGMLTypeIQ4_NL_4_8:
-		return GGUFFileTypeMostlyIQ4_NL_4_8
-	case GGMLTypeIQ4_NL_8_8:
-		return GGUFFileTypeMostlyIQ4_NL_8_8
 	default:
 	}
 	return _GGUFFileTypeCount

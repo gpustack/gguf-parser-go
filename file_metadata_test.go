@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/davecgh/go-spew/spew"
@@ -47,9 +48,10 @@ func BenchmarkGGUFFile_Metadata(b *testing.B) {
 	}
 }
 
-func TestGGUFFile_guessFileType(t *testing.T) {
+func TestGGUFFile_extractFileType(t *testing.T) {
 	ctx := context.Background()
 
+	repo := "NousResearch/Hermes-2-Pro-Mistral-7B-GGUF"
 	cases := []string{
 		"Q2_K",
 		"Q3_K_L",
@@ -65,17 +67,126 @@ func TestGGUFFile_guessFileType(t *testing.T) {
 		"Q8_0",
 	}
 	for _, tc := range cases {
-		t.Run(tc, func(t *testing.T) {
+		t.Run(repo+"/"+tc, func(t *testing.T) {
 			gf, err := ParseGGUFFileFromHuggingFace(
 				ctx,
-				"NousResearch/Hermes-2-Pro-Mistral-7B-GGUF",
+				repo,
 				fmt.Sprintf("Hermes-2-Pro-Mistral-7B.%s.gguf", tc))
 			if err != nil {
 				t.Fatal(err)
 				return
 			}
 			md := gf.Metadata()
-			assert.Equal(t, md.FileType.String(), gf.guessFileType(md.Architecture).String(), tc+" file type should be equal")
+			ft, ftd := gf.extractFileType(md.Architecture)
+			assert.Equal(t, md.FileType.String(), ft.String(), tc+" file type should be equal")
+			assert.Equal(t, tc, ftd, tc+" file type descriptor should be equal")
+		})
+	}
+
+	repo = "Mungert/Qwen2.5-VL-3B-Instruct-GGUF"
+	cases = []string{
+		"IQ2_M",
+		"IQ2_S",
+		"IQ2_XS",
+		"IQ2_XXS",
+		"IQ3_M",
+		"IQ3_S",
+		"IQ3_XS",
+		"IQ3_XXS",
+		"IQ4_NL",
+		"IQ4_XS",
+		"Q2_K_L",
+		"Q2_K_S",
+		"Q3_K_L",
+		"Q3_K_M",
+		"Q3_K_S",
+		"Q4_0",
+		"Q4_0_L",
+		"Q4_1",
+		"Q4_1_L",
+		"Q4_K_L",
+		"Q4_K_M",
+		"Q4_K_S",
+		"Q5_0",
+		"Q5_0_L",
+		"Q5_K_L",
+		"Q5_K_M",
+		"Q5_K_S",
+		"Q6_K_L",
+		// "Q6_K_M", == "Q6_K"
+		"Q8_0",
+	}
+	for _, tc := range cases {
+		t.Run(repo+"/"+tc, func(t *testing.T) {
+			gf, err := ParseGGUFFileFromHuggingFace(
+				ctx,
+				repo,
+				fmt.Sprintf("Qwen2.5-VL-3B-Instruct-%s.gguf", strings.ToLower(tc)))
+			if err != nil {
+				t.Fatal(err)
+				return
+			}
+			md := gf.Metadata()
+			ft, ftd := gf.extractFileType(md.Architecture)
+			assert.Equal(t, md.FileType.String(), ft.String(), tc+" file type should be equal")
+			assert.Equal(t, tc, ftd, tc+" file type descriptor should be equal")
+		})
+	}
+
+	repo = "unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF"
+	cases = []string{
+		"BF16",
+		"Q2_K",
+		"Q2_K_L",
+		"Q3_K_M",
+		"Q4_K_M",
+		"Q5_K_M",
+		"Q6_K",
+		"Q8_0",
+	}
+	for _, tc := range cases {
+		t.Run(repo+"/"+tc, func(t *testing.T) {
+			gf, err := ParseGGUFFileFromHuggingFace(
+				ctx,
+				repo,
+				fmt.Sprintf("DeepSeek-R1-Distill-Qwen-1.5B-%s.gguf", tc))
+			if err != nil {
+				t.Fatal(err)
+				return
+			}
+			md := gf.Metadata()
+			ft, ftd := gf.extractFileType(md.Architecture)
+			assert.Equal(t, md.FileType.String(), ft.String(), tc+" file type should be equal")
+			assert.Equal(t, tc, ftd, tc+" file type descriptor should be equal")
+		})
+	}
+
+	repo = "unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF"
+	cases = []string{
+		"IQ1_M",
+		"IQ1_S",
+		"IQ2_M",
+		"IQ2_XXS",
+		"IQ3_XXS",
+		"IQ4_XS",
+		// "Q2_K_XL" == "Q2_K_L"
+		// "Q3_K_XL" == "Q3_K_M"
+		// "Q4_K_XL" == "Q4_K_M"
+	}
+	for _, tc := range cases {
+		t.Run(repo+"/"+tc, func(t *testing.T) {
+			gf, err := ParseGGUFFileFromHuggingFace(
+				ctx,
+				repo,
+				fmt.Sprintf("DeepSeek-R1-Distill-Qwen-1.5B-UD-%s.gguf", tc))
+			if err != nil {
+				t.Fatal(err)
+				return
+			}
+			md := gf.Metadata()
+			ft, ftd := gf.extractFileType(md.Architecture)
+			assert.Equal(t, md.FileType.String(), ft.String(), tc+" file type should be equal")
+			assert.Equal(t, tc, ftd, tc+" file type descriptor should be equal")
 		})
 	}
 }

@@ -56,6 +56,10 @@ download it.
 
 ## Notes
 
+- **Since v0.17.0**, GGUF Parser align the `QUANTIZATION`(
+  aka. [`general.file_type`](https://github.com/ggml-org/ggml/blob/master/docs/gguf.md#general-metadata))
+  to [HuggingFace processing](https://github.com/huggingface/huggingface.js/blob/2475d6d316135c0a4fceff6b3fe2aed0dde36ac1/packages/gguf/src/types.ts#L11-L48),
+  but there are still many model files whose naming does not fully follow `general.file_type`.
 - **Since v0.16.0**, GGUF Parser can estimate MLA-supported model file, like DeepSeek series.
 - **Since v0.14.0 (BREAKING CHANGE)**, GGUF Parser parses `*.feed_forward_length` metadata as `[]uint64`,
   which means the architecture `feedForwardLength` is a list of integers.
@@ -94,13 +98,13 @@ Install from [releases](https://github.com/gpustack/gguf-parser-go/releases).
 
 ```shell
 $ gguf-parser --path ~/.cache/lm-studio/models/unsloth/DeepSeek-R1-Distill-Qwen-7B-GGUF/DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf
-+-------------------------------------------------------------------------------------------------------------+
-| METADATA                                                                                                    |
-+-------+-------------------------+-------+----------------+---------------+----------+------------+----------+
-|  TYPE |           NAME          |  ARCH |  QUANTIZATION  | LITTLE ENDIAN |   SIZE   | PARAMETERS |    BPW   |
-+-------+-------------------------+-------+----------------+---------------+----------+------------+----------+
-| model | DeepSeek R1 Distill ... | qwen2 | IQ2_XXS/Q4_K_M |      true     | 4.36 GiB |   7.62 B   | 4.91 bpw |
-+-------+-------------------------+-------+----------------+---------------+----------+------------+----------+
++-----------------------------------------------------------------------------------------------------------+
+| METADATA                                                                                                  |
++-------+-------------------------+-------+--------------+---------------+----------+------------+----------+
+|  TYPE |           NAME          |  ARCH | QUANTIZATION | LITTLE ENDIAN |   SIZE   | PARAMETERS |    BPW   |
++-------+-------------------------+-------+--------------+---------------+----------+------------+----------+
+| model | DeepSeek R1 Distill ... | qwen2 |    Q4_K_M    |      true     | 4.36 GiB |   7.62 B   | 4.91 bpw |
++-------+-------------------------+-------+--------------+---------------+----------+------------+----------+
 
 +---------------------------------------------------------------------------------------------------------------------------------------------------+
 | ARCHITECTURE                                                                                                                                      |
@@ -156,6 +160,14 @@ $  gguf-parser --path ~/.cache/lm-studio/models/Qwen/Qwen2.5-7B-Instruct-GGUF/qw
 +-------+-------------+------------+------------------+-----------+-----------+-----------+-----------+---------------+-----------------+---------------+
 
 +-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ESTIMATE                                                                                                                                                                                                                                      |
++-------+--------------+--------------------+-----------------+-----------+----------------+-------------+---------------+----------------+----------------+----------------------------------------------+-------------------------------------+
+|  ARCH | CONTEXT SIZE | BATCH SIZE (L / P) | FLASH ATTENTION | MMAP LOAD | EMBEDDING ONLY |  RERANKING  | DISTRIBUTABLE | OFFLOAD LAYERS | FULL OFFLOADED |                      RAM                     |                VRAM 0               |
+|       |              |                    |                 |           |                |             |               |                |                +--------------------+------------+------------+----------------+--------+-----------+
+|       |              |                    |                 |           |                |             |               |                |                | LAYERS (I + T + O) |     UMA    |   NONUMA   | LAYERS (T + O) |   UMA  |   NONUMA  |
++-------+--------------+--------------------+-----------------+-----------+----------------+-------------+---------------+----------------+----------------+--------------------+------------+------------+----------------+--------+-----------+
+| qwen2 |    131072    |     2048 / 512     |     Disabled    |  Enabled  |       No       | Unsupported |   Supported   |   29 (28 + 1)  |       Yes      |      1 + 0 + 0     | 654.26 MiB | 804.26 MiB |     28 + 1     |  7 GiB | 21.52 GiB |
++-------+--------------+--------------------+-----------------+-----------+----------------+-------------+---------------+----------------+----------------+--------------------+------------+------------+----------------+--------+-----------+
 
 ```
 
@@ -163,13 +175,13 @@ $  gguf-parser --path ~/.cache/lm-studio/models/Qwen/Qwen2.5-7B-Instruct-GGUF/qw
 
 ```shell
 $ gguf-parser --url="https://huggingface.co/bartowski/Qwen2.5-72B-Instruct-GGUF/resolve/main/Qwen2.5-72B-Instruct-Q4_K_M.gguf"
-+-----------------------------------------------------------------------------------------------------------+
-| METADATA                                                                                                  |
-+-------+----------------------+-------+----------------+---------------+-----------+------------+----------+
-|  TYPE |         NAME         |  ARCH |  QUANTIZATION  | LITTLE ENDIAN |    SIZE   | PARAMETERS |    BPW   |
-+-------+----------------------+-------+----------------+---------------+-----------+------------+----------+
-| model | Qwen2.5 72B Instruct | qwen2 | IQ2_XXS/Q4_K_M |      true     | 44.15 GiB |   72.71 B  | 5.22 bpw |
-+-------+----------------------+-------+----------------+---------------+-----------+------------+----------+
++---------------------------------------------------------------------------------------------------------+
+| METADATA                                                                                                |
++-------+----------------------+-------+--------------+---------------+-----------+------------+----------+
+|  TYPE |         NAME         |  ARCH | QUANTIZATION | LITTLE ENDIAN |    SIZE   | PARAMETERS |    BPW   |
++-------+----------------------+-------+--------------+---------------+-----------+------------+----------+
+| model | Qwen2.5 72B Instruct | qwen2 |    Q4_K_M    |      true     | 44.15 GiB |   72.71 B  | 5.22 bpw |
++-------+----------------------+-------+--------------+---------------+-----------+------------+----------+
 
 +---------------------------------------------------------------------------------------------------------------------------------------------------+
 | ARCHITECTURE                                                                                                                                      |
@@ -205,7 +217,7 @@ $ gguf-parser --url="https://huggingface.co/unsloth/DeepSeek-R1-GGUF/resolve/mai
 +-------+------------------+-----------+--------------+---------------+------------+------------+----------+
 |  TYPE |       NAME       |    ARCH   | QUANTIZATION | LITTLE ENDIAN |    SIZE    | PARAMETERS |    BPW   |
 +-------+------------------+-----------+--------------+---------------+------------+------------+----------+
-| model | DeepSeek R1 BF16 | deepseek2 |     BF16     |      true     | 130.60 GiB |  671.03 B  | 1.67 bpw |
+| model | DeepSeek R1 BF16 | deepseek2 |     IQ1_S    |      true     | 130.60 GiB |  671.03 B  | 1.67 bpw |
 +-------+------------------+-----------+--------------+---------------+------------+------------+----------+
 
 +---------------------------------------------------------------------------------------------------------------------------------------------------+
@@ -369,13 +381,13 @@ $ gguf-parser --ms-repo="unsloth/DeepSeek-R1-Distill-Qwen-7B-GGUF" --ms-file="De
 
 ```shell
 $ gguf-parser --ol-model="llama3.3"
-+--------------------------------------------------------------------------------------------------------------+
-| METADATA                                                                                                     |
-+-------+-------------------------+-------+----------------+---------------+-----------+------------+----------+
-|  TYPE |           NAME          |  ARCH |  QUANTIZATION  | LITTLE ENDIAN |    SIZE   | PARAMETERS |    BPW   |
-+-------+-------------------------+-------+----------------+---------------+-----------+------------+----------+
-| model | Llama 3.1 70B Instru... | llama | IQ2_XXS/Q4_K_M |      true     | 39.59 GiB |   70.55 B  | 4.82 bpw |
-+-------+-------------------------+-------+----------------+---------------+-----------+------------+----------+
++------------------------------------------------------------------------------------------------------------+
+| METADATA                                                                                                   |
++-------+-------------------------+-------+--------------+---------------+-----------+------------+----------+
+|  TYPE |           NAME          |  ARCH | QUANTIZATION | LITTLE ENDIAN |    SIZE   | PARAMETERS |    BPW   |
++-------+-------------------------+-------+--------------+---------------+-----------+------------+----------+
+| model | Llama 3.1 70B Instru... | llama |    Q4_K_M    |      true     | 39.59 GiB |   70.55 B  | 4.82 bpw |
++-------+-------------------------+-------+--------------+---------------+-----------+------------+----------+
 
 +---------------------------------------------------------------------------------------------------------------------------------------------------+
 | ARCHITECTURE                                                                                                                                      |
@@ -406,13 +418,13 @@ $ gguf-parser --ol-model="llama3.3"
 $ # Ollama Model includes the preset params and other artifacts, like multimodal projectors or LoRA adapters, 
 $ # you can get the usage of Ollama running by using `--ol-usage` option.
 
-$ +--------------------------------------------------------------------------------------------------------------+
-| METADATA                                                                                                     |
-+-------+-------------------------+-------+----------------+---------------+-----------+------------+----------+
-|  TYPE |           NAME          |  ARCH |  QUANTIZATION  | LITTLE ENDIAN |    SIZE   | PARAMETERS |    BPW   |
-+-------+-------------------------+-------+----------------+---------------+-----------+------------+----------+
-| model | Llama 3.1 70B Instru... | llama | IQ2_XXS/Q4_K_M |      true     | 39.59 GiB |   70.55 B  | 4.82 bpw |
-+-------+-------------------------+-------+----------------+---------------+-----------+------------+----------+
++------------------------------------------------------------------------------------------------------------+
+| METADATA                                                                                                   |
++-------+-------------------------+-------+--------------+---------------+-----------+------------+----------+
+|  TYPE |           NAME          |  ARCH | QUANTIZATION | LITTLE ENDIAN |    SIZE   | PARAMETERS |    BPW   |
++-------+-------------------------+-------+--------------+---------------+-----------+------------+----------+
+| model | Llama 3.1 70B Instru... | llama |    Q4_K_M    |      true     | 39.59 GiB |   70.55 B  | 4.82 bpw |
++-------+-------------------------+-------+--------------+---------------+-----------+------------+----------+
 
 +---------------------------------------------------------------------------------------------------------------------------------------------------+
 | ARCHITECTURE                                                                                                                                      |
@@ -642,7 +654,7 @@ flowchart TD
 ```
 
 ```shell
-$ gguf-parser --hf-repo="hierholzer/Llama-3.1-70B-Instruct-GGUF" --hf-file="Llama-3.1-70B-Instruct-Q4_K_M.gguf" --skip-metadata --skip-architecture --skip-tokenizer --ctx-size=1024 --tensor-split="8,10" --in-short
+$ gguf-parser --hf-repo="hierholzer/Llama-3.1-70B-Instruct-GGUF" --hf-file="Llama-3.1-70B-Instruct-Q4_K_M.gguf" --estimate --ctx-size=1024 --tensor-split="8,10" --in-short
 +------------------------------------------------------------------------------------------------------------------------------+
 | ESTIMATE                                                                                                                     |
 +----------------------------------------------+--------------------------------------+----------------------------------------+
@@ -695,7 +707,7 @@ flowchart TD
 ```
 
 ```shell
-$ gguf-parser --hf-repo="hierholzer/Llama-3.1-70B-Instruct-GGUF" --hf-file="Llama-3.1-70B-Instruct-Q4_K_M.gguf" --skip-metadata --skip-architecture --skip-tokenizer --ctx-size=1024 --tensor-split="8,10,12,6" --rpc="host1:50052,host1:50053,host2:50052,host3:50052" --in-short
+$ gguf-parser --hf-repo="hierholzer/Llama-3.1-70B-Instruct-GGUF" --hf-file="Llama-3.1-70B-Instruct-Q4_K_M.gguf" --estimate --ctx-size=1024 --tensor-split="8,10,12,6" --rpc="host1:50052,host1:50053,host2:50052,host3:50052" --in-short
 +------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
 | ESTIMATE                                                                                                                                                                                                                                 |
 +----------------------------------------------+----------------------------------------------+----------------------------------------------+----------------------------------------------+----------------------------------------------+
@@ -747,7 +759,7 @@ flowchart TD
 ```
 
 ```shell
-$ gguf-parser --hf-repo="hierholzer/Llama-3.1-70B-Instruct-GGUF" --hf-file="Llama-3.1-70B-Instruct-Q4_K_M.gguf" --skip-metadata --skip-architecture --skip-tokenizer --ctx-size=1024 --tensor-split="11,12,8,10,6" --rpc="host4:50052,host2:50052,host1:50052,host1:50053" --in-short
+$ gguf-parser --hf-repo="hierholzer/Llama-3.1-70B-Instruct-GGUF" --hf-file="Llama-3.1-70B-Instruct-Q4_K_M.gguf" --estimate --ctx-size=1024 --tensor-split="11,12,8,10,6" --rpc="host4:50052,host2:50052,host1:50052,host1:50053" --in-short
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
 | ESTIMATE                                                                                                                                                                                                                                                                         |
 +----------------------------------------------+----------------------------------------------+----------------------------------------------+----------------------------------------------+----------------------------------------------+---------------------------------------+
@@ -831,12 +843,12 @@ example and estimate the maximum tokens per second for Apple Silicon M-series us
 
 ```shell
 $ # Estimate full offloaded Q8_0 model
-$ gguf-parser --hf-repo TheBloke/LLaMA-7b-GGUF --hf-file llama-7b.Q8_0.gguf --skip-metadata --skip-architecture --skip-tokenizer --in-short \
+$ gguf-parser --hf-repo TheBloke/LLaMA-7b-GGUF --hf-file llama-7b.Q8_0.gguf --estimate --in-short \
   -c 512 \
   --device-metric "<CPU FLOPS>;<RAM BW>,<iGPU FLOPS>;<VRAM BW>"
 
 $ # Estimate full offloaded Q4_0 model
-$ gguf-parser --hf-repo TheBloke/LLaMA-7b-GGUF --hf-file llama-7b.Q4_0.gguf --skip-metadata --skip-architecture --skip-tokenizer --in-short \
+$ gguf-parser --hf-repo TheBloke/LLaMA-7b-GGUF --hf-file llama-7b.Q4_0.gguf --estimate --in-short \
   -c 512 \
   --device-metric "<CPU FLOPS>;<RAM BW>,<iGPU FLOPS>;<VRAM BW>"
 ```
@@ -887,7 +899,7 @@ $ # --device-metric "224GFLOPS;819.2GBps"         <-- Apple Mac Studio 0 CPU FLO
 $ # --device-metric "27.2TFLOPS;819.2GBps;40Gbps" <-- Apple Mac Studio 1 (RPC 0) iGPU FLOPS, VRAM Bandwidth, and Thunderbolt Bandwidth
 $ # --device-metric "27.2TFLOPS;819.2GBps;40Gbps" <-- Apple Mac Studio 2 (RPC 1) iGPU FLOPS, VRAM Bandwidth, and Thunderbolt Bandwidth
 $ # --device-metric "27.2TFLOPS;819.2GBps"        <-- Apple Mac Studio 0 iGPU FLOPS and VRAM Bandwidth
-$ gguf-parser --hf-repo leafspark/Meta-Llama-3.1-405B-Instruct-GGUF --hf-file Llama-3.1-405B-Instruct.Q4_0.gguf/Llama-3.1-405B-Instruct.Q4_0-00001-of-00012.gguf --skip-metadata --skip-architecture --skip-tokenizer --in-short \
+$ gguf-parser --hf-repo leafspark/Meta-Llama-3.1-405B-Instruct-GGUF --hf-file Llama-3.1-405B-Instruct.Q4_0.gguf/Llama-3.1-405B-Instruct.Q4_0-00001-of-00012.gguf --estimate --in-short \
   --no-mmap \
   -c 512 \
   --rpc host1:port,host2:port \
@@ -924,7 +936,7 @@ $ # --device-metric "510.4GFLOPS;96GBps"           <-- Intel i5-14600k CPU FLOPS
 $ # --device-metric "27.2TFLOPS;819.2GBps;40Gbps"  <-- Apple Mac Studio (M2) (RPC 0) iGPU FLOPS, VRAM Bandwidth, and Thunderbolt Bandwidth
 $ # --device-metric "48.74TFLOPS;736.3GBps;64GBps" <-- NVIDIA GeForce RTX 0 4080 GPU FLOPS, VRAM Bandwidth, and PCIe 5.0 x16 Bandwidth
 $ # --device-metric "48.74TFLOPS;736.3GBps;8GBps"  <-- NVIDIA GeForce RTX 1 4080 GPU FLOPS, VRAM Bandwidth, and PCIe 4.0 x4 Bandwidth
-$ gguf-parser --hf-repo Qwen/Qwen2.5-72B-Instruct-GGUF --hf-file qwen2.5-72b-instruct-q4_k_m-00001-of-00012.gguf --skip-metadata --skip-architecture --skip-tokenizer --in-short \
+$ gguf-parser --hf-repo Qwen/Qwen2.5-72B-Instruct-GGUF --hf-file qwen2.5-72b-instruct-q4_k_m-00001-of-00012.gguf --estimate --in-short \
   --no-mmap \
   -c 8192 \
   --rpc host:port \
@@ -947,7 +959,7 @@ $ gguf-parser --hf-repo Qwen/Qwen2.5-72B-Instruct-GGUF --hf-file qwen2.5-72b-ins
 #### Full Layers Offload (default)
 
 ```shell
-$ gguf-parser --hf-repo="etemiz/Llama-3.1-405B-Inst-GGUF" --hf-file="llama-3.1-405b-IQ1_M-00019-of-00019.gguf" --skip-metadata --skip-architecture --skip-tokenizer --in-short
+$ gguf-parser --hf-repo="etemiz/Llama-3.1-405B-Inst-GGUF" --hf-file="llama-3.1-405b-IQ1_M-00019-of-00019.gguf" --estimate --in-short
 +--------------------------------------------------------------------------------------+
 | ESTIMATE                                                                             |
 +----------------------------------------------+---------------------------------------+
@@ -963,7 +975,7 @@ $ gguf-parser --hf-repo="etemiz/Llama-3.1-405B-Inst-GGUF" --hf-file="llama-3.1-4
 #### Zero Layers Offload
 
 ```shell
-$ gguf-parser --hf-repo="etemiz/Llama-3.1-405B-Inst-GGUF" --hf-file="llama-3.1-405b-IQ1_M-00019-of-00019.gguf" --skip-metadata --skip-architecture --skip-tokenizer --gpu-layers=0 --in-short
+$ gguf-parser --hf-repo="etemiz/Llama-3.1-405B-Inst-GGUF" --hf-file="llama-3.1-405b-IQ1_M-00019-of-00019.gguf" --estimate --gpu-layers=0 --in-short
 +------------------------------------------------------------------------------------+
 | ESTIMATE                                                                           |
 +----------------------------------------------+-------------------------------------+
@@ -979,7 +991,7 @@ $ gguf-parser --hf-repo="etemiz/Llama-3.1-405B-Inst-GGUF" --hf-file="llama-3.1-4
 #### Specific Layers Offload
 
 ```shell
-$ gguf-parser --hf-repo="etemiz/Llama-3.1-405B-Inst-GGUF" --hf-file="llama-3.1-405b-IQ1_M-00019-of-00019.gguf" --skip-metadata --skip-architecture --skip-tokenizer --gpu-layers=10 --in-short
+$ gguf-parser --hf-repo="etemiz/Llama-3.1-405B-Inst-GGUF" --hf-file="llama-3.1-405b-IQ1_M-00019-of-00019.gguf" --estimate --gpu-layers=10 --in-short
 +------------------------------------------------------------------------------------+
 | ESTIMATE                                                                           |
 +----------------------------------------------+-------------------------------------+
@@ -999,7 +1011,7 @@ By default, the context size retrieved from the model's metadata.
 Use `--ctx-size` to specify the context size.
 
 ```shell
-$ gguf-parser --hf-repo="etemiz/Llama-3.1-405B-Inst-GGUF" --hf-file="llama-3.1-405b-IQ1_M-00019-of-00019.gguf" --skip-metadata --skip-architecture --skip-tokenizer --ctx-size=4096 --in-short
+$ gguf-parser --hf-repo="etemiz/Llama-3.1-405B-Inst-GGUF" --hf-file="llama-3.1-405b-IQ1_M-00019-of-00019.gguf" --estimate --ctx-size=4096 --in-short
 +--------------------------------------------------------------------------------------+
 | ESTIMATE                                                                             |
 +----------------------------------------------+---------------------------------------+
@@ -1024,7 +1036,7 @@ Please note that not all models support Flash Attention, if the model does not s
 Disabled" even if you enable it.
 
 ```shell
-$ gguf-parser --hf-repo="etemiz/Llama-3.1-405B-Inst-GGUF" --hf-file="llama-3.1-405b-IQ1_M-00019-of-00019.gguf" --skip-metadata --skip-architecture --skip-tokenizer --flash-attention --in-short
+$ gguf-parser --hf-repo="etemiz/Llama-3.1-405B-Inst-GGUF" --hf-file="llama-3.1-405b-IQ1_M-00019-of-00019.gguf" --estimate --flash-attention --in-short
 +--------------------------------------------------------------------------------------+
 | ESTIMATE                                                                             |
 +----------------------------------------------+---------------------------------------+
@@ -1050,7 +1062,7 @@ Please note that some models require loading the whole weight into memory, if th
 LOAD" shows "Not Supported".
 
 ```shell
-$ gguf-parser --hf-repo="etemiz/Llama-3.1-405B-Inst-GGUF" --hf-file="llama-3.1-405b-IQ1_M-00019-of-00019.gguf" --skip-metadata --skip-architecture --skip-tokenizer --no-mmap --in-short
+$ gguf-parser --hf-repo="etemiz/Llama-3.1-405B-Inst-GGUF" --hf-file="llama-3.1-405b-IQ1_M-00019-of-00019.gguf" --estimate --no-mmap --in-short
 +-------------------------------------------------------------------------------------+
 | ESTIMATE                                                                            |
 +------------------------------------------+------------------------------------------+
@@ -1068,7 +1080,7 @@ $ gguf-parser --hf-repo="etemiz/Llama-3.1-405B-Inst-GGUF" --hf-file="llama-3.1-4
 Use `--lora`/`--control-vector` to estimate the usage when loading a model with adapters.
 
 ```shell
-$ gguf-parser --hf-repo="QuantFactory/Meta-Llama-3-8B-Instruct-GGUF" --hf-file="Meta-Llama-3-8B-Instruct.Q5_K_M.gguf" --skip-metadata --skip-architecture --skip-tokenizer --in-short
+$ gguf-parser --hf-repo="QuantFactory/Meta-Llama-3-8B-Instruct-GGUF" --hf-file="Meta-Llama-3-8B-Instruct.Q5_K_M.gguf" --estimate --in-short
 +-----------------------------------------------------------------------------------+
 | ESTIMATE                                                                          |
 +----------------------------------------------+------------------------------------+
@@ -1080,7 +1092,7 @@ $ gguf-parser --hf-repo="QuantFactory/Meta-Llama-3-8B-Instruct-GGUF" --hf-file="
 +--------------------+------------+------------+----------------+--------+----------+
 
 $ # With a LoRA adapter.
-$ gguf-parser --hf-repo="QuantFactory/Meta-Llama-3-8B-Instruct-GGUF" --hf-file="Meta-Llama-3-8B-Instruct.Q5_K_M.gguf" --lora-url="https://huggingface.co/ngxson/test_gguf_lora_adapter/resolve/main/lora-Llama-3-Instruct-abliteration-LoRA-8B-f16.gguf" --skip-metadata --skip-architecture --skip-tokenizer --in-short
+$ gguf-parser --hf-repo="QuantFactory/Meta-Llama-3-8B-Instruct-GGUF" --hf-file="Meta-Llama-3-8B-Instruct.Q5_K_M.gguf" --lora-url="https://huggingface.co/ngxson/test_gguf_lora_adapter/resolve/main/lora-Llama-3-Instruct-abliteration-LoRA-8B-f16.gguf" --estimate --in-short
 +-------------------------------------------------------------------------------------+
 | ESTIMATE                                                                            |
 +----------------------------------------------+--------------------------------------+
@@ -1098,7 +1110,7 @@ $ gguf-parser --hf-repo="QuantFactory/Meta-Llama-3-8B-Instruct-GGUF" --hf-file="
 Use `--gpu-layers-step` to get the proper offload layers number when the model is too large to fit into the GPUs memory.
 
 ```shell
-$ gguf-parser --hf-repo="etemiz/Llama-3.1-405B-Inst-GGUF" --hf-file="llama-3.1-405b-IQ1_M-00019-of-00019.gguf" --skip-metadata --skip-architecture --skip-tokenizer --gpu-layers-step=6 --in-short
+$ gguf-parser --hf-repo="etemiz/Llama-3.1-405B-Inst-GGUF" --hf-file="llama-3.1-405b-IQ1_M-00019-of-00019.gguf" --estimate --gpu-layers-step=6 --in-short
 +--------------------------------------------------------------------------------------+
 | ESTIMATE                                                                             |
 +----------------------------------------------+---------------------------------------+

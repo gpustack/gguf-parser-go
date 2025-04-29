@@ -24,6 +24,8 @@ type (
 // GGMLType constants.
 //
 // GGMLTypeQ4_2, GGMLTypeQ4_3 are deprecated.
+// GGMLTypeQ4_0_4_4, GGMLTypeQ4_0_4_8, GGMLTypeQ4_0_8_8 are deprecated.
+// GGMLTypeIQ4_NL_4_4, GGMLTypeIQ4_NL_4_8, GGMLTypeIQ4_NL_8_8 are deprecated.
 const (
 	GGMLTypeF32 GGMLType = iota
 	GGMLTypeF16
