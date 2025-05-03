@@ -180,6 +180,10 @@ type (
 		//
 		// Only used when Architecture is "clip" and ClipHasVisionEncoder is true.
 		ClipVisionProjectorScaleFactor uint32 `json:"clipVisionProjectorScaleFactor,omitempty"`
+		// ClipVisionSpatialMergeSize is the spatial merge size of the vision encoder.
+		//
+		// Only used when Architecture is "clip" and ClipHasVisionEncoder is true.
+		ClipVisionSpatialMergeSize uint32 `json:"clipVisionSpatialMergeSize,omitempty"`
 
 		// AdapterType is the type of the adapter.
 		//
@@ -444,6 +448,7 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 		visionProjectionDim        = "clip.vision.projection_dim"
 		visionMMPatchMergeType     = "clip.vision.mm_patch_merge_type"
 		visionProjectorScaleFactor = "clip.vision.projector.scale_factor"
+		visioSpatialMergeSize      = "clip.vision.spatial_merge_size"
 
 		textEmbeddingLengthKey              = "clip.text.embedding_length"
 		textBlockCountKey                   = "clip.text.block_count"
@@ -530,6 +535,9 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 	ga.ClipVisionProjectorScaleFactor = 1
 	if v, ok := m[visionProjectorScaleFactor]; ok {
 		ga.ClipVisionProjectorScaleFactor = ValueNumeric[uint32](v)
+	}
+	if v, ok := m[visioSpatialMergeSize]; ok {
+		ga.ClipVisionSpatialMergeSize = ValueNumeric[uint32](v)
 	}
 
 	if v, ok := m[textEmbeddingLengthKey]; ok {

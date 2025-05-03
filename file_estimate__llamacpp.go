@@ -840,7 +840,13 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 			}
 		case "pixtral":
 			imgHeightPatchSize := imgMaxHeightSize / uint64(a.ClipVisionPatchSize)
+			if a.ClipVisionSpatialMergeSize > 0 {
+				imgHeightPatchSize /= uint64(a.ClipVisionSpatialMergeSize)
+			}
 			imgWidthPatchSize := imgMaxWidthSize / uint64(a.ClipVisionPatchSize)
+			if a.ClipVisionSpatialMergeSize > 0 {
+				imgWidthPatchSize /= uint64(a.ClipVisionSpatialMergeSize)
+			}
 			imgPatches = imgHeightPatchSize*imgWidthPatchSize + imgHeightPatchSize - 1 /* [IMG_BREAK] per row */
 			if ti, ok := gf.TensorInfos.Get("mm.2.bias"); ok {
 				projectionDim = ti.Dimensions[0]
