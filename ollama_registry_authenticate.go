@@ -36,7 +36,7 @@ const (
 // since llama3.1, the user agent is required to be set,
 // otherwise the request will be rejected by 412.
 func OllamaUserAgent() string {
-	return fmt.Sprintf("ollama/0.3.3 (%s %s) Go/%s", runtime.GOARCH, runtime.GOOS, runtime.Version())
+	return fmt.Sprintf("ollama/0.6.7 (%s %s) Go/%s", runtime.GOARCH, runtime.GOOS, runtime.Version())
 }
 
 // OllamaRegistryAuthorizeRetry returns true if the request should be retried with authorization.
