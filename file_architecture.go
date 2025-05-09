@@ -533,6 +533,9 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 		ga.ClipVisionMMPatchMergeType = v.ValueString()
 	}
 	ga.ClipVisionProjectorScaleFactor = 1
+	if ga.ClipProjectorType == "gemma3" {
+		ga.ClipVisionProjectorScaleFactor = 4
+	}
 	if v, ok := m[visionProjectorScaleFactor]; ok {
 		ga.ClipVisionProjectorScaleFactor = ValueNumeric[uint32](v)
 	}

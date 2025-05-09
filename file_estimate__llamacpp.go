@@ -829,12 +829,14 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 				projectionDim = ti.Dimensions[0]
 			}
 		case "gemma3":
-			imgPatches = 256
+			nPerSide := uint64(a.ClipVisionImageSize) / uint64(a.ClipVisionPatchSize)
+			nPerSide2DPool := nPerSide / uint64(a.ClipVisionProjectorScaleFactor)
+			imgPatches = nPerSide2DPool * nPerSide2DPool
 			if ti, ok := gf.TensorInfos.Get("mm.input_projection.weight"); ok {
 				projectionDim = ti.Dimensions[0]
 			}
 		case "idefics3":
-			imgPatches /= uint64(a.ClipVisionProjectorScaleFactor)
+			imgPatches /= uint64(a.ClipVisionProjectorScaleFactor * a.ClipVisionProjectorScaleFactor)
 			if ti, ok := gf.TensorInfos.Get("mm.model.fc.weight"); ok {
 				projectionDim = ti.Dimensions[1]
 			}
