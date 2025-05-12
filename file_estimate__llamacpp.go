@@ -811,6 +811,8 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 				projectionDim = ti.Dimensions[0]
 			}
 		case "adapter":
+			imgPatches /= 4
+			imgPatches += 2
 			if ti, ok := gf.TensorInfos.Get("adapter.linear.dense_4h_to_h.weight"); ok {
 				projectionDim = ti.Dimensions[1]
 			}
@@ -852,6 +854,11 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 			imgPatches = imgHeightPatchSize*imgWidthPatchSize + imgHeightPatchSize - 1 /* [IMG_BREAK] per row */
 			if ti, ok := gf.TensorInfos.Get("mm.2.bias"); ok {
 				projectionDim = ti.Dimensions[0]
+			}
+		case "internvl":
+			imgPatches /= uint64(a.ClipVisionProjectorScaleFactor * a.ClipVisionProjectorScaleFactor)
+			if ti, ok := gf.TensorInfos.Get("mm.model.mlp.3.weight"); ok {
+				projectionDim = ti.Dimensions[1]
 			}
 		}
 	}
