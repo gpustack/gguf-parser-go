@@ -68,7 +68,7 @@ GLOBAL OPTIONS:
    Load
 
    --cache-expiration value      Specify the expiration of cache, works with "--url/--hf-*/--ms-*/--ol-*". (default: 24h0m0s)
-   --cache-path value            Cache the read result to the path, works with "--url/--hf-*/--ms-*/--ol-*". (default: "/Users/thxcode/.cache/gguf-parser")
+   --cache-path value            Cache the read result to the path, works with "--url/--hf-*/--ms-*/--ol-*". (default: "<your home>/.cache/gguf-parser")
    --skip-cache                  Skip cache, works with "--url/--hf-*/--ms-*/--ol-*", default is caching the read result. (default: false) [$SKIP_CACHE]
    --skip-dns-cache              Skip DNS cache, works with "--url/--hf-*/--ms-*/--ol-*", default is caching the DNS lookup result. (default: false) [$SKIP_DNS_CACHE]
    --skip-proxy                  Skip proxy settings, works with "--url/--hf-*/--ms-*/--ol-*", default is respecting the environment variables "HTTP_PROXY/HTTPS_PROXY/NO_PROXY". (default: false) [$SKIP_PROXY]
