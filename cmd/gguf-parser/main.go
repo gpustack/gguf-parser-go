@@ -430,6 +430,9 @@ func main() {
 				Value:       skipProxy,
 				Category:    "Load",
 				Name:        "skip-proxy",
+				EnvVars: []string{
+					"SKIP_PROXY",
+				},
 				Usage: "Skip proxy settings, " +
 					"works with \"--url/--hf-*/--ms-*/--ol-*\", " +
 					"default is respecting the environment variables \"HTTP_PROXY/HTTPS_PROXY/NO_PROXY\".",
@@ -439,6 +442,9 @@ func main() {
 				Value:       skipTLSVerify,
 				Category:    "Load",
 				Name:        "skip-tls-verify",
+				EnvVars: []string{
+					"SKIP_TLS_VERIFY",
+				},
 				Usage: "Skip TLS verification, " +
 					"works with \"--url/--hf-*/--ms-*/--ol-*\", " +
 					"default is verifying the TLS certificate on HTTPs request.",
@@ -448,6 +454,9 @@ func main() {
 				Value:       skipDNSCache,
 				Category:    "Load",
 				Name:        "skip-dns-cache",
+				EnvVars: []string{
+					"SKIP_DNS_CACHE",
+				},
 				Usage: "Skip DNS cache, " +
 					"works with \"--url/--hf-*/--ms-*/--ol-*\", " +
 					"default is caching the DNS lookup result.",
@@ -457,6 +466,9 @@ func main() {
 				Value:       skipRangDownloadDetect,
 				Category:    "Load",
 				Name:        "skip-range-download-detect",
+				EnvVars: []string{
+					"SKIP_RANGE_DOWNLOAD_DETECT",
+				},
 				Usage: "Skip range download detect, " +
 					"works with \"--url/--hf-*/--ms-*/--ol-*\", " +
 					"default is detecting the range download support.",
@@ -482,6 +494,9 @@ func main() {
 				Value:       skipCache,
 				Category:    "Load",
 				Name:        "skip-cache",
+				EnvVars: []string{
+					"SKIP_CACHE",
+				},
 				Usage: "Skip cache, " +
 					"works with \"--url/--hf-*/--ms-*/--ol-*\", " +
 					"default is caching the read result.",
