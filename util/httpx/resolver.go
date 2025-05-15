@@ -3,6 +3,8 @@ package httpx
 import (
 	"context"
 	"net"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/rs/dnscache"
@@ -40,6 +42,25 @@ func DNSCacheDialContext(dialer *net.Dialer) func(context.Context, string, strin
 		if err != nil {
 			return nil, err
 		}
+		switch len(ips) {
+		case 0:
+			return nil, net.UnknownNetworkError("failed to resolve host")
+		case 1:
+			return dialer.DialContext(ctx, nw, net.JoinHostPort(ips[0], p))
+		default:
+		}
+		// Sort IPs to put IPv4 first, then IPv6.
+		slices.SortFunc(ips, func(a, b string) int {
+			aIPv4, bIPv4 := strings.Contains(a, "."), strings.Contains(b, ".")
+			if (aIPv4 && bIPv4) || (!aIPv4 && !bIPv4) {
+				return 0
+			}
+			if !aIPv4 {
+				return 1
+			}
+			return -1
+		})
+		// Try to connect to each IP address in order.
 		for _, ip := range ips {
 			conn, err = dialer.DialContext(ctx, nw, net.JoinHostPort(ip, p))
 			if err == nil {
