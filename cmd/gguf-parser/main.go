@@ -509,6 +509,7 @@ func main() {
 				Aliases: []string{ // LLaMACpp compatibility
 					"parallel",
 					"np",
+					"threads-http", // LLaMABox v0.0.140+ compatibility
 				},
 				Usage: "Specify the number of parallel sequences to decode, " +
 					"which is used to estimate the usage.",
@@ -709,6 +710,13 @@ func main() {
 					"\"none\" is meaningless here, keep for compatibility.",
 			},
 			&cli.BoolFlag{
+				Destination: &lmcSWAFull,
+				Value:       lmcSWAFull,
+				Category:    "Estimate/LLaMACpp",
+				Name:        "swa-full",
+				Usage:       "Specify using full-size SWA cache.",
+			},
+			&cli.BoolFlag{
 				Destination: &lmcNoMMap,
 				Value:       lmcNoMMap,
 				Category:    "Estimate/LLaMACpp",
@@ -734,6 +742,13 @@ func main() {
 				Category:    "Estimate/LLaMACpp",
 				Name:        "visual-max-image-size",
 				Usage:       "Specify maximum image size when completion with vision model.",
+			},
+			&cli.UintFlag{ // LLaMABox compatibility
+				Destination: &lmcVisualMaxImageCache,
+				Value:       lmcVisualMaxImageCache,
+				Category:    "Estimate/LLaMACpp",
+				Name:        "visual-max-image-cache",
+				Usage:       "Specify how many images to cache when completion with vision model.",
 			},
 			&cli.IntFlag{
 				Destination: &lmcOffloadLayersDraft,
@@ -1008,18 +1023,20 @@ var (
 	deviceMetrics     cli.StringSlice
 	platformFootprint = "150,250"
 	// estimate options for llama.cpp
-	lmcCtxSize            = 0
-	lmcInMaxCtxSize       bool
-	lmcLogicalBatchSize   = 2048
-	lmcPhysicalBatchSize  = 512
-	lmcCacheKeyType       = "f16"
-	lmcCacheValueType     = "f16"
-	lmcNoKVOffload        bool
-	lmcSplitMode          = "layer"
-	lmcNoMMap             bool
-	lmcVisualMaxImageSize uint
-	lmcOffloadLayersDraft = -1
-	lmcOffloadLayersStep  uint64
+	lmcCtxSize             = 0
+	lmcInMaxCtxSize        bool
+	lmcLogicalBatchSize    = 2048
+	lmcPhysicalBatchSize   = 512
+	lmcCacheKeyType        = "f16"
+	lmcCacheValueType      = "f16"
+	lmcNoKVOffload         bool
+	lmcSplitMode           = "layer"
+	lmcSWAFull             = false
+	lmcNoMMap              bool
+	lmcVisualMaxImageSize  uint
+	lmcVisualMaxImageCache uint
+	lmcOffloadLayersDraft  = -1
+	lmcOffloadLayersStep   uint64
 	// estimate options for stable-diffusion.cpp
 	sdcBatchCount                   uint = 1
 	sdcHeight                       uint = 1024
@@ -1189,8 +1206,14 @@ func mainAction(c *cli.Context) error {
 	default:
 		eopts = append(eopts, WithLLaMACppSplitMode(LLaMACppSplitModeLayer))
 	}
+	if lmcSWAFull {
+		eopts = append(eopts, WithLLaMACppFullSizeSWACache())
+	}
 	if lmcVisualMaxImageSize > 0 {
 		eopts = append(eopts, WithLLaMACppVisualMaxImageSize(uint32(lmcVisualMaxImageSize)))
+	}
+	if lmcVisualMaxImageCache > 0 {
+		eopts = append(eopts, WithLLaMACppVisualMaxImageCache(uint32(lmcVisualMaxImageCache)))
 	}
 	if sdcBatchCount > 1 {
 		eopts = append(eopts, WithStableDiffusionCppBatchCount(int32(sdcBatchCount)))

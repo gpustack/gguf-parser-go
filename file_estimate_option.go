@@ -17,19 +17,21 @@ type (
 		DeviceMetrics       []GGUFRunDeviceMetric
 
 		// LLaMACpp (LMC) specific
-		LMCContextSize        *int32
-		LMCInMaxContextSize   bool
-		LMCLogicalBatchSize   *int32
-		LMCPhysicalBatchSize  *int32
-		LMCVisualMaxImageSize *uint32
-		LMCCacheKeyType       *GGMLType
-		LMCCacheValueType     *GGMLType
-		LMCOffloadKVCache     *bool
-		LMCOffloadLayers      *uint64
-		LMCSplitMode          LLaMACppSplitMode
-		LMCProjector          *LLaMACppRunEstimate
-		LMCDrafter            *LLaMACppRunEstimate
-		LMCAdapters           []LLaMACppRunEstimate
+		LMCContextSize         *int32
+		LMCInMaxContextSize    bool
+		LMCLogicalBatchSize    *int32
+		LMCPhysicalBatchSize   *int32
+		LMCVisualMaxImageSize  *uint32
+		LMCVisualMaxImageCache *uint32
+		LMCCacheKeyType        *GGMLType
+		LMCCacheValueType      *GGMLType
+		LMCOffloadKVCache      *bool
+		LMCOffloadLayers       *uint64
+		LMCSplitMode           LLaMACppSplitMode
+		LMCFullSizeSWACache    bool
+		LMCProjector           *LLaMACppRunEstimate
+		LMCDrafter             *LLaMACppRunEstimate
+		LMCAdapters            []LLaMACppRunEstimate
 
 		// StableDiffusionCpp (SDC) specific
 		SDCOffloadLayers                *uint64
@@ -247,6 +249,13 @@ func WithLLaMACppSplitMode(mode LLaMACppSplitMode) GGUFRunEstimateOption {
 	}
 }
 
+// WithLLaMACppFullSizeSWACache enables full size sliding window attention cache.
+func WithLLaMACppFullSizeSWACache() GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
+		o.LMCFullSizeSWACache = true
+	}
+}
+
 // WithLLaMACppVisualMaxImageSize sets the visual maximum image size input for the estimate.
 func WithLLaMACppVisualMaxImageSize(size uint32) GGUFRunEstimateOption {
 	return func(o *_GGUFRunEstimateOptions) {
@@ -254,6 +263,16 @@ func WithLLaMACppVisualMaxImageSize(size uint32) GGUFRunEstimateOption {
 			return
 		}
 		o.LMCVisualMaxImageSize = &size
+	}
+}
+
+// WithLLaMACppVisualMaxImageCache sets the visual maximum image to cache for the estimate.
+func WithLLaMACppVisualMaxImageCache(cacheSize uint32) GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
+		if cacheSize == 0 {
+			return
+		}
+		o.LMCVisualMaxImageCache = ptr.To(cacheSize)
 	}
 }
 

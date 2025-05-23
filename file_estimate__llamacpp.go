@@ -73,6 +73,9 @@ type (
 	LLaMACppRunDeviceUsage struct {
 		// HandleLayers is the number of layers that the device can handle.
 		HandleLayers uint64 `json:"handleLayers"`
+		// HandleSWALayers is the number of layers that the device can handle in sliding window attention (SWA),
+		// the non SWA layers is `HandleLayers - HandleSWALayers`.
+		HandleSWALayers uint64 `json:"handleSWALayers"`
 		// HandleLastLayer is the index of the last layer the device can handle.
 		HandleLastLayer int `json:"handleLastLayer"`
 		// HandleOutputLayer is the flag to indicate whether the device can handle the output layer,
@@ -251,6 +254,9 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		a.BlockCount = uint64(len(tfLs))
 	}
 
+	// Using sliding window attention.
+	usingSWA := a.AttentionSlidingWindowPattern != 1 && !o.LMCFullSizeSWACache
+
 	// Full offload: nLoadLayers == 0 && isOffloadOutputLayer
 	// Zero offload: nOffloadLayers == 0
 	// Partial offload: !Full offload && !Zero offload
@@ -260,7 +266,8 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		nLoadLayers          = a.BlockCount
 		idxOutputDevice      int
 
-		fullOffload, zeroOffload bool
+		fullOffload, zeroOffload          bool
+		nSWALoadLayers, nSWAOffloadLayers uint64
 	)
 	{
 		var isOffloadOutputLayer bool
@@ -289,17 +296,25 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		e.FullOffloaded = fullOffload
 		e.OffloadLayers = nOffloadLayers
 
-		for i, j, offloadStart := 0, 0, len(tfLs)-int(nOffloadLayers); i < len(tfLs); i++ {
+		for i, j, offloadStart := uint64(0), 0, a.BlockCount-nOffloadLayers; i < a.BlockCount; i++ {
 			switch {
-			case i < int(nLoadLayers):
+			case i < nLoadLayers:
 				e.Devices[0].HandleLayers += 1
-				e.Devices[0].HandleLastLayer = i
+				e.Devices[0].HandleLastLayer = int(i)
+				if usingSWA && i%uint64(a.AttentionSlidingWindowPattern) != 0 {
+					e.Devices[0].HandleSWALayers += 1
+					nSWALoadLayers += 1
+				}
 			case i >= offloadStart:
 				x := float64(i-offloadStart) / float64(nActualOffloadLayers)
 				j = slicex.UpperBound(o.TensorSplitFraction, x)
 				e.Devices[j+1].HandleLayers += 1
-				e.Devices[j+1].HandleLastLayer = i
-				if fullOffload && i == len(tfLs)-1 {
+				e.Devices[j+1].HandleLastLayer = int(i)
+				if usingSWA && i%uint64(a.AttentionSlidingWindowPattern) != 0 {
+					e.Devices[j+1].HandleSWALayers += 1
+					nSWAOffloadLayers += 1
+				}
+				if fullOffload && i == a.BlockCount-1 {
 					idxOutputDevice = j + 1
 				}
 			}
@@ -345,6 +360,12 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 	e.LogicalBatchSize = *o.LMCLogicalBatchSize
 	e.PhysicalBatchSize = *o.LMCPhysicalBatchSize
 
+	// Padding alignment.
+	paddingAlign := uint64(32)
+	if o.FlashAttention {
+		paddingAlign = 256
+	}
+
 	// Init hyperparameters,
 	// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L6957-L7000.
 	var (
@@ -365,11 +386,8 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		}
 		// Padding context size,
 		// see https://github.com/ggerganov/llama.cpp/blob/278d0e18469aacf505be18ce790a63c7cc31be26/src/llama.cpp#L19001-L19002.
-		if o.FlashAttention {
-			nContext = GGMLPadding(nContext, 256)
-		} else {
-			nContext = GGMLPadding(nContext, 32)
-		}
+		nContext = GGMLPadding(nContext, paddingAlign)
+
 		// Correct token size,
 		// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L12221-L12224.
 		nTokens = min(nContext, uint64(*o.LMCPhysicalBatchSize))
@@ -457,18 +475,43 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		kps, vps := a.EmbeddingKeyGQA*nKV, a.EmbeddingValueGQA*nKV
 		krs, vrs := o.LMCCacheKeyType.RowSizeOf([]uint64{kps}), o.LMCCacheValueType.RowSizeOf([]uint64{vps})
 
-		e.Devices[0].KVCache.Key = GGUFBytesScalar(krs * nLoadLayers)
-		e.Devices[0].KVCache.Value = GGUFBytesScalar(vrs * nLoadLayers)
-		e.Devices[0].Parameter.KVCache = GGUFParametersScalar((kps + vps) * nLoadLayers)
-		if !*o.LMCOffloadKVCache {
-			e.Devices[0].KVCache.Key += GGUFBytesScalar(krs * nOffloadLayers)
-			e.Devices[0].KVCache.Value += GGUFBytesScalar(vrs * nOffloadLayers)
-			e.Devices[0].Parameter.KVCache += GGUFParametersScalar((kps + vps) * nOffloadLayers)
-		} else if !zeroOffload {
-			for i, d := range e.Devices[1:] {
-				e.Devices[i+1].KVCache.Key = GGUFBytesScalar(krs * d.HandleLayers)
-				e.Devices[i+1].KVCache.Value = GGUFBytesScalar(vrs * d.HandleLayers)
-				e.Devices[i+1].Parameter.KVCache = GGUFParametersScalar((kps + vps) * d.HandleLayers)
+		if !usingSWA {
+			e.Devices[0].KVCache.Key = GGUFBytesScalar(krs * nLoadLayers)
+			e.Devices[0].KVCache.Value = GGUFBytesScalar(vrs * nLoadLayers)
+			e.Devices[0].Parameter.KVCache = GGUFParametersScalar((kps + vps) * nLoadLayers)
+			if !*o.LMCOffloadKVCache {
+				e.Devices[0].KVCache.Key += GGUFBytesScalar(krs * nOffloadLayers)
+				e.Devices[0].KVCache.Value += GGUFBytesScalar(vrs * nOffloadLayers)
+				e.Devices[0].Parameter.KVCache += GGUFParametersScalar((kps + vps) * nOffloadLayers)
+			} else if !zeroOffload {
+				for i, d := range e.Devices[1:] {
+					e.Devices[i+1].KVCache.Key = GGUFBytesScalar(krs * d.HandleLayers)
+					e.Devices[i+1].KVCache.Value = GGUFBytesScalar(vrs * d.HandleLayers)
+					e.Devices[i+1].Parameter.KVCache = GGUFParametersScalar((kps + vps) * d.HandleLayers)
+				}
+			}
+		} else {
+			// Sliding window attention size,
+			// see https://github.com/ggml-org/llama.cpp/blob/3079e9ac8e04ef6eddeb0c164d72edb6b6fd2df5/src/llama-kv-cache.cpp#L1640-L1642.
+			swas := min(nKV, GGMLPadding(a.AttentionSlidingWindow*nParallel+uint64(*o.LMCLogicalBatchSize), paddingAlign))
+			swaKps, swaVps := a.EmbeddingKeyGQA*swas, a.EmbeddingValueGQA*swas
+			swaKrs, swaVrs := o.LMCCacheKeyType.RowSizeOf([]uint64{swaKps}), o.LMCCacheValueType.RowSizeOf([]uint64{swaVps})
+
+			nNonSWALoadLayers, nNonSWAOffloadLayers := nLoadLayers-nSWALoadLayers, nOffloadLayers-nSWAOffloadLayers
+
+			e.Devices[0].KVCache.Key = GGUFBytesScalar(swaKrs*nSWALoadLayers + krs*nNonSWALoadLayers)
+			e.Devices[0].KVCache.Value = GGUFBytesScalar(swaVrs*nSWALoadLayers + vrs*nNonSWALoadLayers)
+			e.Devices[0].Parameter.KVCache = GGUFParametersScalar((swaKps+swaVps)*nSWALoadLayers + (kps+vps)*nNonSWALoadLayers)
+			if !*o.LMCOffloadKVCache {
+				e.Devices[0].KVCache.Key += GGUFBytesScalar(swaKrs*nSWAOffloadLayers + krs*nNonSWAOffloadLayers)
+				e.Devices[0].KVCache.Value += GGUFBytesScalar(swaVrs*nSWAOffloadLayers + vrs*nNonSWAOffloadLayers)
+				e.Devices[0].Parameter.KVCache += GGUFParametersScalar((swaKps+swaVps)*nSWAOffloadLayers + (kps+vps)*nNonSWAOffloadLayers)
+			} else if !zeroOffload {
+				for i, d := range e.Devices[1:] {
+					e.Devices[i+1].KVCache.Key = GGUFBytesScalar(swaKrs*d.HandleSWALayers + krs*(d.HandleLayers-d.HandleSWALayers))
+					e.Devices[i+1].KVCache.Value = GGUFBytesScalar(swaVrs*d.HandleSWALayers + vrs*(d.HandleLayers-d.HandleSWALayers))
+					e.Devices[i+1].Parameter.KVCache = GGUFParametersScalar((swaKps+swaVps)*d.HandleSWALayers + (kps+vps)*(d.HandleLayers-d.HandleSWALayers))
+				}
 			}
 		}
 	}
@@ -785,6 +828,9 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 		case a.ClipProjectorType == "adapter":
 			// Granite vision uses up to 10 patches + base patch
 			imgPatchesMaxSize = 11
+		}
+		if o.LMCVisualMaxImageCache != nil {
+			imgPatchesMaxSize += uint64(*o.LMCVisualMaxImageCache)
 		}
 		switch a.ClipProjectorType {
 		case "ldp":

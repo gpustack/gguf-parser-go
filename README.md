@@ -56,11 +56,12 @@ download it.
 
 ## Notes
 
+- **Since v0.18.0**, GGUF Parser supports estimating SWA-supported(sliding window attention) model file, like Phi3/4 series, Gemma2/3 series.
 - **Since v0.17.0**, GGUF Parser align the `QUANTIZATION`(
   aka. [`general.file_type`](https://github.com/ggml-org/ggml/blob/master/docs/gguf.md#general-metadata))
   to [HuggingFace processing](https://github.com/huggingface/huggingface.js/blob/2475d6d316135c0a4fceff6b3fe2aed0dde36ac1/packages/gguf/src/types.ts#L11-L48),
   but there are still many model files whose naming does not fully follow `general.file_type`.
-- **Since v0.16.0**, GGUF Parser can estimate MLA-supported model file, like DeepSeek series.
+- **Since v0.16.0**, GGUF Parser supports estimating MLA-supported model file, like DeepSeek series.
 - **Since v0.14.0 (BREAKING CHANGE)**, GGUF Parser parses `*.feed_forward_length` metadata as `[]uint64`,
   which means the architecture `feedForwardLength` is a list of integers.
 - **Since v0.13.0 (BREAKING CHANGE)**, GGUF Parser can parse files

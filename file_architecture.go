@@ -50,6 +50,14 @@ type (
 		// If not provided or equal to AttentionHeadCount,
 		// the model does not use Grouped-Query-Attention.
 		AttentionHeadCountKV uint64 `json:"attentionHeadCountKV,omitempty"`
+		// AttentionSlidingWindowPattern is the pattern used in the sliding window attention.
+		//
+		// 0 means all layers are Sliding Window Attention.
+		// 1 means all layers are none Sliding Window Attention.
+		// N means every Nth layer is none Sliding Window Attention.
+		AttentionSlidingWindowPattern uint32 `json:"attentionSlidingWindowPattern,omitempty"`
+		// AttentionSlidingWindow is the size of the sliding window used in the attention layer.
+		AttentionSlidingWindow uint64 `json:"attentionSlidingWindow,omitempty"`
 		// AttentionMaxALiBIBias is the maximum bias to use for ALiBI.
 		AttentionMaxALiBIBias float32 `json:"attentionMaxALiBIBias,omitempty"`
 		// AttentionClampKQV describes a value `C`,
@@ -664,6 +672,7 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 
 		attentionHeadCountKey           = arch + ".attention.head_count"
 		attentionHeadCountKVKey         = arch + ".attention.head_count_kv"
+		attentionSlidingWindowKey       = arch + ".attention.sliding_window"
 		attentionMaxALiBIBiasKey        = arch + ".attention.max_alibi_bias"
 		attentionMaxALiBIBiasKey2       = arch + ".attention.alibi_bias_max"
 		attentionClampKQVKey            = arch + ".attention.clamp_kqv"
@@ -710,6 +719,7 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 		expertSharedCountKey,
 		attentionHeadCountKey,
 		attentionHeadCountKVKey,
+		attentionSlidingWindowKey,
 		attentionMaxALiBIBiasKey,
 		attentionMaxALiBIBiasKey2,
 		attentionClampKQVKey,
@@ -790,6 +800,33 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 		}
 	} else {
 		ga.AttentionHeadCountKV = ga.AttentionHeadCount
+	}
+	ga.AttentionSlidingWindowPattern = 1
+	if v, ok := m[attentionSlidingWindowKey]; ok {
+		if v.ValueType == GGUFMetadataValueTypeArray {
+			ga.AttentionSlidingWindow = ValuesNumeric[uint64](v.ValueArray())[0]
+		} else {
+			ga.AttentionSlidingWindow = ValueNumeric[uint64](v)
+		}
+	}
+	switch arch {
+	case "llama4":
+		if ga.AttentionSlidingWindow == 0 {
+			ga.AttentionSlidingWindow = 8192
+		}
+		ga.AttentionSlidingWindowPattern = 4
+	case "phi3":
+		// See https://github.com/ggml-org/llama.cpp/pull/13676
+		ga.AttentionSlidingWindow = 0
+	case "gemma2":
+		if ga.AttentionSlidingWindow == 0 {
+			ga.AttentionSlidingWindow = 4096
+		}
+		ga.AttentionSlidingWindowPattern = 2
+	case "gemma3":
+		ga.AttentionSlidingWindowPattern = 6
+	case "cohere2":
+		ga.AttentionSlidingWindowPattern = 4
 	}
 	if v, ok := m[attentionMaxALiBIBiasKey]; ok {
 		ga.AttentionMaxALiBIBias = ValueNumeric[float32](v)
