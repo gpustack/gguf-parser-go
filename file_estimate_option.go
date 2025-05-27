@@ -266,8 +266,8 @@ func WithLLaMACppVisualMaxImageSize(size uint32) GGUFRunEstimateOption {
 	}
 }
 
-// WithLLaMACppVisualMaxImageCache sets the visual maximum image to cache for the estimate.
-func WithLLaMACppVisualMaxImageCache(cacheSize uint32) GGUFRunEstimateOption {
+// WithLLaMACppMaxProjectedCache sets the maximum projected embedding cache for the estimate.
+func WithLLaMACppMaxProjectedCache(cacheSize uint32) GGUFRunEstimateOption {
 	return func(o *_GGUFRunEstimateOptions) {
 		if cacheSize == 0 {
 			return

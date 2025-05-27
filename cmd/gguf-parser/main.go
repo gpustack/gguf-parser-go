@@ -744,11 +744,14 @@ func main() {
 				Usage:       "Specify maximum image size when completion with vision model.",
 			},
 			&cli.UintFlag{ // LLaMABox compatibility
-				Destination: &lmcVisualMaxImageCache,
-				Value:       lmcVisualMaxImageCache,
+				Destination: &lmcMaxProjectedCache,
+				Value:       lmcMaxProjectedCache,
 				Category:    "Estimate/LLaMACpp",
-				Name:        "visual-max-image-cache",
-				Usage:       "Specify how many images to cache when completion with vision model.",
+				Name:        "max-projected-cache",
+				Aliases: []string{
+					"visual-max-image-cache", // Deprecated argument name
+				},
+				Usage: "Specify how many projected embedding to be cached.",
 			},
 			&cli.IntFlag{
 				Destination: &lmcOffloadLayersDraft,
@@ -1023,20 +1026,20 @@ var (
 	deviceMetrics     cli.StringSlice
 	platformFootprint = "150,250"
 	// estimate options for llama.cpp
-	lmcCtxSize             = 0
-	lmcInMaxCtxSize        bool
-	lmcLogicalBatchSize    = 2048
-	lmcPhysicalBatchSize   = 512
-	lmcCacheKeyType        = "f16"
-	lmcCacheValueType      = "f16"
-	lmcNoKVOffload         bool
-	lmcSplitMode           = "layer"
-	lmcSWAFull             = false
-	lmcNoMMap              bool
-	lmcVisualMaxImageSize  uint
-	lmcVisualMaxImageCache uint
-	lmcOffloadLayersDraft  = -1
-	lmcOffloadLayersStep   uint64
+	lmcCtxSize            = 0
+	lmcInMaxCtxSize       bool
+	lmcLogicalBatchSize   = 2048
+	lmcPhysicalBatchSize  = 512
+	lmcCacheKeyType       = "f16"
+	lmcCacheValueType     = "f16"
+	lmcNoKVOffload        bool
+	lmcSplitMode          = "layer"
+	lmcSWAFull            = false
+	lmcNoMMap             bool
+	lmcVisualMaxImageSize uint
+	lmcMaxProjectedCache  uint
+	lmcOffloadLayersDraft = -1
+	lmcOffloadLayersStep  uint64
 	// estimate options for stable-diffusion.cpp
 	sdcBatchCount                   uint = 1
 	sdcHeight                       uint = 1024
@@ -1212,8 +1215,8 @@ func mainAction(c *cli.Context) error {
 	if lmcVisualMaxImageSize > 0 {
 		eopts = append(eopts, WithLLaMACppVisualMaxImageSize(uint32(lmcVisualMaxImageSize)))
 	}
-	if lmcVisualMaxImageCache > 0 {
-		eopts = append(eopts, WithLLaMACppVisualMaxImageCache(uint32(lmcVisualMaxImageCache)))
+	if lmcMaxProjectedCache > 0 {
+		eopts = append(eopts, WithLLaMACppMaxProjectedCache(uint32(lmcMaxProjectedCache)))
 	}
 	if sdcBatchCount > 1 {
 		eopts = append(eopts, WithStableDiffusionCppBatchCount(int32(sdcBatchCount)))
