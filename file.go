@@ -1061,7 +1061,7 @@ func (tis GGUFTensorInfos) layers() GGUFLayerTensorInfos {
 			}
 			l := pm[p].(*GGUFNamedTensorInfos)
 			l.GGUFLayerTensorInfos = append(l.GGUFLayerTensorInfos, tis[i])
-		case (ps[0] == "v" || ps[0] == "t") && ps[1] == "blk":
+		case (ps[0] == "v" || ps[0] == "t" || ps[0] == "a") && ps[1] == "blk":
 			// LLaMACpp CLIP.
 			p := ps[0]
 			if _, ok := pm[p]; !ok {

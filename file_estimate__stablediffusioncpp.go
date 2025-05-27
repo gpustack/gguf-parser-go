@@ -245,10 +245,11 @@ func (gf *GGUFFile) EstimateStableDiffusionCppRun(opts ...GGUFRunEstimateOption)
 
 	// Computation.
 	{
-		// Bootstrap, compute metadata,
-		// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L16135-L16136.
-		cm := GGMLTensorOverhead()*GGMLComputationGraphNodesMaximum +
-			GGMLComputationGraphOverhead(GGMLComputationGraphNodesMaximum, false)
+		// See https://github.com/ggml-org/llama.cpp/blob/ec9e0301fef6476df83e94842c3b625501c95566/tools/mtmd/clip.cpp#L374.
+		var maxNodes uint64 = 8192
+
+		// Bootstrap, compute metadata.
+		cm := GGMLTensorOverhead()*maxNodes + GGMLComputationGraphOverhead(maxNodes, false)
 		e.Devices[0].Computation = GGUFBytesScalar(cm)
 
 		// Work context,

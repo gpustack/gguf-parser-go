@@ -1655,92 +1655,156 @@ func mainAction(c *cli.Context) error {
 
 	if !skipArchitecture {
 		var (
-			hd []any
-			bd []any
+			hds [][]any
+			bds [][]any
 		)
 		switch a.Type {
 		case "projector":
-			hd = []any{
-				"Projector Type",
-				"Embedding Len",
-				"Layers",
-				"Feed Forward Len",
-				"Encoder",
+			hds = [][]any{
+				{
+					"Projector Type",
+					"Embedding Len",
+					"Layers",
+					"Feed Forward Len",
+					"Encoder",
+				},
 			}
-			bd = []any{
-				sprintf(a.ClipProjectorType),
-				sprintf(a.EmbeddingLength),
-				sprintf(a.BlockCount),
-				sprintf(tenary(
-					a.FeedForwardLength[0] == a.FeedForwardLength[1],
-					a.FeedForwardLength[0],
-					sprintf("[%d, %d, ...]", a.FeedForwardLength[0], a.FeedForwardLength[1]))),
-				sprintf(tenary(
-					a.ClipHasTextEncoder,
-					tenary(a.ClipHasVisionEncoder, "Text & Vision", "Text"),
-					tenary(a.ClipHasVisionEncoder, "Vision", "N/A"))),
+			switch {
+			case a.ClipHasVisionEncoder && a.ClipHasAudioEncoder:
+				hds = [][]any{
+					{
+						"Projector Type",
+						"Embedding Len", "Embedding Len",
+						"Layers", "Layers",
+						"Feed Forward Len", "Feed Forward Len",
+						"Encoder",
+					},
+					{
+						"Projector Type",
+						"Vision", "Audio",
+						"Vision", "Audio",
+						"Vision", "Audio",
+						"Encoder",
+					},
+				}
+				bds = [][]any{
+					{
+						sprintf(a.ClipProjectorType),
+						sprintf(a.ClipVisionEmbeddingLength),
+						sprintf(a.ClipAudioEmbeddingLength),
+						sprintf(a.ClipVisionBlockCount),
+						sprintf(a.ClipAudioBlockCount),
+						sprintf(tenary(
+							a.ClipVisionFeedForwardLength[0] == a.ClipVisionFeedForwardLength[1],
+							a.ClipVisionFeedForwardLength[0],
+							sprintf("[%d, %d, ...]", a.ClipVisionFeedForwardLength[0], a.ClipVisionFeedForwardLength[1]))),
+						sprintf(tenary(
+							a.ClipAudioFeedForwardLength[0] == a.ClipAudioFeedForwardLength[1],
+							a.ClipAudioFeedForwardLength[0],
+							sprintf("[%d, %d, ...]", a.ClipAudioFeedForwardLength[0], a.ClipAudioFeedForwardLength[1]))),
+						"Vision & Audio",
+					},
+				}
+			case a.ClipHasVisionEncoder:
+				bds = [][]any{
+					{
+						sprintf(a.ClipProjectorType),
+						sprintf(a.ClipVisionEmbeddingLength),
+						sprintf(a.ClipVisionBlockCount),
+						sprintf(tenary(
+							a.ClipVisionFeedForwardLength[0] == a.ClipVisionFeedForwardLength[1],
+							a.ClipVisionFeedForwardLength[0],
+							sprintf("[%d, %d, ...]", a.ClipVisionFeedForwardLength[0], a.ClipVisionFeedForwardLength[1]))),
+						"Vision",
+					},
+				}
+			default:
+				bds = [][]any{
+					{
+						sprintf(a.ClipProjectorType),
+						sprintf(a.ClipAudioEmbeddingLength),
+						sprintf(a.ClipAudioBlockCount),
+						sprintf(tenary(
+							a.ClipAudioFeedForwardLength[0] == a.ClipAudioFeedForwardLength[1],
+							a.ClipAudioFeedForwardLength[0],
+							sprintf("[%d, %d, ...]", a.ClipAudioFeedForwardLength[0], a.ClipAudioFeedForwardLength[1]))),
+						"Audio",
+					},
+				}
 			}
 		case "adapter":
-			hd = []any{
-				"Adapter Type",
+			hds = [][]any{
+				{
+					"Adapter Type",
+				},
 			}
-			bd = []any{
-				sprintf(a.AdapterType),
+			bds = [][]any{
+				{
+					sprintf(a.AdapterType),
+				},
 			}
 			if a.AdapterType == "lora" {
-				hd = append(hd, "LoRA Alpha")
-				bd = append(bd, sprintf(a.AdapterLoRAAlpha))
+				hds[0] = append(hds[0], "LoRA Alpha")
+				bds[0] = append(bds[0], sprintf(a.AdapterLoRAAlpha))
 			} else {
-				hd = append(hd, "ControlVector Layers")
-				bd = append(bd, sprintf(a.AdapterControlVectorLayerCount))
+				hds[0] = append(hds[0], "ControlVector Layers")
+				bds[0] = append(bds[0], sprintf(a.AdapterControlVectorLayerCount))
 			}
 		default:
 			if a.Architecture == "diffusion" {
-				hd = []any{
-					"Diffusion Arch",
-					"Conditioners",
-					"Autoencoder",
+				hds = [][]any{
+					{
+						"Diffusion Arch",
+						"Conditioners",
+						"Autoencoder",
+					},
 				}
-				bd = []any{
-					a.DiffusionArchitecture,
-					sprintf(tenary(a.DiffusionHasConditioners(), a.DiffusionConditioners, "N/A")),
-					sprintf(tenary(a.DiffusionHasAutoencoder(), a.DiffusionAutoencoder, "N/A")),
+				bds = [][]any{
+					{
+						a.DiffusionArchitecture,
+						sprintf(tenary(a.DiffusionHasConditioners(), a.DiffusionConditioners, "N/A")),
+						sprintf(tenary(a.DiffusionHasAutoencoder(), a.DiffusionAutoencoder, "N/A")),
+					},
 				}
 			} else {
-				hd = []any{
-					"Max Context Len",
-					"Embedding Len",
-					"Embedding GQA",
-					"Attention Causal",
-					"Attention Head Cnt",
-					"Layers",
-					"Feed Forward Len",
-					"Expert Cnt",
-					"Vocabulary Len",
+				hds = [][]any{
+					{
+						"Max Context Len",
+						"Embedding Len",
+						"Embedding GQA",
+						"Attention Causal",
+						"Attention Head Cnt",
+						"Layers",
+						"Feed Forward Len",
+						"Expert Cnt",
+						"Vocabulary Len",
+					},
 				}
-				bd = []any{
-					sprintf(a.MaximumContextLength),
-					sprintf(a.EmbeddingLength),
-					sprintf(a.EmbeddingGQA),
-					sprintf(a.AttentionCausal),
-					sprintf(tenary(
-						a.AttentionHeadCountKV == 0 || a.AttentionHeadCountKV == a.AttentionHeadCount,
-						"N/A",
-						a.AttentionHeadCount)),
-					sprintf(a.BlockCount),
-					sprintf(tenary(
-						a.FeedForwardLength[0] == a.FeedForwardLength[1],
-						a.FeedForwardLength[0],
-						sprintf("[%d, %d, ...]", a.FeedForwardLength[0], a.FeedForwardLength[1]))),
-					sprintf(a.ExpertCount),
-					sprintf(a.VocabularyLength),
+				bds = [][]any{
+					{
+						sprintf(a.MaximumContextLength),
+						sprintf(a.EmbeddingLength),
+						sprintf(a.EmbeddingGQA),
+						sprintf(a.AttentionCausal),
+						sprintf(tenary(
+							a.AttentionHeadCountKV == 0 || a.AttentionHeadCountKV == a.AttentionHeadCount,
+							"N/A",
+							a.AttentionHeadCount)),
+						sprintf(a.BlockCount),
+						sprintf(tenary(
+							a.FeedForwardLength[0] == a.FeedForwardLength[1],
+							a.FeedForwardLength[0],
+							sprintf("[%d, %d, ...]", a.FeedForwardLength[0], a.FeedForwardLength[1]))),
+						sprintf(a.ExpertCount),
+						sprintf(a.VocabularyLength),
+					},
 				}
 			}
 		}
 		tprint(
 			"ARCHITECTURE",
-			[][]any{hd},
-			[][]any{bd})
+			hds,
+			bds)
 	}
 
 	if !skipTokenizer {

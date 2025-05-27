@@ -56,7 +56,10 @@ download it.
 
 ## Notes
 
-- **Since v0.18.0**, GGUF Parser supports estimating SWA-supported(sliding window attention) model file, like Phi3/4 series, Gemma2/3 series.
+- **Since v0.19.0**, GGUF Parser supports estimating Audio projector model file, like Ultravox series, Qwen2 Audio
+  series, etc.
+- **Since v0.18.0**, GGUF Parser supports estimating SWA-supported(sliding window attention) model file, like LLaMA 4
+  series, Gemma2/3 series, etc.
 - **Since v0.17.0**, GGUF Parser align the `QUANTIZATION`(
   aka. [`general.file_type`](https://github.com/ggml-org/ggml/blob/master/docs/gguf.md#general-metadata))
   to [HuggingFace processing](https://github.com/huggingface/huggingface.js/blob/2475d6d316135c0a4fceff6b3fe2aed0dde36ac1/packages/gguf/src/types.ts#L11-L48),
@@ -579,22 +582,24 @@ $ gguf-parser --hf-repo="gpustack/FLUX.1-dev-GGUF" --hf-file="FLUX.1-dev-FP16.gg
 
 ```shell
 $ # Parse Multi-Modal Projector
-$ gguf-parser --hf-repo="bartowski/Qwen2-VL-72B-Instruct-GGUF" --hf-file="mmproj-Qwen2-VL-72B-Instruct-f16.gguf"                                                                        
-+---------------------------------------------------------------------------------------------------------------+
-| METADATA                                                                                                      |
-+-----------+-------------------------+------+--------------+---------------+----------+------------+-----------+
-|    TYPE   |           NAME          | ARCH | QUANTIZATION | LITTLE ENDIAN |   SIZE   | PARAMETERS |    BPW    |
-+-----------+-------------------------+------+--------------+---------------+----------+------------+-----------+
-| projector | Qwen2-VL-72B-Instruc... | clip |      F16     |      true     | 1.30 GiB |  699.36 M  | 16.01 bpw |
-+-----------+-------------------------+------+--------------+---------------+----------+------------+-----------+
+$ gguf-parser --hf-repo="unsloth/Qwen2.5-Omni-3B-GGUF" --hf-file="mmproj-F32.gguf"                                                                        
++-------------------------------------------------------------------------------------------------------+
+| METADATA                                                                                              |
++-----------+-----------------+------+--------------+---------------+----------+------------+-----------+
+|    TYPE   |       NAME      | ARCH | QUANTIZATION | LITTLE ENDIAN |   SIZE   | PARAMETERS |    BPW    |
++-----------+-----------------+------+--------------+---------------+----------+------------+-----------+
+| projector | Qwen2.5-Omni-3B | clip |      F32     |      true     | 4.86 GiB |   1.31 B   | 31.93 bpw |
++-----------+-----------------+------+--------------+---------------+----------+------------+-----------+
 
-+----------------------------------------------------------------------+
-| ARCHITECTURE                                                         |
-+----------------+---------------+--------+------------------+---------+
-| PROJECTOR TYPE | EMBEDDING LEN | LAYERS | FEED FORWARD LEN | ENCODER |
-+----------------+---------------+--------+------------------+---------+
-| qwen2vl_merger |      1280     |   32   |         0        |  Vision |
-+----------------+---------------+--------+------------------+---------+
++-------------------------------------------------------------------------------------------------------------------------+
+| ARCHITECTURE                                                                                                            |
++----------------+-------------------------------+-----------------+-------------------------------------+----------------+
+| PROJECTOR TYPE |         EMBEDDING LEN         |      LAYERS     |           FEED FORWARD LEN          |     ENCODER    |
+|                +---------------+---------------+--------+--------+------------------+------------------+                |
+|                |     VISION    |     AUDIO     | VISION |  AUDIO |      VISION      |       AUDIO      |                |
++----------------+---------------+---------------+--------+--------+------------------+------------------+----------------+
+|    qwen2.5o    |      1280     |      1280     |   32   |   32   |       1280       |       5120       | Vision & Audio |
++----------------+---------------+---------------+--------+--------+------------------+------------------+----------------+
 
 $ # Parse LoRA Adapter
 $ gguf-parser --hf-repo="ngxson/test_gguf_lora_adapter" --hf-file="lora-Llama-3-Instruct-abliteration-LoRA-8B-f16.gguf"

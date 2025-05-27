@@ -160,14 +160,38 @@ type (
 		//
 		// Deprecated: use ClipProjectorType instead.
 		ClipHasQwen2VLMerger bool `json:"clipHasQwen2VLMerger,omitempty"`
-		// ClipHasTextEncoder indicates whether the clip model has text encoder or not.
-		//
-		// Only used when Architecture is "clip".
-		ClipHasTextEncoder bool `json:"clipHasTextEncoder,omitempty"`
 		// ClipHasVisionEncoder indicates whether the clip model has vision encoder or not.
 		//
 		// Only used when Architecture is "clip".
 		ClipHasVisionEncoder bool `json:"clipHasVisionEncoder,omitempty"`
+		// ClipVisionEmbeddingLength indicates the embedding length of vision encoder.
+		//
+		// Only used when Architecture is "clip" and ClipHasVisionEncoder is true.
+		ClipVisionEmbeddingLength uint64 `json:"clipVisionEmbeddingLength,omitempty"`
+		// ClipVisionBlockCount indicates the number of blocks in the vision encoder.
+		//
+		// Only used when Architecture is "clip" and ClipHasVisionEncoder is true.
+		ClipVisionBlockCount uint64 `json:"clipVisionBlockCount,omitempty"`
+		// ClipVisionFeedForwardLength indicates the feed-forward length of the vision encoder.
+		//
+		// Only used when Architecture is "clip" and ClipHasVisionEncoder is true.
+		ClipVisionFeedForwardLength []uint64 `json:"clipVisionFeedForwardLength,omitempty"`
+		// ClipVisionAttentionHeadCount indicates the number of attention heads in the vision encoder.
+		//
+		// Only used when Architecture is "clip" and ClipHasVisionEncoder is true.
+		ClipVisionAttentionHeadCount uint64 `json:"clipVisionAttentionHeadCount,omitempty"`
+		// ClipVisionAttentionLayerNormRMSEpsilon indicates the epsilon value used in the RMSNorm of the vision encoder.
+		//
+		// Only used when Architecture is "clip" and ClipHasVisionEncoder is true.
+		ClipVisionAttentionLayerNormRMSEpsilon float32 `json:"clipVisionAttentionLayerNormRMSEpsilon,omitempty"`
+		// ClipVisionProjectionDim indicates the projection dimension of vision encoder.
+		//
+		// Only used when Architecture is "clip" and ClipHasVisionEncoder is true.
+		ClipVisionProjectionDim uint32 `json:"clipVisionProjectionDim,omitempty"`
+		// ClipVisionProjectorScaleFactor is the scale factor of the projector.
+		//
+		// Only used when Architecture is "clip" and ClipHasVisionEncoder is true.
+		ClipVisionProjectorScaleFactor uint32 `json:"clipVisionProjectorScaleFactor,omitempty"`
 		// ClipVisionImageSize indicates the image size of vision encoder.
 		//
 		// Only used when Architecture is "clip" and ClipHasVisionEncoder is true.
@@ -176,22 +200,54 @@ type (
 		//
 		// Only used when Architecture is "clip" and ClipHasVisionEncoder is true.
 		ClipVisionPatchSize uint32 `json:"clipVisionPatchSize,omitempty"`
-		// ClipVisionProjectionDim indicates the projection dimension of vision encoder.
-		//
-		// Only used when Architecture is "clip" and ClipHasVisionEncoder is true.
-		ClipVisionProjectionDim uint32 `json:"clipVisionProjectionDim,omitempty"`
 		// ClipVisionMMPatchMergeType indicates the merge type of the vision encoder.
 		//
 		// Only used when Architecture is "clip" and ClipHasVisionEncoder is true.
 		ClipVisionMMPatchMergeType string `json:"clipVisionMMPatchMergeType,omitempty"`
-		// ClipVisionProjectorScaleFactor is the scale factor of the projector.
-		//
-		// Only used when Architecture is "clip" and ClipHasVisionEncoder is true.
-		ClipVisionProjectorScaleFactor uint32 `json:"clipVisionProjectorScaleFactor,omitempty"`
 		// ClipVisionSpatialMergeSize is the spatial merge size of the vision encoder.
 		//
 		// Only used when Architecture is "clip" and ClipHasVisionEncoder is true.
 		ClipVisionSpatialMergeSize uint32 `json:"clipVisionSpatialMergeSize,omitempty"`
+		// ClipVisionWindowAttentionPattern is the Window Attention pattern used in the vision encoder.
+		//
+		// Only used when Architecture is "clip" and ClipHasVisionEncoder is true.
+		ClipVisionWindowAttentionPattern uint32 `json:"clipVisionWindowAttentionPattern,omitempty"`
+		// ClipHasAudioEncoder indicates whether the clip model has audio encoder or not.
+		//
+		// Only used when Architecture is "clip".
+		ClipHasAudioEncoder bool `json:"clipHasAudioEncoder,omitempty"`
+		// ClipAudioEmbeddingLength indicates the embedding length of audio encoder.
+		//
+		// Only used when Architecture is "clip" and ClipHasAudioEncoder is true.
+		ClipAudioEmbeddingLength uint64 `json:"clipAudioEmbeddingLength,omitempty"`
+		// ClipAudioBlockCount indicates the number of blocks in the audio encoder.
+		//
+		// Only used when Architecture is "clip" and ClipHasAudioEncoder is true.
+		ClipAudioBlockCount uint64 `json:"clipAudioBlockCount,omitempty"`
+		// ClipAudioFeedForwardLength indicates the feed-forward length of the audio encoder.
+		//
+		// Only used when Architecture is "clip" and ClipHasAudioEncoder is true.
+		ClipAudioFeedForwardLength []uint64 `json:"clipAudioFeedForwardLength,omitempty"`
+		// ClipAudioAttentionHeadCount indicates the number of attention heads in the audio encoder.
+		//
+		// Only used when Architecture is "clip" and ClipHasAudioEncoder is true.
+		ClipAudioAttentionHeadCount uint64 `json:"clipAudioAttentionHeadCount,omitempty"`
+		// ClipAudioAttentionLayerNormRMSEpsilon indicates the epsilon value used in the RMSNorm of the audio encoder.
+		//
+		// Only used when Architecture is "clip" and ClipHasAudioEncoder is true.
+		ClipAudioAttentionLayerNormRMSEpsilon float32 `json:"clipAudioAttentionLayerNormRMSEpsilon,omitempty"`
+		// ClipAudioProjectionDim indicates the projection dimension of audio encoder.
+		//
+		// Only used when Architecture is "clip" and ClipHasAudioEncoder is true.
+		ClipAudioProjectionDim uint32 `json:"clipAudioProjectionDim,omitempty"`
+		// ClipAudioProjectorStackFactor is the scale factor of the projector.
+		//
+		// Only used when Architecture is "clip" and ClipHasAudioEncoder is true.
+		ClipAudioProjectorStackFactor uint32 `json:"clipAudioProjectorStackFactor,omitempty"`
+		// ClipAudioNumMelBins is the number of mel bins used in the audio encoder.
+		//
+		// Only used when Architecture is "clip" and ClipHasAudioEncoder is true.
+		ClipAudioNumMelBins uint32 `json:"clipAudioNumMelBins,omitempty"`
 
 		// AdapterType is the type of the adapter.
 		//
@@ -443,32 +499,36 @@ func (gf *GGUFFile) diffuserArchitecture() (ga GGUFArchitecture) {
 
 func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 	const (
-		projectorTypeKey           = "clip.projector_type"
-		hasLLaVAProjectorKey       = "clip.has_llava_projector"
-		hasMiniCPMVProjector       = "clip.has_minicpmv_projector"
-		miniCPMVVersionKey         = "clip.minicpmv_version"
-		hasGLMProjectorKey         = "clip.has_glm_projector"
-		hasQwen2VLMergerKey        = "clip.has_qwen2vl_merger"
-		hasTextEncoderKey          = "clip.has_text_encoder"
-		hasVisionEncoderKey        = "clip.has_vision_encoder"
-		visionImageSizeKey         = "clip.vision.image_size"
-		visionPatchSizeKey         = "clip.vision.patch_size"
-		visionProjectionDim        = "clip.vision.projection_dim"
-		visionMMPatchMergeType     = "clip.vision.mm_patch_merge_type"
-		visionProjectorScaleFactor = "clip.vision.projector.scale_factor"
-		visioSpatialMergeSize      = "clip.vision.spatial_merge_size"
+		projectorTypeKey     = "clip.projector_type"
+		hasLLaVAProjectorKey = "clip.has_llava_projector"
+		hasMiniCPMVProjector = "clip.has_minicpmv_projector"
+		miniCPMVVersionKey   = "clip.minicpmv_version"
+		hasGLMProjectorKey   = "clip.has_glm_projector"
+		hasQwen2VLMergerKey  = "clip.has_qwen2vl_merger"
 
-		textEmbeddingLengthKey              = "clip.text.embedding_length"
-		textBlockCountKey                   = "clip.text.block_count"
-		textFeedForwardLengthKey            = "clip.text.feed_forward_length"
-		textAttentionHeadCountKey           = "clip.text.attention.head_count"
-		textAttentionLayerNormRMSEpsilonKey = "clip.text.attention.layer_norm_epsilon"
-
+		hasVisionEncoderKey                   = "clip.has_vision_encoder"
 		visionEmbeddingLengthKey              = "clip.vision.embedding_length"
 		visionBlockCountKey                   = "clip.vision.block_count"
 		visionFeedForwardLengthKey            = "clip.vision.feed_forward_length"
 		visionAttentionHeadCountKey           = "clip.vision.attention.head_count"
 		visionAttentionLayerNormRMSEpsilonKey = "clip.vision.attention.layer_norm_epsilon"
+		visionProjectionDimKey                = "clip.vision.projection_dim"
+		visionProjectorScaleFactorKey         = "clip.vision.projector.scale_factor"
+		visionImageSizeKey                    = "clip.vision.image_size"
+		visionPatchSizeKey                    = "clip.vision.patch_size"
+		visionMMPatchMergeTypeKey             = "clip.vision.mm_patch_merge_type"
+		visioSpatialMergeSizeKey              = "clip.vision.spatial_merge_size"
+		visionWindowAttentionPatternKey       = "clip.vision.n_wa_pattern"
+
+		hasAudioEncoderKey                   = "clip.has_audio_encoder"
+		audioEmbeddingLengthKey              = "clip.audio.embedding_length"
+		audioBlockCountKey                   = "clip.audio.block_count"
+		audioFeedForwardLengthKey            = "clip.audio.feed_forward_length"
+		audioAttentionHeadCountKey           = "clip.audio.attention.head_count"
+		audioAttentionLayerNormRMSEpsilonKey = "clip.audio.attention.layer_norm_epsilon"
+		audioProjectionDimKey                = "clip.audio.projection_dim"
+		audioProjectorStackFactorKey         = "clip.audio.projector.stack_factor"
+		audioNumMelBinsKey                   = "clip.audio.num_mel_bins"
 	)
 
 	ga.Type = "projector"
@@ -481,23 +541,30 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 		miniCPMVVersionKey,
 		hasGLMProjectorKey,
 		hasQwen2VLMergerKey,
-		hasTextEncoderKey,
+		// Vision
 		hasVisionEncoderKey,
-		visionImageSizeKey,
-		visionPatchSizeKey,
-		visionProjectionDim,
-		visionMMPatchMergeType,
-		visionProjectorScaleFactor,
-		textEmbeddingLengthKey,
-		textBlockCountKey,
-		textFeedForwardLengthKey,
-		textAttentionHeadCountKey,
-		textAttentionLayerNormRMSEpsilonKey,
 		visionEmbeddingLengthKey,
 		visionBlockCountKey,
 		visionFeedForwardLengthKey,
 		visionAttentionHeadCountKey,
 		visionAttentionLayerNormRMSEpsilonKey,
+		visionProjectionDimKey,
+		visionProjectorScaleFactorKey,
+		visionImageSizeKey,
+		visionPatchSizeKey,
+		visionMMPatchMergeTypeKey,
+		visioSpatialMergeSizeKey,
+		visionWindowAttentionPatternKey,
+		// Audio
+		hasAudioEncoderKey,
+		audioEmbeddingLengthKey,
+		audioBlockCountKey,
+		audioFeedForwardLengthKey,
+		audioAttentionHeadCountKey,
+		audioAttentionLayerNormRMSEpsilonKey,
+		audioProjectionDimKey,
+		audioProjectorStackFactorKey,
+		audioNumMelBinsKey,
 	})
 
 	if v, ok := m[projectorTypeKey]; ok {
@@ -520,83 +587,96 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 	if v, ok := m[hasQwen2VLMergerKey]; ok {
 		ga.ClipHasQwen2VLMerger = v.ValueBool()
 	}
-	if v, ok := m[hasTextEncoderKey]; ok {
-		ga.ClipHasTextEncoder = v.ValueBool()
-	}
+	// Vision
 	if v, ok := m[hasVisionEncoderKey]; ok {
 		ga.ClipHasVisionEncoder = v.ValueBool()
+	}
+	if v, ok := m[visionEmbeddingLengthKey]; ok {
+		ga.ClipVisionEmbeddingLength = ValueNumeric[uint64](v)
+	}
+	if v, ok := m[visionBlockCountKey]; ok {
+		ga.ClipVisionBlockCount = ValueNumeric[uint64](v)
+	}
+	if v, ok := m[visionFeedForwardLengthKey]; ok {
+		if v.ValueType == GGUFMetadataValueTypeArray {
+			ga.ClipVisionFeedForwardLength = ValuesNumeric[uint64](v.ValueArray())
+		} else {
+			vx := ValueNumeric[uint64](v)
+			ga.ClipVisionFeedForwardLength = make([]uint64, ga.ClipVisionBlockCount)
+			for i := range ga.ClipVisionFeedForwardLength {
+				ga.ClipVisionFeedForwardLength[i] = vx
+			}
+		}
+	}
+	if v, ok := m[visionAttentionHeadCountKey]; ok {
+		ga.ClipVisionAttentionHeadCount = ValueNumeric[uint64](v)
+	}
+	if v, ok := m[visionAttentionLayerNormRMSEpsilonKey]; ok {
+		ga.ClipVisionAttentionLayerNormRMSEpsilon = ValueNumeric[float32](v)
 	}
 	if v, ok := m[visionImageSizeKey]; ok {
 		ga.ClipVisionImageSize = ValueNumeric[uint32](v)
 	}
-	ga.ClipVisionPatchSize = 1
-	if v, ok := m[visionPatchSizeKey]; ok {
-		ga.ClipVisionPatchSize = ValueNumeric[uint32](v)
-	}
-	if v, ok := m[visionProjectionDim]; ok {
+	if v, ok := m[visionProjectionDimKey]; ok {
 		ga.ClipVisionProjectionDim = ValueNumeric[uint32](v)
-	}
-	ga.ClipVisionMMPatchMergeType = "flat"
-	if v, ok := m[visionMMPatchMergeType]; ok {
-		ga.ClipVisionMMPatchMergeType = v.ValueString()
 	}
 	ga.ClipVisionProjectorScaleFactor = 1
 	if ga.ClipProjectorType == "gemma3" {
 		ga.ClipVisionProjectorScaleFactor = 4
 	}
-	if v, ok := m[visionProjectorScaleFactor]; ok {
+	if v, ok := m[visionProjectorScaleFactorKey]; ok {
 		ga.ClipVisionProjectorScaleFactor = ValueNumeric[uint32](v)
 	}
-	if v, ok := m[visioSpatialMergeSize]; ok {
+	ga.ClipVisionPatchSize = 1
+	if v, ok := m[visionPatchSizeKey]; ok {
+		ga.ClipVisionPatchSize = ValueNumeric[uint32](v)
+	}
+	ga.ClipVisionMMPatchMergeType = "flat"
+	if v, ok := m[visionMMPatchMergeTypeKey]; ok {
+		ga.ClipVisionMMPatchMergeType = v.ValueString()
+	}
+	if v, ok := m[visioSpatialMergeSizeKey]; ok {
 		ga.ClipVisionSpatialMergeSize = ValueNumeric[uint32](v)
 	}
-
-	if v, ok := m[textEmbeddingLengthKey]; ok {
-		ga.EmbeddingLength = ValueNumeric[uint64](v)
+	if v, ok := m[visionWindowAttentionPatternKey]; ok {
+		ga.ClipVisionWindowAttentionPattern = ValueNumeric[uint32](v)
 	}
-	if v, ok := m[textBlockCountKey]; ok {
-		ga.BlockCount = ValueNumeric[uint64](v)
+	// Audio
+	if v, ok := m[hasAudioEncoderKey]; ok {
+		ga.ClipHasAudioEncoder = v.ValueBool()
 	}
-	if v, ok := m[textFeedForwardLengthKey]; ok {
+	if v, ok := m[audioEmbeddingLengthKey]; ok {
+		ga.ClipAudioEmbeddingLength = ValueNumeric[uint64](v)
+	}
+	if v, ok := m[audioBlockCountKey]; ok {
+		ga.ClipAudioBlockCount = ValueNumeric[uint64](v)
+	}
+	if v, ok := m[audioFeedForwardLengthKey]; ok {
 		if v.ValueType == GGUFMetadataValueTypeArray {
-			ga.FeedForwardLength = ValuesNumeric[uint64](v.ValueArray())
+			ga.ClipAudioFeedForwardLength = ValuesNumeric[uint64](v.ValueArray())
 		} else {
 			vx := ValueNumeric[uint64](v)
-			ga.FeedForwardLength = make([]uint64, ga.BlockCount)
-			for i := range ga.FeedForwardLength {
-				ga.FeedForwardLength[i] = vx
+			ga.ClipAudioFeedForwardLength = make([]uint64, ga.ClipAudioBlockCount)
+			for i := range ga.ClipAudioFeedForwardLength {
+				ga.ClipAudioFeedForwardLength[i] = vx
 			}
 		}
 	}
-	if v, ok := m[textAttentionHeadCountKey]; ok {
-		ga.AttentionHeadCount = ValueNumeric[uint64](v)
+	if v, ok := m[audioAttentionHeadCountKey]; ok {
+		ga.ClipAudioAttentionHeadCount = ValueNumeric[uint64](v)
 	}
-	if v, ok := m[textAttentionLayerNormRMSEpsilonKey]; ok {
-		ga.AttentionLayerNormRMSEpsilon = ValueNumeric[float32](v)
+	if v, ok := m[audioAttentionLayerNormRMSEpsilonKey]; ok {
+		ga.ClipAudioAttentionLayerNormRMSEpsilon = ValueNumeric[float32](v)
 	}
-
-	if v, ok := m[visionEmbeddingLengthKey]; ok {
-		ga.EmbeddingLength = ValueNumeric[uint64](v)
+	if v, ok := m[audioProjectionDimKey]; ok {
+		ga.ClipAudioProjectionDim = ValueNumeric[uint32](v)
 	}
-	if v, ok := m[visionBlockCountKey]; ok {
-		ga.BlockCount = ValueNumeric[uint64](v)
+	ga.ClipAudioProjectorStackFactor = 1
+	if v, ok := m[audioProjectorStackFactorKey]; ok {
+		ga.ClipAudioProjectorStackFactor = ValueNumeric[uint32](v)
 	}
-	if v, ok := m[visionFeedForwardLengthKey]; ok {
-		if v.ValueType == GGUFMetadataValueTypeArray {
-			ga.FeedForwardLength = ValuesNumeric[uint64](v.ValueArray())
-		} else {
-			vx := ValueNumeric[uint64](v)
-			ga.FeedForwardLength = make([]uint64, ga.BlockCount)
-			for i := range ga.FeedForwardLength {
-				ga.FeedForwardLength[i] = vx
-			}
-		}
-	}
-	if v, ok := m[visionAttentionHeadCountKey]; ok {
-		ga.AttentionHeadCount = ValueNumeric[uint64](v)
-	}
-	if v, ok := m[visionAttentionLayerNormRMSEpsilonKey]; ok {
-		ga.AttentionLayerNormRMSEpsilon = ValueNumeric[float32](v)
+	if v, ok := m[audioNumMelBinsKey]; ok {
+		ga.ClipAudioNumMelBins = ValueNumeric[uint32](v)
 	}
 
 	ga.AttentionHeadCountKV = ga.AttentionHeadCount

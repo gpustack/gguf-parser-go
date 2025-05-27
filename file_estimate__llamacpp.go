@@ -1,6 +1,7 @@
 package gguf_parser
 
 import (
+	"math"
 	"regexp"
 	"slices"
 	"strings"
@@ -76,7 +77,8 @@ type (
 		// HandleSWALayers is the number of layers that the device can handle in sliding window attention (SWA),
 		// the non SWA layers is `HandleLayers - HandleSWALayers`.
 		HandleSWALayers uint64 `json:"handleSWALayers"`
-		// HandleLastLayer is the index of the last layer the device can handle.
+		// HandleLastLayer is the index of the last layer the device can handle,
+		// -1 means the device does not handle the last layer.
 		HandleLastLayer int `json:"handleLastLayer"`
 		// HandleOutputLayer is the flag to indicate whether the device can handle the output layer,
 		// true for handle.
@@ -218,11 +220,11 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...GGUFRunEstimateOption) (e LLaMAC
 	case "projector":
 		// For projector model,
 		// see https://github.com/ggerganov/llama.cpp/blob/148ec970b62c3c5ae0a8bfdaad2fc237aaae350d/examples/llava/clip.cpp#L994-L1008.
-		if ptr.Deref(o.LMCOffloadLayers, a.BlockCount) != 0 {
-			// None model means full offload.
-			o.LMCOffloadLayers = ptr.To(a.BlockCount)
+		if ptr.Deref(o.LMCOffloadLayers, math.MaxUint64) != 0 {
+			// Full offload.
+			o.LMCOffloadLayers = ptr.To[uint64](math.MaxUint64)
 		} else {
-			// None model means zero offload.
+			// Zero offload.
 			o.LMCOffloadLayers = ptr.To[uint64](0)
 		}
 		gf.estimateLLaMACppRunInProjector(&o, &a, &e)
@@ -518,10 +520,11 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 
 	// Computation.
 	{
-		// Bootstrap, compute metadata,
-		// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L16135-L16136.
-		cm := GGMLTensorOverhead()*GGMLComputationGraphNodesMaximum +
-			GGMLComputationGraphOverhead(GGMLComputationGraphNodesMaximum, false)
+		// See https://github.com/ggml-org/llama.cpp/blob/ec9e0301fef6476df83e94842c3b625501c95566/src/llama-context.cpp#L1241-L1243.
+		maxNodes := max(65536, uint64(5*len(gf.TensorInfos)))
+
+		// Bootstrap, compute metadata.
+		cm := GGMLTensorOverhead()*maxNodes + GGMLComputationGraphOverhead(maxNodes, false)
 		e.Devices[0].Computation.Footprint = GGUFBytesScalar(cm)
 
 		// Scheduler overhead,
@@ -756,171 +759,72 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a *GGUFArchitecture, e *LLaMACppRunEstimate) {
 	ls := gf.Layers()
 	ioLs, tfLs, _ := ls.Cut([]string{
+		"mm.*",
+		// Vision specific IO layers.
 		"v.patch_embd.*",
 		"v.class_embd",
 		"v.position_embd.*",
 		"v.pre_ln.*",
-		"model.*",
 		"v.post_ln.*",
-		"mm.*",
+		"model.*",
 		"resampler.*",
+		// Audio specific IO layers.
+		"a.position_embd.*",
+		"a.conv1d.*",
+		"a.post_ln.*",
 	})
 	ipLs, opLs, _ := ioLs.Cut([]string{
+		// Vision specific Input layers.
 		"v.patch_embd.*",
 		"v.class_embd",
 		"v.position_embd.*",
 		"v.pre_ln.*",
 		"model.*",
+		// Audio specific Input layers.
+		"a.position_embd.*",
+		"a.conv1d.*",
 	})
 
-	if a.BlockCount == 0 {
-		a.BlockCount = uint64(len(tfLs))
+	// Block count.
+	if a.ClipHasVisionEncoder && a.ClipVisionBlockCount == 0 {
+		if len(tfLs) == 1 {
+			if ntfLs, ok := tfLs[0].(*GGUFNamedTensorInfos); ok && slices.Contains([]string{"v"}, ntfLs.Name) {
+				a.ClipVisionBlockCount = uint64(len(ntfLs.GGUFLayerTensorInfos))
+			}
+		}
+		if a.ClipVisionBlockCount == 0 {
+			a.ClipVisionBlockCount = uint64(len(tfLs))
+		}
+	}
+	if a.ClipHasAudioEncoder && a.ClipAudioBlockCount == 0 {
+		if len(tfLs) == 1 {
+			if ntfLs, ok := tfLs[0].(*GGUFNamedTensorInfos); ok && slices.Contains([]string{"a"}, ntfLs.Name) {
+				a.ClipAudioBlockCount = uint64(len(ntfLs.GGUFLayerTensorInfos))
+			}
+		}
+		if a.ClipAudioBlockCount == 0 {
+			a.ClipAudioBlockCount = uint64(len(tfLs))
+		}
 	}
 
-	e.FullOffloaded = *o.LMCOffloadLayers == a.BlockCount
-	e.OffloadLayers = *o.LMCOffloadLayers
-
-	// Init hyperparameters,
-	// see https://github.com/ggerganov/llama.cpp/blob/0827b2c1da299805288abbd556d869318f2b121e/examples/llava/clip.cpp#L599-L636.
-	var (
-		imgMaxHeightSize  uint64
-		imgMaxWidthSize   uint64
-		imgPatchSize      uint64
-		nPatchesHeight    uint64
-		nPatchesWidth     uint64
-		nPatches          uint64
-		imgPatchesMaxSize uint64
-		imgPatches        uint64
-		projectionDim     uint64 // NB(thxCode): do not sure if there is the correct name.
-	)
-	{
-		// See https://github.com/ggerganov/llama.cpp/blob/0827b2c1da299805288abbd556d869318f2b121e/examples/llava/llava.cpp#L397-L411,
-		//     https://github.com/ggerganov/llama.cpp/blob/0827b2c1da299805288abbd556d869318f2b121e/examples/llava/clip.cpp#L2323-L2345,
-		//     https://github.com/ggerganov/llama.cpp/blob/0827b2c1da299805288abbd556d869318f2b121e/examples/llava/clip.cpp#L2767-L2794.
-		imgMaxHeightSize = uint64(a.ClipVisionImageSize)
-		imgMaxWidthSize = imgMaxHeightSize
-		imgPatchSize = uint64(a.ClipVisionPatchSize)
-		if a.ClipHasQwen2VLMerger ||
-			a.ClipProjectorType == "qwen2vl_merger" ||
-			a.ClipProjectorType == "qwen2.5vl_merger" {
-			imgMaxHeightSize = uint64(ptr.Deref(o.LMCVisualMaxImageSize, 224))
-			imgMaxWidthSize = imgMaxHeightSize
-		}
-		nPatchesHeight = imgMaxHeightSize / imgPatchSize
-		nPatchesWidth = imgMaxWidthSize / imgPatchSize
-		nPatches = nPatchesHeight * nPatchesWidth
-		imgPatchesMaxSize = 1
-		imgPatches = nPatches
-		switch {
-		case a.ClipHasLLaVAProjector ||
-			a.ClipProjectorType == "mlp" ||
-			a.ClipProjectorType == "mlp_norm" ||
-			a.ClipProjectorType == "ldp" ||
-			a.ClipProjectorType == "ldpv2":
-			// LLaVA 1.6 uses up to 6 patches
-			if a.ClipVisionMMPatchMergeType != "flat" {
-				imgPatchesMaxSize = 6
-			}
-		case a.ClipHasMiniCPMVProjector ||
-			a.ClipProjectorType == "resampler":
-			// MiniCPM-V uses up to 10 patches
-			imgPatchesMaxSize = 10
-		case a.ClipProjectorType == "adapter":
-			// Granite vision uses up to 10 patches + base patch
-			imgPatchesMaxSize = 11
-		}
-		if o.LMCVisualMaxImageCache != nil {
-			imgPatchesMaxSize += uint64(*o.LMCVisualMaxImageCache)
-		}
-		switch a.ClipProjectorType {
-		case "ldp":
-			imgPatches /= 4
-			if ti, ok := gf.TensorInfos.Get("mm.model.mb_block.1.block.2.1.bias"); ok {
-				projectionDim = ti.Dimensions[0]
-			}
-		case "ldpv2":
-			imgPatches /= 4
-			if ti, ok := gf.TensorInfos.Get("mm.model.peg.0.bias"); ok {
-				projectionDim = ti.Dimensions[0]
-			}
-		case "mlp":
-			if ti, ok := gf.TensorInfos.Get("mm.2.bias"); ok {
-				projectionDim = ti.Dimensions[0]
-			}
-		case "mlp_norm":
-			if ti, ok := gf.TensorInfos.Get("mm.3.bias"); ok {
-				projectionDim = ti.Dimensions[0]
-			}
-		case "resampler":
-			if ti, ok := gf.TensorInfos.Get("resampler.query"); ok {
-				imgPatches = ti.Dimensions[1]
-				projectionDim = ti.Dimensions[0]
-			}
-		case "adapter":
-			imgPatches /= 4
-			imgPatches += 2
-			if ti, ok := gf.TensorInfos.Get("adapter.linear.dense_4h_to_h.weight"); ok {
-				projectionDim = ti.Dimensions[1]
-			}
-		case "qwen2vl_merger", "qwen2.5vl_merger":
-			nSizePatch := uint64(a.ClipVisionPatchSize * 2)
-			imgHeightPatchSize := imgMaxHeightSize / nSizePatch
-			if imgMaxHeightSize%nSizePatch > 0 {
-				imgHeightPatchSize++
-			}
-			imgWidthPatchSize := imgMaxWidthSize / nSizePatch
-			if imgMaxWidthSize%nSizePatch > 0 {
-				imgWidthPatchSize++
-			}
-			imgPatches = imgHeightPatchSize * imgWidthPatchSize
-			if ti, ok := gf.TensorInfos.Get("mm.2.bias"); ok {
-				projectionDim = ti.Dimensions[0]
-			}
-		case "gemma3":
-			nPerSide := uint64(a.ClipVisionImageSize) / uint64(a.ClipVisionPatchSize)
-			nPerSide2DPool := nPerSide / uint64(a.ClipVisionProjectorScaleFactor)
-			imgPatches = nPerSide2DPool * nPerSide2DPool
-			if ti, ok := gf.TensorInfos.Get("mm.input_projection.weight"); ok {
-				projectionDim = ti.Dimensions[0]
-			}
-		case "idefics3", "llama4":
-			imgPatches /= uint64(a.ClipVisionProjectorScaleFactor * a.ClipVisionProjectorScaleFactor)
-			if ti, ok := gf.TensorInfos.Get("mm.model.fc.weight"); ok {
-				projectionDim = ti.Dimensions[1]
-			}
-		case "pixtral":
-			imgHeightPatchSize := imgMaxHeightSize / uint64(a.ClipVisionPatchSize)
-			if a.ClipVisionSpatialMergeSize > 0 {
-				imgHeightPatchSize /= uint64(a.ClipVisionSpatialMergeSize)
-			}
-			imgWidthPatchSize := imgMaxWidthSize / uint64(a.ClipVisionPatchSize)
-			if a.ClipVisionSpatialMergeSize > 0 {
-				imgWidthPatchSize /= uint64(a.ClipVisionSpatialMergeSize)
-			}
-			imgPatches = imgHeightPatchSize*imgWidthPatchSize + imgHeightPatchSize - 1 /* [IMG_BREAK] per row */
-			if ti, ok := gf.TensorInfos.Get("mm.2.bias"); ok {
-				projectionDim = ti.Dimensions[0]
-			}
-		case "internvl":
-			imgPatches /= uint64(a.ClipVisionProjectorScaleFactor * a.ClipVisionProjectorScaleFactor)
-			if ti, ok := gf.TensorInfos.Get("mm.model.mlp.3.weight"); ok {
-				projectionDim = ti.Dimensions[1]
-			}
-		}
+	// Offload layers.
+	if *o.LMCOffloadLayers == math.MaxUint64 {
+		e.FullOffloaded = true
+		e.OffloadLayers = a.ClipVisionBlockCount + a.ClipAudioBlockCount
+		o.LMCOffloadLayers = ptr.To(e.OffloadLayers)
+	} else {
+		e.FullOffloaded = false
+		e.OffloadLayers = 0
 	}
 
 	// Footprint.
 	{
 		// Bootstrap.
 		e.Devices[0].Footprint = GGUFBytesScalar(5*1024*1024) /* model load */ + (gf.Size - gf.ModelSize) /* metadata */
-
-		// Image Embed,
-		// see https://github.com/ggerganov/llama.cpp/blob/0827b2c1da299805288abbd556d869318f2b121e/examples/llava/llava.cpp#L401-L407.
-		e.Devices[0].Footprint += GGUFBytesScalar(imgPatchesMaxSize * imgPatches * projectionDim * 4 /* float32 size */)
 	}
 
 	idx := 0 // Default to the main host's RAM.
-	if *o.LMCOffloadLayers != 0 {
+	if e.FullOffloaded {
 		for i := 1; i < len(e.Devices); i++ {
 			if !e.Devices[i].Remote {
 				idx = i
@@ -944,75 +848,277 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 		e.Devices[idx].Parameter.Output = GGUFParametersScalar(opLs.Elements())
 	}
 
-	// Computation.
-	{
-		// Bootstrap, compute metadata,
-		// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L16135-L16136.
-		cm := GGMLTensorOverhead()*GGMLComputationGraphNodesMaximum +
-			GGMLComputationGraphOverhead(GGMLComputationGraphNodesMaximum, false)
-		e.Devices[0].Computation.Footprint = GGUFBytesScalar(cm)
-
-		// Scheduler overhead,
-		// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L16149.
-		e.Devices[0].Computation.Footprint += GGUFBytesScalar(4 * 1024 * 1024)
-
-		// GGML context,
-		// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L5015-L5036.
-		gc := 2 /* buffer count */ * GGMLTensorOverhead() * (uint64(len(gf.TensorInfos)) + 1 + a.BlockCount*3)
-		e.Devices[0].Computation.Footprint += GGUFBytesScalar(gc)
-
-		// Tensor usage.
+	if a.ClipHasVisionEncoder {
+		// Init hyperparameters,
+		// see https://github.com/ggerganov/llama.cpp/blob/0827b2c1da299805288abbd556d869318f2b121e/examples/llava/clip.cpp#L599-L636.
 		var (
-			hasClassEmbd bool
-			nPositions   uint64
-			nPositionIDs uint64
-			nBatch       uint64
-			nEmbd        uint64
-			nHead        uint64
+			heightMaxSize uint64 // y
+			widthMaxSize  uint64 // x
+			// See https://github.com/ggml-org/llama.cpp/blob/6385b843a8dc8e15b8362196039720c58dd79fa2/tools/mtmd/clip.cpp#L3462.
+			nPatches       uint64
+			patchesMaxSize uint64
+			// See https://github.com/ggml-org/llama.cpp/blob/6385b843a8dc8e15b8362196039720c58dd79fa2/tools/mtmd/clip.cpp#L4016.
+			projectionDim uint64 // NB(thxCode): do not sure if there is the correct name.
 		)
-		{
-			_, hasClassEmbd = ipLs.Get("v.class_embd")
-			nPositions = nPatches
-			if hasClassEmbd {
-				nPositions += 1
-			}
-			nPositionIDs = nPositions
-			if a.ClipHasQwen2VLMerger ||
-				a.ClipProjectorType == "qwen2vl_merger" ||
-				a.ClipProjectorType == "qwen2.5vl_merger" {
-				nPositionIDs *= 4
-			}
-			nBatch = 1
-			nEmbd = a.EmbeddingLength
-			nHead = a.AttentionHeadCount
+		// See https://github.com/ggerganov/llama.cpp/blob/0827b2c1da299805288abbd556d869318f2b121e/examples/llava/llava.cpp#L397-L411,
+		//     https://github.com/ggerganov/llama.cpp/blob/0827b2c1da299805288abbd556d869318f2b121e/examples/llava/clip.cpp#L2323-L2345,
+		//     https://github.com/ggerganov/llama.cpp/blob/0827b2c1da299805288abbd556d869318f2b121e/examples/llava/clip.cpp#L2767-L2794.
+		heightMaxSize = uint64(a.ClipVisionImageSize)
+		widthMaxSize = heightMaxSize
+		if a.ClipHasQwen2VLMerger ||
+			a.ClipProjectorType == "qwen2vl_merger" ||
+			a.ClipProjectorType == "qwen2.5vl_merger" ||
+			a.ClipProjectorType == "qwen2.5o" ||
+			a.ClipProjectorType == "pixtral" {
+			// See https://github.com/ggml-org/llama.cpp/blob/ec9e0301fef6476df83e94842c3b625501c95566/tools/mtmd/clip.cpp#L2217.
+			heightMaxSize = uint64(ptr.Deref(o.LMCVisualMaxImageSize, 1024))
+			widthMaxSize = heightMaxSize
 		}
-		// First, get the usage of input layer.
-		var (
-			inpRaw     = GGMLTypeF32.RowSizeOf([]uint64{imgMaxWidthSize, imgMaxHeightSize, 3, nBatch})          // F32 [img_width, img_height, 3, n_batch]
-			inpRawCnt  = GGMLTypeF32.RowSizeOf([]uint64{nPatches, nEmbd, nBatch})                               // I32 [n_patches, n_embd, n_batch]
-			inpEmbd    = GGMLTypeF32.RowSizeOf([]uint64{nEmbd, nPositions, nBatch})                             // F32 [n_embd, n_positions, n_batch]
-			inpPosEmbd = GGMLTypeF32.RowSizeOf([]uint64{projectionDim, nPatchesHeight * nPatchesWidth, nBatch}) // F32 [mmproj, pos_h * pos_w, n_batch]
-			inpPos     = GGMLTypeI32.RowSizeOf([]uint64{nPositionIDs})                                          // I32 [n_positions]
-			inpPatches = GGMLTypeI32.RowSizeOf([]uint64{nPatches})                                              // I32 [n_patches]
-		)
-		{
-			e.Devices[idx].Computation.Input = GGUFBytesScalar(inpRaw + inpRawCnt + inpPos + inpPatches)
-			if a.ClipHasMiniCPMVProjector {
-				e.Devices[idx].Computation.Input += GGUFBytesScalar(inpPosEmbd)
+		nPatchSize := uint64(a.ClipVisionPatchSize)
+		nPatchesHeight := heightMaxSize / nPatchSize
+		nPatchesWidth := widthMaxSize / nPatchSize
+		nPatches = nPatchesHeight * nPatchesWidth
+		patchesMaxSize = 1
+		switch {
+		case a.ClipHasLLaVAProjector ||
+			a.ClipProjectorType == "mlp" ||
+			a.ClipProjectorType == "mlp_norm" ||
+			a.ClipProjectorType == "ldp" ||
+			a.ClipProjectorType == "ldpv2":
+			// LLaVA 1.6 uses up to 6 patches
+			if a.ClipVisionMMPatchMergeType != "flat" {
+				patchesMaxSize = 6
 			}
-			if hasClassEmbd {
+		case a.ClipHasMiniCPMVProjector ||
+			a.ClipProjectorType == "resampler":
+			// MiniCPM-V uses up to 10 patches
+			patchesMaxSize = 10
+		case a.ClipProjectorType == "adapter":
+			// Granite vision uses up to 10 patches + base patch
+			patchesMaxSize = 11
+		}
+
+		if o.LMCMaxProjectedCache != nil {
+			patchesMaxSize += uint64(*o.LMCMaxProjectedCache)
+		}
+
+		switch a.ClipProjectorType {
+		case "ldp":
+			nPatches /= 4
+			if ti, ok := gf.TensorInfos.Get("mm.model.mb_block.1.block.2.1.bias"); ok {
+				projectionDim = ti.Dimensions[0]
+			}
+		case "ldpv2":
+			nPatches /= 4
+			if ti, ok := gf.TensorInfos.Get("mm.model.peg.0.bias"); ok {
+				projectionDim = ti.Dimensions[0]
+			}
+		case "mlp":
+			if ti, ok := gf.TensorInfos.Get("mm.2.bias"); ok {
+				projectionDim = ti.Dimensions[0]
+			}
+		case "mlp_norm":
+			if ti, ok := gf.TensorInfos.Get("mm.3.bias"); ok {
+				projectionDim = ti.Dimensions[0]
+			}
+		case "resampler":
+			if ti, ok := gf.TensorInfos.Get("resampler.query"); ok {
+				nPatches = ti.Dimensions[1]
+				projectionDim = ti.Dimensions[0]
+			}
+		case "adapter":
+			nPatches /= 4
+			nPatches += 2
+			if ti, ok := gf.TensorInfos.Get("adapter.linear.dense_4h_to_h.weight"); ok {
+				projectionDim = ti.Dimensions[1]
+			}
+		case "qwen2vl_merger", "qwen2.5vl_merger", "qwen2.5o":
+			nSizePatch := uint64(a.ClipVisionPatchSize * 2)
+			heightPatchSize := heightMaxSize / nSizePatch
+			if heightMaxSize%nSizePatch > 0 {
+				heightPatchSize++
+			}
+			widthPatchSize := widthMaxSize / nSizePatch
+			if widthMaxSize%nSizePatch > 0 {
+				widthPatchSize++
+			}
+			nPatches = heightPatchSize * widthPatchSize
+			if ti, ok := gf.TensorInfos.Get("mm.2.bias"); ok {
+				projectionDim = ti.Dimensions[0]
+			}
+		case "gemma3":
+			nPerSide := uint64(a.ClipVisionImageSize) / uint64(a.ClipVisionPatchSize)
+			nPerSide2DPool := nPerSide / uint64(a.ClipVisionProjectorScaleFactor)
+			nPatches = nPerSide2DPool * nPerSide2DPool
+			if ti, ok := gf.TensorInfos.Get("mm.input_projection.weight"); ok {
+				projectionDim = ti.Dimensions[0]
+			}
+		case "idefics3", "llama4":
+			nPatches /= uint64(a.ClipVisionProjectorScaleFactor * a.ClipVisionProjectorScaleFactor)
+			if ti, ok := gf.TensorInfos.Get("mm.model.fc.weight"); ok {
+				projectionDim = ti.Dimensions[1]
+			}
+		case "pixtral":
+			heightPatchSize := heightMaxSize / uint64(a.ClipVisionPatchSize)
+			if a.ClipVisionSpatialMergeSize > 0 {
+				heightPatchSize /= uint64(a.ClipVisionSpatialMergeSize)
+			}
+			widthPatchSize := widthMaxSize / uint64(a.ClipVisionPatchSize)
+			if a.ClipVisionSpatialMergeSize > 0 {
+				widthPatchSize /= uint64(a.ClipVisionSpatialMergeSize)
+			}
+			nPatches = heightPatchSize*widthPatchSize + heightPatchSize - 1 /* [IMG_BREAK] per row */
+			if ti, ok := gf.TensorInfos.Get("mm.2.bias"); ok {
+				projectionDim = ti.Dimensions[0]
+			}
+		case "internvl":
+			nPatches /= uint64(a.ClipVisionProjectorScaleFactor * a.ClipVisionProjectorScaleFactor)
+			if ti, ok := gf.TensorInfos.Get("mm.model.mlp.3.weight"); ok {
+				projectionDim = ti.Dimensions[1]
+			}
+		}
+
+		// Footprint
+		{
+			// Image Embed,
+			// see https://github.com/ggerganov/llama.cpp/blob/0827b2c1da299805288abbd556d869318f2b121e/examples/llava/llava.cpp#L401-L407.
+			e.Devices[0].Footprint += GGUFBytesScalar(patchesMaxSize * nPatches * projectionDim * 4 /* float32 size */)
+		}
+
+		// Computation.
+		{
+			// See https://github.com/ggml-org/llama.cpp/blob/ec9e0301fef6476df83e94842c3b625501c95566/tools/mtmd/clip.cpp#L374.
+			var maxNodes uint64 = 8192
+
+			// Bootstrap, compute metadata.
+			cm := GGMLTensorOverhead()*maxNodes + GGMLComputationGraphOverhead(maxNodes, false)
+			e.Devices[0].Computation.Footprint += GGUFBytesScalar(cm)
+
+			// Scheduler overhead,
+			// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L16149.
+			e.Devices[0].Computation.Footprint += GGUFBytesScalar(4 * 1024 * 1024)
+
+			// GGML context,
+			// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L5015-L5036.
+			gc := 2 /* buffer count */ * GGMLTensorOverhead() * (uint64(len(gf.TensorInfos)) + 1 + a.ClipVisionBlockCount*3)
+			e.Devices[0].Computation.Footprint += GGUFBytesScalar(gc)
+
+			// Tensor usage.
+			var (
+				hasClassEmbd bool
+				nPositions   uint64
+				nBatch       uint64
+				nEmbd        uint64
+				nHead        uint64
+			)
+			{
+				_, hasClassEmbd = ipLs.Get("v.class_embd")
+				nPositions = nPatches
+				if hasClassEmbd {
+					nPositions += 1
+				}
+				if a.ClipHasQwen2VLMerger ||
+					a.ClipProjectorType == "qwen2vl_merger" ||
+					a.ClipProjectorType == "qwen2.5vl_merger" ||
+					a.ClipProjectorType == "qwen2.5o" {
+					nPositions *= 4
+				}
+				nBatch = 1
+				nEmbd = a.ClipVisionEmbeddingLength
+				nHead = a.ClipVisionAttentionHeadCount
+			}
+			// First, get the usage of input layer.
+			{
+				var (
+					inpRaw     = GGMLTypeF32.RowSizeOf([]uint64{widthMaxSize, heightMaxSize, 3, nBatch}) // F32 [img_width, img_height, 3, n_batch]
+					inpRawCnt  = GGMLTypeF32.RowSizeOf([]uint64{nPatches, nEmbd, nBatch})                // I32 [n_patches, n_embd, n_batch]
+					inpEmbd    = GGMLTypeF32.RowSizeOf([]uint64{nEmbd, nPositions, nBatch})              // F32 [n_embd, n_positions, n_batch]
+					inpPosEmbd = GGMLTypeF32.RowSizeOf([]uint64{projectionDim, nPatches, nBatch})        // F32 [mmproj, n_patches, n_batch]
+					inpPos     = GGMLTypeI32.RowSizeOf([]uint64{nPositions})                             // I32 [n_positions]
+					inpPatches = GGMLTypeI32.RowSizeOf([]uint64{nPatches})                               // I32 [n_patches]
+				)
+				e.Devices[idx].Computation.Input += GGUFBytesScalar(inpRaw + inpRawCnt + inpPos + inpPatches)
+				if a.ClipHasMiniCPMVProjector ||
+					a.ClipProjectorType == "resampler" {
+					e.Devices[idx].Computation.Input += GGUFBytesScalar(inpPosEmbd)
+				}
+				if hasClassEmbd {
+					e.Devices[idx].Computation.Input += GGUFBytesScalar(inpEmbd)
+				}
+				if a.ClipVisionWindowAttentionPattern > 0 { // Qwen2.5 VL
+					inpWindowIndex := GGMLTypeI32.RowSizeOf([]uint64{nPatches})              // I32 [n_patches]
+					inpWindowMask := GGMLTypeI32.RowSizeOf([]uint64{nPositions, nPositions}) // I32 [n_positions, n_positions]
+					e.Devices[idx].Computation.Input += GGUFBytesScalar(inpWindowIndex + inpWindowMask)
+				}
+			}
+			// Since the steps between transformer layers are serial,
+			// the allocated memory can be reused for the next layer.
+			// So, we only consider the usage of a certain layer.
+			{
+				compNorm := GGMLTypeF32.RowSizeOf([]uint64{nEmbd, nPositions}) * 2
+				compVcur := GGMLTypeF32.RowSizeOf([]uint64{nEmbd, nPositions})
+				compKcur := GGMLTypeF32.RowSizeOf([]uint64{nEmbd, nPositions})
+				compKQcur := GGMLTypeF32.RowSizeOf([]uint64{nPositions, nPositions, nHead})
+				e.Devices[idx].Computation.Compute += GGUFBytesScalar(compNorm + compVcur + compKcur + compKQcur)
+			}
+		}
+	}
+
+	if a.ClipHasAudioEncoder {
+		// See https://github.com/ggml-org/llama.cpp/blob/6385b843a8dc8e15b8362196039720c58dd79fa2/tools/mtmd/mtmd-audio.cpp#L311.
+		var projectionDim uint64 // NB(thxCode): do not sure if there is the correct name.
+		{
+			if ti, ok := gf.TensorInfos.Get("a.position_embd.weight"); ok {
+				projectionDim = ti.Dimensions[1]
+			}
+		}
+
+		// Computation.
+		{
+			// See https://github.com/ggml-org/llama.cpp/blob/ec9e0301fef6476df83e94842c3b625501c95566/tools/mtmd/clip.cpp#L374.
+			var maxNodes uint64 = 8192
+
+			// Bootstrap, compute metadata.
+			cm := GGMLTensorOverhead()*maxNodes + GGMLComputationGraphOverhead(maxNodes, false)
+			e.Devices[0].Computation.Footprint += GGUFBytesScalar(cm)
+
+			// Scheduler overhead,
+			// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L16149.
+			e.Devices[0].Computation.Footprint += GGUFBytesScalar(4 * 1024 * 1024)
+
+			// GGML context,
+			// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L5015-L5036.
+			gc := 2 /* buffer count */ * GGMLTensorOverhead() * (uint64(len(gf.TensorInfos)) + 1 + a.ClipAudioBlockCount*3)
+			e.Devices[0].Computation.Footprint += GGUFBytesScalar(gc)
+
+			// Tensor usage.
+			var (
+				nPositions uint64
+				nBatch     uint64
+				nEmbd      uint64
+				nHead      uint64
+			)
+			{
+				nPositions = projectionDim
+				nBatch = 1
+				nEmbd = a.ClipAudioEmbeddingLength
+				nHead = a.ClipAudioAttentionHeadCount
+			}
+			// First, get the usage of input layer.
+			{
+				inpEmbd := GGMLTypeF32.RowSizeOf([]uint64{nEmbd, nPositions, nBatch}) // F32 [n_embed, n_positions, n_batch]
 				e.Devices[idx].Computation.Input += GGUFBytesScalar(inpEmbd)
 			}
-		}
-		// Since the steps between transformer layers are serial,
-		// the allocated memory can be reused for the next layer.
-		// So, we only consider the usage of a certain layer.
-		{
-			compNorm := GGMLTypeF32.RowSizeOf([]uint64{nEmbd, nPositions}) * 2
-			compVcur := GGMLTypeF32.RowSizeOf([]uint64{nEmbd, nPositions})
-			compKcur := GGMLTypeF32.RowSizeOf([]uint64{nEmbd, nPositions})
-			compKQcur := GGMLTypeF32.RowSizeOf([]uint64{nPositions, nPositions, nHead})
-			e.Devices[idx].Computation.Compute = GGUFBytesScalar(compNorm + compVcur + compKcur + compKQcur)
+			// Since the steps between transformer layers are serial,
+			// the allocated memory can be reused for the next layer.
+			// So, we only consider the usage of a certain layer.
+			{
+				compNorm := GGMLTypeF32.RowSizeOf([]uint64{nEmbd, nPositions})
+				compVcur := GGMLTypeF32.RowSizeOf([]uint64{nEmbd, nPositions})
+				compKcur := GGMLTypeF32.RowSizeOf([]uint64{nEmbd, nPositions})
+				compKQcur := GGMLTypeF32.RowSizeOf([]uint64{nPositions, nPositions, nHead})
+				e.Devices[idx].Computation.Compute += GGUFBytesScalar(compNorm + compVcur + compKcur + compKQcur)
+			}
 		}
 	}
 }
@@ -1363,4 +1469,10 @@ func (u LLaMACppKVCacheMemoryUsage) Sum() GGUFBytesScalar {
 
 func (u LLaMACppComputationMemoryUsage) Sum() GGUFBytesScalar {
 	return u.Footprint + u.Input + max(u.Compute, u.Output)
+}
+
+// ClipAligning returns the aligned value of x to the nearest multiple of n,
+// see https://github.com/ggml-org/llama.cpp/blob/cdf94a18023c92f41808ec874ba577d914674717/tools/mtmd/clip-impl.h#L114-L115.
+func ClipAligning(x, n uint64) uint64 {
+	return ((x + n - 1) / n) * n
 }

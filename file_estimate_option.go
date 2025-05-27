@@ -17,21 +17,21 @@ type (
 		DeviceMetrics       []GGUFRunDeviceMetric
 
 		// LLaMACpp (LMC) specific
-		LMCContextSize         *int32
-		LMCInMaxContextSize    bool
-		LMCLogicalBatchSize    *int32
-		LMCPhysicalBatchSize   *int32
-		LMCVisualMaxImageSize  *uint32
-		LMCVisualMaxImageCache *uint32
-		LMCCacheKeyType        *GGMLType
-		LMCCacheValueType      *GGMLType
-		LMCOffloadKVCache      *bool
-		LMCOffloadLayers       *uint64
-		LMCSplitMode           LLaMACppSplitMode
-		LMCFullSizeSWACache    bool
-		LMCProjector           *LLaMACppRunEstimate
-		LMCDrafter             *LLaMACppRunEstimate
-		LMCAdapters            []LLaMACppRunEstimate
+		LMCContextSize        *int32
+		LMCInMaxContextSize   bool
+		LMCLogicalBatchSize   *int32
+		LMCPhysicalBatchSize  *int32
+		LMCVisualMaxImageSize *uint32
+		LMCMaxProjectedCache  *uint32
+		LMCCacheKeyType       *GGMLType
+		LMCCacheValueType     *GGMLType
+		LMCOffloadKVCache     *bool
+		LMCOffloadLayers      *uint64
+		LMCSplitMode          LLaMACppSplitMode
+		LMCFullSizeSWACache   bool
+		LMCProjector          *LLaMACppRunEstimate
+		LMCDrafter            *LLaMACppRunEstimate
+		LMCAdapters           []LLaMACppRunEstimate
 
 		// StableDiffusionCpp (SDC) specific
 		SDCOffloadLayers                *uint64
@@ -272,7 +272,7 @@ func WithLLaMACppMaxProjectedCache(cacheSize uint32) GGUFRunEstimateOption {
 		if cacheSize == 0 {
 			return
 		}
-		o.LMCVisualMaxImageCache = ptr.To(cacheSize)
+		o.LMCMaxProjectedCache = ptr.To(cacheSize)
 	}
 }
 

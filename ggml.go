@@ -188,26 +188,28 @@ const (
 	// GGMLComputationGraphSize is the size of GGML computation graph in bytes.
 	GGMLComputationGraphSize = 80
 
-	// GGMLComputationGraphNodesMaximum is the maximum nodes of the computation graph,
-	// see https://github.com/ggerganov/llama.cpp/blob/7672adeec7a79ea271058c63106c142ba84f951a/llama.cpp#L103.
-	GGMLComputationGraphNodesMaximum = 8192
-
-	// GGMLComputationGraphNodesDefault is the default nodes of the computation graph,
-	// see https://github.com/ggerganov/ggml/blob/0cbb7c0e053f5419cfbebb46fbf4d4ed60182cf5/include/ggml/ggml.h#L237.
-	GGMLComputationGraphNodesDefault = 2048
+	// GGMLComputationBitsetSize is the size of GGML computation bitset in bytes,
+	// see https://github.com/ggml-org/llama.cpp/blob/master/ggml/src/ggml-impl.h#L165.
+	GGMLComputationBitsetSize = 4
 )
 
 // GGMLComputationGraphOverhead is the overhead of GGML graph in bytes,
-// see https://github.com/ggerganov/ggml/blob/0cbb7c0e053f5419cfbebb46fbf4d4ed60182cf5/src/ggml.c#L18905-L18917.
+// see https://github.com/ggml-org/ggml/blob/5592ffda9c417c3c12232c828247c23d17004c88/src/ggml.c#L5941-L5956.
 func GGMLComputationGraphOverhead(nodes uint64, grads bool) uint64 {
-	const pointerSize = 8
+	const ps = 8 // c++ pointer size
 
-	var g uint64 = GGMLComputationGraphSize
-	g += pointerSize * nodes * 2
+	hs := GGMLHashSize(nodes * 2)
+
+	var g uint64 = GGMLComputationGraphSize // graph
+	g += GGMLPadding(nodes*ps, ps)          // nodes
+	g += GGMLPadding(nodes*ps, ps)          // leafs
+	g += GGMLPadding(nodes*ps, ps)          // parents
+	g += GGMLPadding(hs*ps, ps)             // hash keys
 	if grads {
-		g += pointerSize * nodes
+		g += GGMLPadding(hs*ps, ps) // grads
+		g += GGMLPadding(hs*ps, ps) // grad_accs
 	}
-	g += pointerSize * GGMLHashSize(nodes)
+	g += GGMLPadding(GGMLBitsetSize(hs)*GGMLComputationBitsetSize, GGMLComputationBitsetSize) // bitset
 
 	return GGMLObjectSize + GGMLMemoryPadding(g)
 }
@@ -232,4 +234,10 @@ func GGMLHashSize(base uint64) uint64 {
 		return base | 1
 	}
 	return primes[i]
+}
+
+// GGMLBitsetSize returns the size of the bitset for the given number of bits,
+// see https://github.com/ggml-org/llama.cpp/blob/ec9e0301fef6476df83e94842c3b625501c95566/ggml/src/ggml-impl.h#L166-L171.
+func GGMLBitsetSize(n uint64) uint64 {
+	return (n + (GGMLComputationBitsetSize*8 - 1)) >> 5
 }
