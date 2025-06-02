@@ -34,32 +34,32 @@ generate:
 lint:
 	@echo "+++ $@ +++"
 
-	if [[ "$(LINT_DIRTY)" == "true" ]]; then \
-  		if [[ -n $$(git status --porcelain) ]]; then \
-  			echo "Code tree is dirty."; \
-  			git diff --exit-code; \
-  		fi; \
-	fi
-
 	[[ -d "$(SRCDIR)/.sbin" ]] || mkdir -p "$(SRCDIR)/.sbin"
 
 	[[ -f "$(SRCDIR)/.sbin/goimports-reviser" ]] || \
-		curl --retry 3 --retry-all-errors --retry-delay 3 -sSfL "https://github.com/incu6us/goimports-reviser/releases/download/v3.6.5/goimports-reviser_3.6.5_$(GOOS)_$(GOARCH).tar.gz" \
+		curl --retry 3 --retry-all-errors --retry-delay 3 -sSfL "https://github.com/incu6us/goimports-reviser/releases/download/v3.8.2/goimports-reviser_3.8.2_$(GOOS)_$(GOARCH).tar.gz" \
 		| tar -zxvf - --directory "$(SRCDIR)/.sbin" --no-same-owner --exclude ./LICENSE --exclude ./README.md && chmod +x "$(SRCDIR)/.sbin/goimports-reviser"
 	cd $(SRCDIR) && \
 		go list -f "{{.Dir}}" ./... | xargs -I {} find {} -maxdepth 1 -type f -name '*.go' ! -name 'gen.*' ! -name 'zz_generated.*' \
-		| xargs -I {} "$(SRCDIR)/.sbin/goimports-reviser" -use-cache -imports-order=std,general,company,project,blanked,dotted -output=file {}
+		| xargs -I {} "$(SRCDIR)/.sbin/goimports-reviser" -use-cache -imports-order=std,general,company,project,blanked,dotted -output=file {} 1>/dev/null 2>&1
 	cd $(SRCDIR)/cmd/gguf-parser && \
 		go list -f "{{.Dir}}" ./... | xargs -I {} find {} -maxdepth 1 -type f -name '*.go' ! -name 'gen.*' ! -name 'zz_generated.*' \
-		| xargs -I {} "$(SRCDIR)/.sbin/goimports-reviser" -use-cache -imports-order=std,general,company,project,blanked,dotted -output=file {}
+		| xargs -I {} "$(SRCDIR)/.sbin/goimports-reviser" -use-cache -imports-order=std,general,company,project,blanked,dotted -output=file {} 1>/dev/null 2>&1
 
 	[[ -f "$(SRCDIR)/.sbin/golangci-lint" ]] || \
 		curl --retry 3 --retry-all-errors --retry-delay 3 -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
-		| sh -s -- -b "$(SRCDIR)/.sbin" "v1.59.0"
+		| sh -s -- -b "$(SRCDIR)/.sbin" "v1.63.4"
 	cd $(SRCDIR) && \
 		"$(SRCDIR)/.sbin/golangci-lint" run --fix ./...
 	cd $(SRCDIR)/cmd/gguf-parser && \
 		"$(SRCDIR)/.sbin/golangci-lint" run --fix ./...
+
+	if [[ "$(LINT_DIRTY)" == "true" ]]; then \
+		if [[ -n $$(git status --porcelain) ]]; then \
+			echo "Code tree is dirty."; \
+			git diff --exit-code; \
+		fi; \
+	fi
 
 	@echo "--- $@ ---"
 
@@ -99,7 +99,7 @@ gguf-parser:
 		if [[ $$os == "darwin" ]]; then \
 		  [[ -d "$(SRCDIR)/.sbin" ]] || mkdir -p "$(SRCDIR)/.sbin"; \
 		  [[ -f "$(SRCDIR)/.sbin/lipo" ]] || \
-			GOBIN="$(SRCDIR)/.sbin" go install github.com/konoui/lipo@v0.9.1; \
+			GOBIN="$(SRCDIR)/.sbin" go install github.com/konoui/lipo@v0.10.0; \
 		  	"$(SRCDIR)/.sbin/lipo" -create -output $(SRCDIR)/.dist/gguf-parser-darwin-universal $(SRCDIR)/.dist/gguf-parser-darwin-amd64 $(SRCDIR)/.dist/gguf-parser-darwin-arm64; \
 		fi;\
 		if [[ $$os == "$(GOOS)" ]] && [[ $$arch == "$(GOARCH)" ]]; then \
@@ -126,7 +126,7 @@ package: build
 	fi; \
 	if [[ "$(PACKAGE_PUBLISH)" == "true" ]]; then \
 	  	if [[ -z $$(docker buildx inspect --builder "gguf-parser") ]]; then \
-      		docker run --rm --privileged tonistiigi/binfmt:qemu-v7.0.0 --install $$platform; \
+      		docker run --rm --privileged tonistiigi/binfmt:qemu-v9.2.2 --install $$platform; \
       		docker buildx create --name "gguf-parser" --driver "docker-container" --buildkitd-flags "--allow-insecure-entitlement security.insecure --allow-insecure-entitlement network.host" --bootstrap; \
       	fi; \
 		docker buildx build --progress=plain --platform=$$platform --builder="gguf-parser" --output="type=image,name=$$image,push=true" "$(SRCDIR)"; \
@@ -137,4 +137,4 @@ package: build
 
 	@echo "--- $@ ---"
 
-ci: deps generate test lint build
+ci: deps generate lint test build

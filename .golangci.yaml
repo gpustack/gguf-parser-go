@@ -1,3 +1,5 @@
+version: "1"
+
 run:
   timeout: 10m
   tests: true
@@ -8,7 +10,6 @@ run:
 output:
   print-issued-lines: true
   print-linter-name: true
-  uniq-by-line: true
   path-prefix: ""
   sort-results: true
 
@@ -22,7 +23,7 @@ linters:
     - errcheck
     - errname
     - errorlint
-    - exportloopref
+    - copyloopvar
     - godot
     - goconst
     - gocritic
@@ -83,6 +84,7 @@ linters-settings:
       - G101
       - G107
       - G112
+      - G115
       - G404
   gofumpt:
     extra-rules: true
@@ -119,7 +121,6 @@ linters-settings:
   unused:
     field-writes-are-uses: true
     post-statements-are-reads: true
-    exported-is-used: true
     exported-fields-are-used: true
     parameters-are-used: true
     local-variables-are-used: true
@@ -133,6 +134,7 @@ linters-settings:
     crypto-hash: true
 
 issues:
+  uniq-by-line: true
   exclude-files:
     - "doc.go"
     - "zz_generated.*.go"

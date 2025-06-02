@@ -22,7 +22,7 @@ func mmap(f *os.File, size int) ([]byte, error) {
 		return nil, os.NewSyscallError("CloseHandle", err)
 	}
 
-	return (*[maxMapSize]byte)(unsafe.Pointer(uintptr(addr)))[:size], nil
+	return (*[maxMapSize]byte)(unsafe.Pointer(addr))[:size], nil
 }
 
 func munmap(b []byte) error {
