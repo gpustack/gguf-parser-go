@@ -245,8 +245,8 @@ func (gf *GGUFFile) EstimateStableDiffusionCppRun(opts ...GGUFRunEstimateOption)
 
 	// Computation.
 	{
-		// See https://github.com/ggml-org/llama.cpp/blob/ec9e0301fef6476df83e94842c3b625501c95566/tools/mtmd/clip.cpp#L374.
-		var maxNodes uint64 = 8192
+		// See https://github.com/leejet/stable-diffusion.cpp/blob/10c6501bd05a697e014f1bee3a84e5664290c489/ggml_extend.hpp#L1058C9-L1058C23.
+		var maxNodes uint64 = 32768
 
 		// Bootstrap, compute metadata.
 		cm := GGMLTensorOverhead()*maxNodes + GGMLComputationGraphOverhead(maxNodes, false)
