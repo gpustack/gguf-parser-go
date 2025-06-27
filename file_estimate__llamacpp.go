@@ -303,7 +303,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			case i < nLoadLayers:
 				e.Devices[0].HandleLayers += 1
 				e.Devices[0].HandleLastLayer = int(i)
-				if usingSWA && i%uint64(a.AttentionSlidingWindowPattern) != 0 {
+				if usingSWA && (a.AttentionSlidingWindowPattern == 0 || i%uint64(a.AttentionSlidingWindowPattern) != 0) {
 					e.Devices[0].HandleSWALayers += 1
 					nSWALoadLayers += 1
 				}
@@ -312,7 +312,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 				j = slicex.UpperBound(o.TensorSplitFraction, x)
 				e.Devices[j+1].HandleLayers += 1
 				e.Devices[j+1].HandleLastLayer = int(i)
-				if usingSWA && i%uint64(a.AttentionSlidingWindowPattern) != 0 {
+				if usingSWA && (a.AttentionSlidingWindowPattern == 0 || i%uint64(a.AttentionSlidingWindowPattern) != 0) {
 					e.Devices[j+1].HandleSWALayers += 1
 					nSWAOffloadLayers += 1
 				}
