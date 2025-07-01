@@ -147,7 +147,7 @@ type (
 	}
 )
 
-// EstimateLLaMACppRun returns the inference estimated result of the GGUF file.
+// EstimateLLaMACppRun estimates the usages of the GGUF file in llama.cpp.
 func (gf *GGUFFile) EstimateLLaMACppRun(opts ...GGUFRunEstimateOption) (e LLaMACppRunEstimate) {
 	// Options
 	var o _GGUFRunEstimateOptions
@@ -235,7 +235,7 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...GGUFRunEstimateOption) (e LLaMAC
 	return e
 }
 
-// estimateLLaMACppRunInModel estimates the inference result of the GGUF file in llama.cpp for model type,
+// estimateLLaMACppRunInModel estimates the usages of the GGUF file for model,
 // including the usages of footprint, weight, KV cache, and computation.
 func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GGUFArchitecture, t *GGUFTokenizer, e *LLaMACppRunEstimate) {
 	ls := gf.Layers()
@@ -756,6 +756,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 	}
 }
 
+// estimateLLaMACppRunInProjector estimates the usages of the GGUF file for projector.
 func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a *GGUFArchitecture, e *LLaMACppRunEstimate) {
 	ls := gf.Layers()
 	ioLs, tfLs, _ := ls.Cut([]string{
@@ -1123,6 +1124,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 	}
 }
 
+// estimateLLaMACppRunInAdapter estimates the usages of the GGUF file for adapter.
 func (gf *GGUFFile) estimateLLaMaCppRunInAdapter(o *_GGUFRunEstimateOptions, a *GGUFArchitecture, e *LLaMACppRunEstimate) {
 	ls := gf.Layers()
 	ioLs, tfLs, _ := ls.Cut([]string{

@@ -70,6 +70,7 @@ type (
 	}
 )
 
+// EstimateStableDiffusionCppRun estimates the usages of the GGUF file in stable-diffusion.cpp.
 func (gf *GGUFFile) EstimateStableDiffusionCppRun(opts ...GGUFRunEstimateOption) (e StableDiffusionCppRunEstimate) {
 	// Options
 	var o _GGUFRunEstimateOptions
