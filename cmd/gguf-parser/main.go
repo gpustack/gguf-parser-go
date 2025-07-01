@@ -1162,18 +1162,27 @@ func mainAction(c *cli.Context) error {
 		}
 	}
 	if otss := overrideTensors.Value(); len(otss) > 0 {
-		ots := make([]GGUFRunOverriddenTensor, len(otss))
+		var ots []GGUFRunOverriddenTensor
 		for i := range otss {
-			ss := strings.SplitN(otss[i], "=", 2)
-			if len(ss) != 2 {
-				return errors.New("--override-tensor has invalid format")
+			pots := strings.Split(otss[i], ",")
+			for j := range pots {
+				ss := strings.SplitN(strings.TrimSpace(pots[j]), "=", 2)
+				if len(ss) != 2 {
+					return errors.New("--override-tensor has invalid format")
+				}
+				pr, err := regexp.Compile(strings.TrimSpace(ss[0]))
+				if err != nil {
+					return fmt.Errorf("--override-tensor has invalid pattern: %w", err)
+				}
+				bt := strings.TrimSpace(ss[1])
+				if bt == "" {
+					return errors.New("--override-tensor has empty buffer type")
+				}
+				ots = append(ots, GGUFRunOverriddenTensor{
+					PatternRegex: pr,
+					BufferType:   bt,
+				})
 			}
-			var err error
-			ots[i].PatternRegex, err = regexp.Compile(ss[0])
-			if err != nil {
-				return fmt.Errorf("--override-tensor has invalid pattern: %w", err)
-			}
-			ots[i].BufferType = ss[1]
 		}
 		eopts = append(eopts, WithOverriddenTensors(ots))
 	}
