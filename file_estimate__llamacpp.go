@@ -92,6 +92,8 @@ type (
 		// If Remote is true, Position is the position of the remote devices,
 		// Otherwise, Position is the position of the device in the local devices.
 		Position int `json:"position"`
+		// Endpoint is the endpoint of the remote device, empty for local devices.
+		Endpoint string `json:"endpoint,omitempty"`
 		// Footprint is the memory footprint for bootstrapping.
 		Footprint GGUFBytesScalar `json:"footprint"`
 		// Parameter is the running parameters that the device processes.
@@ -112,6 +114,8 @@ type (
 		Input GGUFParametersScalar `json:"input"`
 		// Compute is the parameter usage for compute tensors.
 		Compute GGUFParametersScalar `json:"compute"`
+		// ComputeOverridden is the parameter usage for overridden compute tensors.
+		ComputeOverridden GGUFParametersScalar `json:"computeOverridden"`
 		// Output is the parameter usage for output tensors.
 		Output GGUFParametersScalar `json:"output"`
 	}
@@ -122,6 +126,8 @@ type (
 		Input GGUFBytesScalar `json:"input"`
 		// Compute is the memory usage for loading compute tensors.
 		Compute GGUFBytesScalar `json:"compute"`
+		// ComputeOverridden is the memory usage for loading overridden compute tensors.
+		ComputeOverridden GGUFBytesScalar `json:"computeOverridden"`
 		// Output is the memory usage for loading output tensors.
 		Output GGUFBytesScalar `json:"output"`
 	}
@@ -201,6 +207,7 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...GGUFRunEstimateOption) (e LLaMAC
 		e.Devices[j+1].Remote = j < len(o.RPCServers)
 		if e.Devices[j+1].Remote {
 			e.Devices[j+1].Position = j
+			e.Devices[j+1].Endpoint = o.RPCServers[j]
 		} else {
 			e.Devices[j+1].Position = j - len(o.RPCServers)
 		}
@@ -435,6 +442,66 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 
 	// Weight & Parameter.
 	{
+		filter := func(idx int) GGUFTensorInfoFilter {
+			if len(o.OverriddenTensors) == 0 {
+				return nil
+			}
+			return func(name string) bool {
+				for _, ot := range o.OverriddenTensors {
+					bt, bi := ot.ParseBufferType()
+					switch {
+					case bt == GGUFRunOverriddenTensorBufferTypeUnknown:
+						continue
+					case bt == GGUFRunOverriddenTensorBufferTypeCPU && idx == 0:
+						continue
+					case bt == GGUFRunOverriddenTensorBufferTypeGPU &&
+						(e.Devices[idx].Remote || anyx.Number[int](bi)+1 != idx):
+						continue
+					case bt == GGUFRunOverriddenTensorBufferTypeRPC &&
+						(!e.Devices[idx].Remote || e.Devices[idx].Endpoint != bi):
+						continue
+					}
+					if ot.PatternRegex.MatchString(name) {
+						return false
+					}
+				}
+				return true
+			}
+		}
+
+		// If overridden tensors are provided,
+		// we need to search the tensors of the overridden pattern,
+		// and place them in the correct device.
+		if len(o.OverriddenTensors) != 0 {
+			for _, ot := range o.OverriddenTensors {
+				bt, bi := ot.ParseBufferType()
+				if bt == GGUFRunOverriddenTensorBufferTypeUnknown {
+					continue
+				}
+				var sls GGUFTensorInfos = ls.Search(ot.PatternRegex)
+				if len(sls) == 0 {
+					continue
+				}
+				switch bt {
+				case GGUFRunOverriddenTensorBufferTypeCPU:
+					e.Devices[0].Weight.ComputeOverridden += GGUFBytesScalar(sls.Bytes())
+					e.Devices[0].Parameter.ComputeOverridden += GGUFParametersScalar(sls.Elements())
+				case GGUFRunOverriddenTensorBufferTypeGPU:
+					idx := anyx.Number[int](bi) + 1
+					e.Devices[idx].Weight.ComputeOverridden += GGUFBytesScalar(sls.Bytes())
+					e.Devices[idx].Parameter.ComputeOverridden += GGUFParametersScalar(sls.Elements())
+				default:
+					for i, d := range e.Devices[1:] {
+						if d.Endpoint == bi {
+							e.Devices[i+1].Weight.ComputeOverridden += GGUFBytesScalar(sls.Bytes())
+							e.Devices[i+1].Parameter.ComputeOverridden += GGUFParametersScalar(sls.Elements())
+							break
+						}
+					}
+				}
+			}
+		}
+
 		// Compute.
 		for i, j, offloadStart := 0, 0, len(tfLs)-int(nOffloadLayers); i < len(tfLs); i++ {
 			idx := 0
@@ -443,8 +510,9 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 				j = slicex.UpperBound(o.TensorSplitFraction, x)
 				idx = j + 1
 			}
-			e.Devices[idx].Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes())
-			e.Devices[idx].Parameter.Compute += GGUFParametersScalar(tfLs[i].Elements())
+			f := filter(idx)
+			e.Devices[idx].Weight.Compute += GGUFBytesScalar(tfLs[i].Bytes(f))
+			e.Devices[idx].Parameter.Compute += GGUFParametersScalar(tfLs[i].Elements(f))
 		}
 
 		// IO,
@@ -733,7 +801,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		bs := anyx.Number[float64](*o.LMCLogicalBatchSize) / float64(nBatch)
 		for i, dm := range dmss {
 			fl, upbw, dwbw := float64(max(dm.FLOPS, 1)), float64(max(dm.UpBandwidth, 1)), float64(max(dm.DownBandwidth, 1))
-			cmpops := float64(ds[i].Parameter.Compute)*2 /* FMA */ *bs + float64(ds[i].Parameter.Input) + float64(ds[i].Parameter.Output)
+			cmpops := float64(ds[i].Parameter.Compute+ds[i].Parameter.ComputeOverridden)*2 /* FMA */ *bs + float64(ds[i].Parameter.Input) + float64(ds[i].Parameter.Output) // nolint: lll
 			cmps := float64(ds[i].Weight.Sum())
 			cmplat := max(cmpops/fl, cmps/upbw)
 			kvcops := float64(ds[i].Parameter.KVCache) * 2 /* FMA */ * bs
@@ -1362,6 +1430,7 @@ func (e LLaMACppRunEstimate) SummarizeItem(mmap bool, nonUMARamFootprint, nonUMA
 			emi.RAM.UMA -= wg
 			if !mmap {
 				emi.RAM.UMA += e.Devices[0].Weight.Output
+				emi.RAM.UMA += e.Devices[0].Weight.ComputeOverridden
 			}
 		}
 
@@ -1462,7 +1531,7 @@ func (e LLaMACppRunEstimate) Summarize(mmap bool, nonUMARamFootprint, nonUMAVram
 }
 
 func (u LLaMACppWeightMemoryUsage) Sum() GGUFBytesScalar {
-	return u.Input + u.Compute + u.Output
+	return u.Input + u.Compute + u.ComputeOverridden + u.Output
 }
 
 func (u LLaMACppKVCacheMemoryUsage) Sum() GGUFBytesScalar {

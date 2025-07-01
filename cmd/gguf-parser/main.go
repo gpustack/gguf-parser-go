@@ -593,6 +593,16 @@ func main() {
 					"default is full offloaded.",
 			},
 			&cli.StringSliceFlag{
+				Destination: &overrideTensors,
+				Category:    "Estimate",
+				Name:        "override-tensor",
+				Aliases: []string{ // LLaMACpp compatibility
+					"ot",
+				},
+				Usage: "Override tensor buffer type, " +
+					"for example, use --override-tensor \"[2-9][0-9]\\.ffn_.*_exps\\.=CPU\" to keep experts of layers 20-99 in the CPU",
+			},
+			&cli.StringSliceFlag{
 				Destination: &deviceMetrics,
 				Category:    "Estimate",
 				Name:        "device-metric",
@@ -1023,6 +1033,7 @@ var (
 	rpcServers        string
 	tensorSplit       string
 	offloadLayers     = -1
+	overrideTensors   cli.StringSlice
 	deviceMetrics     cli.StringSlice
 	platformFootprint = "150,250"
 	// estimate options for llama.cpp
@@ -1149,6 +1160,22 @@ func mainAction(c *cli.Context) error {
 			}
 			eopts = append(eopts, WithRPCServers(rpc))
 		}
+	}
+	if otss := overrideTensors.Value(); len(otss) > 0 {
+		ots := make([]GGUFRunOverriddenTensor, len(otss))
+		for i := range otss {
+			ss := strings.SplitN(otss[i], "=", 2)
+			if len(ss) != 2 {
+				return errors.New("--override-tensor has invalid format")
+			}
+			var err error
+			ots[i].PatternRegex, err = regexp.Compile(ss[0])
+			if err != nil {
+				return fmt.Errorf("--override-tensor has invalid pattern: %w", err)
+			}
+			ots[i].BufferType = ss[1]
+		}
+		eopts = append(eopts, WithOverriddenTensors(ots))
 	}
 	if dmss := deviceMetrics.Value(); len(dmss) > 0 {
 		dms := make([]GGUFRunDeviceMetric, len(dmss))

@@ -56,6 +56,7 @@ download it.
 
 ## Notes
 
+- **Since v0.20.0**, GGUF Parser supports leveraging `--override-tensor` to indicate how to place the model tensors.
 - **Since v0.19.0**, GGUF Parser supports estimating Audio projector model file, like Ultravox series, Qwen2 Audio
   series, etc.
 - **Since v0.18.0**, GGUF Parser supports estimating SWA-supported(sliding window attention) model file, like LLaMA 4
