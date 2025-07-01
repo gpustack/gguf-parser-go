@@ -2,6 +2,7 @@ package gguf_parser
 
 import (
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -125,6 +126,16 @@ const (
 	_GGUFFileTypeCount                                  // Unknown
 )
 
+// _GGUFPotentialDiffusionArchitectures holds a list representing the potential diffusion architectures.
+//
+// Since we will unify all diffusion architectures to "diffusion" during processing,
+// we can use this list to match the value in explicit `general.architecture`.
+var _GGUFPotentialDiffusionArchitectures = []string{
+	"flux",
+	"sd",
+	"stable-diffusion",
+}
+
 // Metadata returns the metadata of the GGUF file.
 func (gf *GGUFFile) Metadata() (gm GGUFMetadata) {
 	const (
@@ -163,7 +174,7 @@ func (gf *GGUFFile) Metadata() (gm GGUFMetadata) {
 	}
 	if v, ok := m[controlVectorModelHintKey]; ok {
 		gm.Architecture = v.ValueString()
-	} else if v, ok = m[architectureKey]; ok {
+	} else if v, ok = m[architectureKey]; ok && !slices.Contains(_GGUFPotentialDiffusionArchitectures, v.ValueString()) {
 		gm.Architecture = v.ValueString()
 		if gm.Architecture == "clip" {
 			gm.Type = "projector"

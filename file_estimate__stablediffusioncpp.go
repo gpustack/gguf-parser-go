@@ -234,7 +234,7 @@ func (gf *GGUFFile) EstimateStableDiffusionCppRun(opts ...GGUFRunEstimateOption)
 		}
 
 		// Autoencoder.
-		if aeLs != nil {
+		if len(aeLs) != 0 {
 			e.Autoencoder.Devices[aeDevIdx].Weight = GGUFBytesScalar(aeLs.Bytes())
 			e.Autoencoder.Devices[aeDevIdx].Parameter = GGUFParametersScalar(aeLs.Elements())
 		}
@@ -352,7 +352,7 @@ func (gf *GGUFFile) EstimateStableDiffusionCppRun(opts ...GGUFRunEstimateOption)
 		}
 
 		// Decode usage.
-		if aeLs != nil && !*o.SDCFreeComputeMemoryImmediately {
+		if len(aeLs) != 0 && !*o.SDCFreeComputeMemoryImmediately {
 			// Bootstrap.
 			e.Autoencoder.Devices[aeDevIdx].Footprint += GGUFBytesScalar(100 * 1024 * 1024) /*100 MiB.*/
 
