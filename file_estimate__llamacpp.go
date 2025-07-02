@@ -432,7 +432,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 
 		// Output buffer,
 		// see https://github.com/ggerganov/llama.cpp/blob/7672adeec7a79ea271058c63106c142ba84f951a/llama.cpp#L11940-L12003.
-		ob := 4 /* float32 size */ * (a.VocabularyLength + a.EmbeddingLength) * nParallel
+		ob := 4 /* float32 size */ * (a.VocabularyLength + a.EmbeddingLength) * nOutputs
 		if fullOffload {
 			e.Devices[idxOutputDevice].Footprint += GGUFBytesScalar(ob)
 		} else {
