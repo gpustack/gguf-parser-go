@@ -334,11 +334,11 @@ func (gaa GGUFArchitectureDiffusionAutoencoder) String() string {
 
 // Architecture returns the architecture metadata of the GGUF file.
 func (gf *GGUFFile) Architecture() (ga GGUFArchitecture) {
-	if gf.TensorInfos.Match(regexp.MustCompile(`^model\.diffusion_model\..*`)) ||
-		gf.TensorInfos.Match(regexp.MustCompile(`^double_blocks\..*`)) {
-		return gf.diffuserArchitecture()
+	for _, re := range _GGUFPotentialDiffusionArchitectureTensorsRegexes {
+		if gf.TensorInfos.Match(re) {
+			return gf.diffuserArchitecture()
+		}
 	}
-
 	var (
 		generalTypeKey         = "general.type"
 		generalArchitectureKey = "general.architecture"
@@ -380,11 +380,16 @@ func (gf *GGUFFile) diffuserArchitecture() (ga GGUFArchitecture) {
 	const (
 		// Diffusion
 
-		sdKey               = "model.diffusion_model.output_blocks.11.1.transformer_blocks.0.attn2.to_v.weight" // SD 1.x/2.x
-		sdXlKey             = "model.diffusion_model.output_blocks.5.1.transformer_blocks.1.attn1.to_v.weight"  // SD XL
-		sdXlRefinerKey      = "model.diffusion_model.output_blocks.8.1.transformer_blocks.1.attn1.to_v.weight"  // SD XL Refiner
-		sd3Key              = "model.diffusion_model.joint_blocks.23.x_block.attn.proj.weight"                  // SD 3.x
-		sdInPaintFeatureKey = "model.diffusion_model.input_blocks.0.0.weight"                                   // SD in-paint feature
+		sdKey                = "model.diffusion_model.output_blocks.11.1.transformer_blocks.0.attn2.to_v.weight" // SD 1.x/2.x
+		sdKey2               = "output_blocks.11.1.transformer_blocks.0.attn2.to_v.weight"
+		sdXlKey              = "model.diffusion_model.output_blocks.5.1.transformer_blocks.1.attn1.to_v.weight" // SD XL
+		sdXlKey2             = "output_blocks.5.1.transformer_blocks.1.attn1.to_v.weight"
+		sdXlRefinerKey       = "model.diffusion_model.output_blocks.8.1.transformer_blocks.1.attn1.to_v.weight" // SD XL Refiner
+		sdXlRefinerKey2      = "output_blocks.8.1.transformer_blocks.1.attn1.to_v.weight"
+		sd3Key               = "model.diffusion_model.joint_blocks.23.x_block.attn.proj.weight" // SD 3.x
+		sd3Key2              = "joint_blocks.23.x_block.attn.proj.weight"
+		sdInPaintFeatureKey  = "model.diffusion_model.input_blocks.0.0.weight" // SD in-paint feature
+		sdInPaintFeatureKey2 = "input_blocks.0.0.weight"
 
 		fluxKey             = "model.diffusion_model.double_blocks.0.txt_attn.proj.weight" // FLUX.1
 		fluxKey2            = "double_blocks.0.txt_attn.proj.weight"
@@ -402,10 +407,15 @@ func (gf *GGUFFile) diffuserArchitecture() (ga GGUFArchitecture) {
 
 	tis, _ := gf.TensorInfos.Index([]string{
 		sdKey,
+		sdKey2,
 		sdXlKey,
+		sdXlKey2,
 		sdXlRefinerKey,
+		sdXlRefinerKey2,
 		sd3Key,
+		sd3Key2,
 		sdInPaintFeatureKey,
+		sdInPaintFeatureKey2,
 
 		fluxKey,
 		fluxKey2,
@@ -430,6 +440,14 @@ func (gf *GGUFFile) diffuserArchitecture() (ga GGUFArchitecture) {
 		if ti, ok := tis[sdInPaintFeatureKey]; ok && ti.Dimensions[2] == 9 {
 			ga.DiffusionArchitecture += " InPaint"
 		}
+	} else if _, ok := tis[sdKey2]; ok {
+		ga.DiffusionArchitecture = "Stable Diffusion 1.x"
+		if ti.Dimensions[0] == 1024 {
+			ga.DiffusionArchitecture = "Stable Diffusion 2.x"
+		}
+		if ti, ok := tis[sdInPaintFeatureKey2]; ok && ti.Dimensions[2] == 9 {
+			ga.DiffusionArchitecture += " InPaint"
+		}
 	} else if _, ok := tis[sdXlKey]; ok {
 		ga.DiffusionArchitecture = "Stable Diffusion XL"
 		if _, ok = tis[sdXlRefinerKey]; ok {
@@ -438,7 +456,18 @@ func (gf *GGUFFile) diffuserArchitecture() (ga GGUFArchitecture) {
 		if ti, ok := tis[sdInPaintFeatureKey]; ok && ti.Dimensions[2] == 9 {
 			ga.DiffusionArchitecture += " InPaint"
 		}
+	} else if _, ok := tis[sdXlKey2]; ok {
+		ga.DiffusionArchitecture = "Stable Diffusion XL"
+		if _, ok = tis[sdXlRefinerKey2]; ok {
+			ga.DiffusionArchitecture = "Stable Diffusion XL Refiner"
+		}
+		if ti, ok := tis[sdInPaintFeatureKey2]; ok && ti.Dimensions[2] == 9 {
+			ga.DiffusionArchitecture += " InPaint"
+		}
 	} else if _, ok := tis[sd3Key]; ok {
+		ga.DiffusionArchitecture = "Stable Diffusion 3.x"
+		ga.DiffusionTransformer = true
+	} else if _, ok := tis[sd3Key2]; ok {
 		ga.DiffusionArchitecture = "Stable Diffusion 3.x"
 		ga.DiffusionTransformer = true
 	}

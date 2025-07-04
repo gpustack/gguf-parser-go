@@ -133,7 +133,19 @@ const (
 var _GGUFPotentialDiffusionArchitectures = []string{
 	"flux",
 	"sd",
+	"sd2.5",
+	"sd3",
 	"stable-diffusion",
+}
+
+// _GGUFPotentialDiffusionArchitectureTensorsRegexes holds a list of regexes to match the potential diffusion architecture tensors.
+//
+// This is used to detect if the GGUF file is a diffusion model,
+// when the `general.architecture` is not set to a known diffusion architecture.
+var _GGUFPotentialDiffusionArchitectureTensorsRegexes = []*regexp.Regexp{
+	regexp.MustCompile(`^model\.diffusion_model\..*`),
+	regexp.MustCompile(`^double_blocks\..*`),
+	regexp.MustCompile(`^joint_blocks\..*`),
 }
 
 // Metadata returns the metadata of the GGUF file.
@@ -180,11 +192,12 @@ func (gf *GGUFFile) Metadata() (gm GGUFMetadata) {
 			gm.Type = "projector"
 		}
 	} else {
-		if gf.TensorInfos.Match(regexp.MustCompile(`^model\.diffusion_model\..*`)) ||
-			gf.TensorInfos.Match(regexp.MustCompile(`^double_blocks\..*`)) {
-			gm.Architecture = "diffusion"
-		} else {
-			gm.Architecture = "llama"
+		gm.Architecture = "llama" // Default to llama.
+		for _, re := range _GGUFPotentialDiffusionArchitectureTensorsRegexes {
+			if gf.TensorInfos.Match(re) {
+				gm.Architecture = "diffusion"
+				break
+			}
 		}
 	}
 	if v, ok := m[quantizationKey]; ok {
