@@ -2,6 +2,7 @@ package gguf_parser
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -94,6 +95,10 @@ type (
 		AttentionValueLengthMLA uint32 `json:"attentionValueLengthMLA,omitempty"`
 		// AttentionCausal is true if the attention is causal.
 		AttentionCausal bool `json:"attentionCausal,omitempty"`
+		// Recurrent indicates whether the model is recurrent or not.
+		//
+		// Used in Mamba, RWKV, and similar architectures.
+		Recurrent bool `json:"recurrent,omitempty"`
 		// RoPEDimensionCount is the number of dimensions in the RoPE(Rotary Positional Encoding).
 		RoPEDimensionCount uint64 `json:"ropeDimensionCount,omitempty"`
 		// RoPEFrequencyBase is the base frequency of the RoPE.
@@ -997,6 +1002,15 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 			}
 		}
 	}
+	// See https://github.com/ggml-org/llama.cpp/blob/6491d6e4f1caf0ad2221865b4249ae6938a6308c/src/llama-arch.cpp#L1913-L1924.
+	ga.Recurrent = slices.Contains([]string{
+		"mamba",
+		"mamba2",
+		"rwkv6",
+		"rwkv6qwen2",
+		"rwkv7",
+		"arwkv7",
+	}, ga.Architecture)
 
 	if v, ok := m[ropeDimensionCountKey]; ok {
 		ga.RoPEDimensionCount = ValueNumeric[uint64](v)

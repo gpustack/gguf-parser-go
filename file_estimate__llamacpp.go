@@ -405,9 +405,9 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		nParallel = uint64(ptr.Deref(o.ParallelSize, 1))
 		nKV = nContext
 
-		// For mamba,
+		// For recurrent models,
 		// see https://github.com/ggerganov/llama.cpp/blob/7672adeec7a79ea271058c63106c142ba84f951a/llama.cpp#L16122-L16129.
-		if a.Architecture == "mamba" {
+		if a.Recurrent {
 			nKV = nParallel
 			o.LMCCacheKeyType = ptr.To(GGMLTypeF32)
 			o.LMCCacheValueType = ptr.To(GGMLTypeF32)
@@ -621,18 +621,16 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			inpSMask  = GGMLTypeF32.RowSizeOf([]uint64{1, nKV})                    // F32 [1, n_kv]
 			inpSSeq   = GGMLTypeI32.RowSizeOf([]uint64{nKV, nBatch})               // I32 [n_kv, n_batch]
 		)
-		switch {
-		case a.Architecture == "mamba":
+		if a.Recurrent {
 			e.Devices[0].Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + inpSMask + inpSSeq + inpOutIds)
-		default:
+		} else {
 			e.Devices[0].Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + inpPos + inpKQMask + inpOutIds)
 		}
 		if !zeroOffload {
 			var v GGUFBytesScalar
-			switch {
-			case a.Architecture == "mamba":
+			if a.Recurrent {
 				v = GGUFBytesScalar(inpEmbd + inpSMask + inpSSeq)
-			default:
+			} else {
 				v = GGUFBytesScalar(inpEmbd + inpPos + inpKQMask)
 			}
 			if len(o.RPCServers) == 0 && len(o.TensorSplitFraction) > 1 {
@@ -650,8 +648,8 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		// the allocated memory can be reused for the next layer.
 		// So, we only consider the usage of the largest layer,
 		// which is the last layer by default.
-		switch {
-		case a.Architecture == "mamba":
+		if a.Recurrent {
+			// TODO: support recurrent models, like RWKV series, Mamba2.
 			convInc := GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingKeyGQA, nKV}) // F32 [n_embd_key_gqa, n_kv] reshape
 			for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.(attn_norm|ssm_in|ssm_conv1d)\.weight`)) {
 				if !strings.HasSuffix(l.Name, ".ssm_conv1d.weight") {
@@ -678,7 +676,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			for i := range e.Devices[1:] {
 				e.Devices[i+1].Computation.Compute = cp
 			}
-		default:
+		} else {
 			loadAttnInc, offloadAttnInc := uint64(0), uint64(0)
 			{
 				rs := o.LMCCacheKeyType.RowSizeOf([]uint64{uint64(a.AttentionKeyLength), nKV, a.AttentionHeadCountKV})
@@ -775,7 +773,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		// Finally, get the usage of output layer.
 		if a.AttentionCausal {
 			var outInc uint64
-			if a.Architecture == "mamba" {
+			if a.Recurrent {
 				outInc += inpSMask + inpSSeq
 			}
 			if l, ok := opLs.Get("output.weight"); ok {
