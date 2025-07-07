@@ -773,9 +773,6 @@ func (gf *GGUFFile) adapterArchitecture(arch string) (ga GGUFArchitecture) {
 
 func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 	var (
-		generateNameKey     = "general.name"
-		generateBasenameKey = "general.basename"
-
 		contextLengthKey     = arch + ".context_length"
 		embeddingLengthKey   = arch + ".embedding_length"
 		blockCountKey        = arch + ".block_count"
@@ -825,8 +822,6 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 	ga.Architecture = arch
 
 	m, _ := gf.Header.MetadataKV.Index([]string{
-		generateNameKey,
-		generateBasenameKey,
 		contextLengthKey,
 		embeddingLengthKey,
 		blockCountKey,
@@ -989,18 +984,6 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 		ga.AttentionCausal = v.ValueBool()
 	} else {
 		ga.AttentionCausal = true
-		// NB(thxCode): A temporary workaround for Qwen non-causal models.
-		if strings.HasPrefix(ga.Architecture, "qwen") {
-			if v, ok = m[generateNameKey]; !ok {
-				v, ok = m[generateBasenameKey]
-			}
-			if ok {
-				s := strings.ToLower(v.ValueString())
-				ga.AttentionCausal = !strings.Contains(s, "gte") &&
-					!strings.Contains(s, "embedding") &&
-					!strings.Contains(s, "rerank")
-			}
-		}
 	}
 	// See https://github.com/ggml-org/llama.cpp/blob/6491d6e4f1caf0ad2221865b4249ae6938a6308c/src/llama-arch.cpp#L1913-L1924.
 	ga.Recurrent = slices.Contains([]string{
