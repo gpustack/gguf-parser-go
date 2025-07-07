@@ -432,7 +432,10 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 
 		// Output buffer,
 		// see https://github.com/ggerganov/llama.cpp/blob/7672adeec7a79ea271058c63106c142ba84f951a/llama.cpp#L11940-L12003.
-		ob := 4 /* float32 size */ * (a.VocabularyLength + a.EmbeddingLength) * nOutputs
+		ob := a.EmbeddingLength * nOutputs * 4 /* float32 size */
+		if a.AttentionCausal {
+			ob += a.VocabularyLength * nOutputs * 4 /* float32 size */
+		}
 		if fullOffload {
 			e.Devices[idxOutputDevice].Footprint += GGUFBytesScalar(ob)
 		} else {
@@ -541,7 +544,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 
 	// KV cache,
 	// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L2479-L2501.
-	{
+	if a.AttentionCausal {
 		kps, vps := a.EmbeddingKeyGQA*nKV, a.EmbeddingValueGQA*nKV
 		krs, vrs := o.LMCCacheKeyType.RowSizeOf([]uint64{kps}), o.LMCCacheValueType.RowSizeOf([]uint64{vps})
 
