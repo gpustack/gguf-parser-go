@@ -99,6 +99,10 @@ type (
 		//
 		// Used in Mamba, RWKV, and similar architectures.
 		AttentionRecurrent bool `json:"attentionRecurrent,omitempty"`
+		// AttentionHybrid is true if the attention is hybrid (causal (self-attention) + recurrent).
+		//
+		// Used in Jamba, Falcon-H1, and similar architectures.
+		AttentionHybrid bool `json:"attentionHybrid,omitempty"`
 		// RoPEDimensionCount is the number of dimensions in the RoPE(Rotary Positional Encoding).
 		RoPEDimensionCount uint64 `json:"ropeDimensionCount,omitempty"`
 		// RoPEFrequencyBase is the base frequency of the RoPE.
@@ -990,13 +994,18 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 		ga.AttentionCausal = true
 	}
 	// See https://github.com/ggml-org/llama.cpp/blob/6491d6e4f1caf0ad2221865b4249ae6938a6308c/src/llama-arch.cpp#L1913-L1924.
-	ga.AttentionRecurrent = slices.Contains([]string{
+	ga.AttentionRecurrent = slices.Contains([]string{ // TODO(thxCode): calculate this from the metadata.
 		"mamba",
 		"mamba2",
 		"rwkv6",
 		"rwkv6qwen2",
 		"rwkv7",
 		"arwkv7",
+	}, ga.Architecture)
+	// See https://github.com/ggml-org/llama.cpp/blob/a57d1bcb3c0165ac87b1f0dbb429839b0da69689/src/llama-arch.cpp#L2029-L2038.
+	ga.AttentionHybrid = slices.Contains([]string{ // TODO(thxCode): calculate this from the metadata.
+		"jamba",
+		"falcon-h1",
 	}, ga.Architecture)
 
 	if v, ok := m[ropeDimensionCountKey]; ok {
