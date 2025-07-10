@@ -419,7 +419,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 
 		// For recurrent models,
 		// see https://github.com/ggerganov/llama.cpp/blob/7672adeec7a79ea271058c63106c142ba84f951a/llama.cpp#L16122-L16129.
-		if a.Recurrent {
+		if a.AttentionRecurrent {
 			nKV = nParallel
 			o.LMCCacheKeyType = ptr.To(GGMLTypeF32)
 			o.LMCCacheValueType = ptr.To(GGMLTypeF32)
@@ -633,14 +633,14 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			inpSMask  = GGMLTypeF32.RowSizeOf([]uint64{1, nKV})                    // F32 [1, n_kv]
 			inpSSeq   = GGMLTypeI32.RowSizeOf([]uint64{nKV, nBatch})               // I32 [n_kv, n_batch]
 		)
-		if a.Recurrent {
+		if a.AttentionRecurrent {
 			e.Devices[0].Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + inpSMask + inpSSeq + inpOutIds)
 		} else {
 			e.Devices[0].Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + inpPos + inpKQMask + inpOutIds)
 		}
 		if !zeroOffload {
 			var v GGUFBytesScalar
-			if a.Recurrent {
+			if a.AttentionRecurrent {
 				v = GGUFBytesScalar(inpEmbd + inpSMask + inpSSeq)
 			} else {
 				v = GGUFBytesScalar(inpEmbd + inpPos + inpKQMask)
@@ -660,7 +660,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		// the allocated memory can be reused for the next layer.
 		// So, we only consider the usage of the largest layer,
 		// which is the last layer by default.
-		if a.Recurrent {
+		if a.AttentionRecurrent {
 			// TODO: support recurrent models, like RWKV series, Mamba2.
 			convInc := GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingKeyGQA, nKV}) // F32 [n_embd_key_gqa, n_kv] reshape
 			for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.(attn_norm|ssm_in|ssm_conv1d)\.weight`)) {
@@ -785,7 +785,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		// Finally, get the usage of output layer.
 		{
 			var outInc uint64
-			if a.Recurrent {
+			if a.AttentionRecurrent {
 				outInc += inpSMask + inpSSeq
 			}
 			if l, ok := opLs.Get("output.weight"); ok {
