@@ -20,21 +20,25 @@ type (
 		DeviceMetrics       []GGUFRunDeviceMetric
 
 		// LLaMACpp (LMC) specific
-		LMCContextSize        *int32
-		LMCInMaxContextSize   bool
-		LMCLogicalBatchSize   *int32
-		LMCPhysicalBatchSize  *int32
-		LMCVisualMaxImageSize *uint32
-		LMCMaxProjectedCache  *uint32
-		LMCCacheKeyType       *GGMLType
-		LMCCacheValueType     *GGMLType
-		LMCOffloadKVCache     *bool
-		LMCOffloadLayers      *uint64
-		LMCSplitMode          LLaMACppSplitMode
-		LMCFullSizeSWACache   bool
-		LMCProjector          *LLaMACppRunEstimate
-		LMCDrafter            *LLaMACppRunEstimate
-		LMCAdapters           []LLaMACppRunEstimate
+		LMCContextSize                    *int32
+		LMCRoPEFrequencyBase              *float32
+		LMCRoPEFrequencyScale             *float32
+		LMCRoPEScalingType                *string
+		LMCRoPEScalingOriginalContextSize *int32
+		LMCInMaxContextSize               bool
+		LMCLogicalBatchSize               *int32
+		LMCPhysicalBatchSize              *int32
+		LMCVisualMaxImageSize             *uint32
+		LMCMaxProjectedCache              *uint32
+		LMCCacheKeyType                   *GGMLType
+		LMCCacheValueType                 *GGMLType
+		LMCOffloadKVCache                 *bool
+		LMCOffloadLayers                  *uint64
+		LMCSplitMode                      LLaMACppSplitMode
+		LMCFullSizeSWACache               bool
+		LMCProjector                      *LLaMACppRunEstimate
+		LMCDrafter                        *LLaMACppRunEstimate
+		LMCAdapters                       []LLaMACppRunEstimate
 
 		// StableDiffusionCpp (SDC) specific
 		SDCOffloadLayers                *uint64
@@ -242,6 +246,29 @@ func WithLLaMACppContextSize(size int32) GGUFRunEstimateOption {
 			return
 		}
 		o.LMCContextSize = &size
+	}
+}
+
+// WithLLaMACppRoPE sets the RoPE parameters for the estimate.
+func WithLLaMACppRoPE(
+	frequencyBase float64,
+	frequencyScale float64,
+	scalingType string,
+	scalingOriginalContextSize int32,
+) GGUFRunEstimateOption {
+	return func(o *_GGUFRunEstimateOptions) {
+		if frequencyBase > 0 {
+			o.LMCRoPEFrequencyBase = ptr.Float32(float32(frequencyBase))
+		}
+		if frequencyScale > 0 {
+			o.LMCRoPEFrequencyScale = ptr.Float32(float32(frequencyScale))
+		}
+		if slices.Contains([]string{"none", "linear", "yarn"}, scalingType) {
+			o.LMCRoPEScalingType = &scalingType
+		}
+		if scalingOriginalContextSize > 0 {
+			o.LMCRoPEScalingOriginalContextSize = ptr.To(scalingOriginalContextSize)
+		}
 	}
 }
 

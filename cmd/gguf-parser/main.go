@@ -642,6 +642,46 @@ func main() {
 					"which is used to estimate the usage, " +
 					"default is equal to the model's maximum context size.",
 			},
+			&cli.StringFlag{
+				Destination: &lmcRoPEScalingType,
+				Category:    "Estimate/LLaMACpp",
+				Name:        "rope-scaling",
+				Usage: "RoPE frequency scaling method, " +
+					"defaults to linear unless specified by the model, select from [none, linear, yarn].",
+			},
+			&cli.Float64Flag{
+				Category: "Estimate/LLaMACpp",
+				Name:     "rope-scale",
+				Usage: "RoPE context scaling factor, " +
+					"expands context by a factor of N.",
+				Action: func(context *cli.Context, f float64) error {
+					if f != 0 {
+						lmcRoPEFreqScale = 1 / f
+					}
+					return nil
+				},
+			},
+			&cli.Float64Flag{
+				Destination: &lmcRoPEFreqBase,
+				Category:    "Estimate/LLaMACpp",
+				Name:        "rope-freq-base",
+				Usage: "RoPE base frequency, " +
+					"used by NTK-aware scaling.",
+			},
+			&cli.Float64Flag{
+				Destination: &lmcRoPEFreqScale,
+				Category:    "Estimate/LLaMACpp",
+				Name:        "rope-freq-scale",
+				Usage: "RoPE frequency scaling factor, " +
+					"expands context by a factor of 1/N.",
+			},
+			&cli.IntFlag{
+				Destination: &lmcRoPEScalingOrigCtxSize,
+				Category:    "Estimate/LLaMACpp",
+				Name:        "yarn-orig-ctx",
+				Usage: "YaRN original context size of model, " +
+					"defaults to model training context size.",
+			},
 			&cli.BoolFlag{
 				Destination: &lmcInMaxCtxSize,
 				Value:       lmcInMaxCtxSize,
@@ -1037,20 +1077,24 @@ var (
 	deviceMetrics     cli.StringSlice
 	platformFootprint = "150,250"
 	// estimate options for llama.cpp
-	lmcCtxSize            = 0
-	lmcInMaxCtxSize       bool
-	lmcLogicalBatchSize   = 2048
-	lmcPhysicalBatchSize  = 512
-	lmcCacheKeyType       = "f16"
-	lmcCacheValueType     = "f16"
-	lmcNoKVOffload        bool
-	lmcSplitMode          = "layer"
-	lmcSWAFull            = false
-	lmcNoMMap             bool
-	lmcVisualMaxImageSize uint
-	lmcMaxProjectedCache  uint
-	lmcOffloadLayersDraft = -1
-	lmcOffloadLayersStep  uint64
+	lmcCtxSize                = 0
+	lmcRoPEFreqBase           float64
+	lmcRoPEFreqScale          float64
+	lmcRoPEScalingType        string
+	lmcRoPEScalingOrigCtxSize int
+	lmcInMaxCtxSize           bool
+	lmcLogicalBatchSize       = 2048
+	lmcPhysicalBatchSize      = 512
+	lmcCacheKeyType           = "f16"
+	lmcCacheValueType         = "f16"
+	lmcNoKVOffload            bool
+	lmcSplitMode              = "layer"
+	lmcSWAFull                = false
+	lmcNoMMap                 bool
+	lmcVisualMaxImageSize     uint
+	lmcMaxProjectedCache      uint
+	lmcOffloadLayersDraft     = -1
+	lmcOffloadLayersStep      uint64
 	// estimate options for stable-diffusion.cpp
 	sdcBatchCount                   uint = 1
 	sdcHeight                       uint = 1024
@@ -1215,6 +1259,9 @@ func mainAction(c *cli.Context) error {
 	}
 	if lmcCtxSize > 0 {
 		eopts = append(eopts, WithLLaMACppContextSize(int32(lmcCtxSize)))
+	}
+	if lmcRoPEFreqBase > 0 || lmcRoPEFreqScale > 0 || lmcRoPEScalingType != "" || lmcRoPEScalingOrigCtxSize > 0 {
+		eopts = append(eopts, WithLLaMACppRoPE(lmcRoPEFreqBase, lmcRoPEFreqScale, lmcRoPEScalingType, int32(lmcRoPEScalingOrigCtxSize)))
 	}
 	if lmcInMaxCtxSize {
 		eopts = append(eopts, WithinLLaMACppMaxContextSize())

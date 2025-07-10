@@ -103,6 +103,8 @@ type (
 		RoPEDimensionCount uint64 `json:"ropeDimensionCount,omitempty"`
 		// RoPEFrequencyBase is the base frequency of the RoPE.
 		RoPEFrequencyBase float32 `json:"ropeFrequencyBase,omitempty"`
+		// RoPEFrequencyScale is the scale frequency of the RoPE.
+		RoPEFrequencyScale float32 `json:"ropeFrequencyScale,omitempty"`
 		// RoPEFrequencyScale is the frequency scale of the RoPE.
 		RoPEScalingType string `json:"ropeScalingType,omitempty"`
 		// RoPEScalingFactor is the scaling factor of the RoPE.
@@ -803,6 +805,7 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 
 		ropeDimensionCountKey         = arch + ".rope.dimension_count"
 		ropeFrequencyBaseKey          = arch + ".rope.freq_base"
+		ropeFrequencyScaleKey         = arch + ".rope.freq_scale"
 		ropeScaleLinearKey            = arch + ".rope.scale_linear"
 		ropeScalingTypeKey            = arch + ".rope.scaling.type"
 		ropeScalingFactorKey          = arch + ".rope.scaling.factor"
@@ -849,6 +852,7 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 		attentionCausalKey,
 		ropeDimensionCountKey,
 		ropeFrequencyBaseKey,
+		ropeFrequencyScaleKey,
 		ropeScaleLinearKey,
 		ropeScalingTypeKey,
 		ropeScalingFactorKey,
@@ -998,18 +1002,29 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 	if v, ok := m[ropeDimensionCountKey]; ok {
 		ga.RoPEDimensionCount = ValueNumeric[uint64](v)
 	}
+	ga.RoPEFrequencyBase = 10000.0
 	if v, ok := m[ropeFrequencyBaseKey]; ok {
 		ga.RoPEFrequencyBase = ValueNumeric[float32](v)
 	}
-	if v, ok := m[ropeScaleLinearKey]; ok {
-		ga.RoPEScalingType = "linear"
-		ga.RoPEScalingFactor = ValueNumeric[float32](v)
+	ga.RoPEFrequencyScale = 1.0
+	if v, ok := m[ropeFrequencyScaleKey]; ok {
+		ga.RoPEFrequencyScale = ValueNumeric[float32](v)
 	}
 	if v, ok := m[ropeScalingTypeKey]; ok {
 		ga.RoPEScalingType = v.ValueString()
 	}
+	if v, ok := m[ropeScaleLinearKey]; ok {
+		ga.RoPEScalingType = "linear"
+		ga.RoPEScalingFactor = ValueNumeric[float32](v)
+		if ga.RoPEScalingFactor != 0 {
+			ga.RoPEFrequencyScale = 1.0 / ga.RoPEScalingFactor
+		}
+	}
 	if v, ok := m[ropeScalingFactorKey]; ok {
 		ga.RoPEScalingFactor = ValueNumeric[float32](v)
+		if ga.RoPEScalingFactor != 0 {
+			ga.RoPEFrequencyScale = 1.0 / ga.RoPEScalingFactor
+		}
 	}
 	if v, ok := m[ropeScalingOriginalContextKey]; ok {
 		ga.RoPEScalingOriginalContextLength = ValueNumeric[uint64](v)

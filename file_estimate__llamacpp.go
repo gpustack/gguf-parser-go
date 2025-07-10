@@ -350,9 +350,21 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 
 	// Embedding.
 	if !a.AttentionCausal {
+		ropeFrequencyBase := ptr.Deref(o.LMCRoPEFrequencyBase, a.RoPEFrequencyBase)
+		ropeFrequencyScale := ptr.Deref(o.LMCRoPEFrequencyScale, a.RoPEFrequencyScale)
+		ropeScalingType := ptr.Deref(o.LMCRoPEScalingType, a.RoPEScalingType)
+		ropeScalingOriginalContextSize := ptr.Deref(o.LMCRoPEScalingOriginalContextSize, int32(a.RoPEScalingOriginalContextLength))
+		isRoPECustomized := ropeFrequencyBase != a.RoPEFrequencyBase ||
+			ropeFrequencyScale != a.RoPEFrequencyScale ||
+			ropeScalingType != a.RoPEScalingType ||
+			(ropeScalingType == "yarn" && ropeScalingOriginalContextSize != int32(a.RoPEScalingOriginalContextLength))
+
 		e.EmbeddingOnly = true
+		o.LMCContextSize = ptr.To(ptr.Deref(o.LMCContextSize, int32(a.MaximumContextLength)))
 		// Set context size/physical batch size/logical batch size to the training context size.
-		o.LMCContextSize = ptr.To(min(int32(a.MaximumContextLength), ptr.Deref(o.LMCContextSize, int32(a.MaximumContextLength))))
+		if !isRoPECustomized {
+			o.LMCContextSize = ptr.To(min(int32(a.MaximumContextLength), *o.LMCContextSize))
+		}
 		o.LMCLogicalBatchSize = o.LMCContextSize
 		o.LMCPhysicalBatchSize = o.LMCLogicalBatchSize
 		// Reranking.
@@ -771,7 +783,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			}
 		}
 		// Finally, get the usage of output layer.
-		if a.AttentionCausal {
+		{
 			var outInc uint64
 			if a.Recurrent {
 				outInc += inpSMask + inpSSeq
@@ -1302,7 +1314,7 @@ func (gf *GGUFFile) estimateLLaMaCppRunInAdapter(o *_GGUFRunEstimateOptions, a *
 		if _, ok := opLs.Get("output.weight"); ok {
 			wg = GGUFBytesScalar(opLs.Bytes())
 			ps = GGUFParametersScalar(opLs.Elements())
-		} else if a.AttentionCausal {
+		} else {
 			wg = GGUFBytesScalar(opLs.Bytes()) + e.Devices[0].Weight.Input /* duplicate the input layer */
 			ps = GGUFParametersScalar(opLs.Elements() + ipLs.Elements())
 		}

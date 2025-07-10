@@ -51,10 +51,15 @@ GLOBAL OPTIONS:
    --mmap                                                              Specify enabling Memory-Mapped using, which is used to estimate the usage. Memory-Mapped can avoid loading the entire model weights into RAM. (default: false)
    --no-kv-offload, --nkvo                                             Specify disabling Key-Value offloading, which is used to estimate the usage. Disable Key-Value offloading can reduce the usage of VRAM. (default: false)
    --no-mmap                                                           Specify disabling Memory-Mapped using, which is used to estimate the usage. Memory-Mapped can avoid loading the entire model weights into RAM. (default: false)
+   --rope-freq-base value                                              RoPE base frequency, used by NTK-aware scaling. (default: 0)
+   --rope-freq-scale value                                             RoPE frequency scaling factor, expands context by a factor of 1/N. (default: 0)
+   --rope-scale value                                                  RoPE context scaling factor, expands context by a factor of N. (default: 0)
+   --rope-scaling value                                                RoPE frequency scaling method, defaults to linear unless specified by the model, select from [none, linear, yarn].
    --split-mode value, --sm value                                      Specify how to split the model across multiple devices, which is used to estimate the usage, select from [layer, row, none]. Since gguf-parser always estimates the usage of VRAM, "none" is meaningless here, keep for compatibility. (default: "layer")
    --swa-full                                                          Specify using full-size SWA cache. (default: false)
    --ubatch-size value, --ub value                                     Specify the physical maximum batch size, which is used to estimate the usage. (default: 512)
    --visual-max-image-size value                                       Specify maximum image size when completion with vision model. (default: 0)
+   --yarn-orig-ctx value                                               YaRN original context size of model, defaults to model training context size. (default: 0)
 
    Estimate/StableDiffusionCpp
 
