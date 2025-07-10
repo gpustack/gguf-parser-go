@@ -117,27 +117,32 @@ type (
 		RoPEScalingOriginalContextLength uint64 `json:"ropeScalingOriginalContextLength,omitempty"`
 		// RoPEScalingFinetuned is true if the RoPE scaling is fine-tuned.
 		RoPEScalingFinetuned bool `json:"ropeScalingFinetuned,omitempty"`
-		// SSMConvolutionKernel is the size of the convolution kernel used in the SSM(Selective State Space Model).
+		// SSMConvolutionKernel is the size of the convolution kernel used in the Selective State Space Model (SSM) and similar architectures.
 		SSMConvolutionKernel uint32 `json:"ssmConvolutionKernel,omitempty"`
-		// SSMInnerSize is the embedding size of the state in SSM.
+		// SSMInnerSize is the embedding size of the state in SSM and similar architectures.
 		SSMInnerSize uint32 `json:"ssmInnerSize,omitempty"`
-		// SSMStateSize is the size of the recurrent state in SSM.
+		// SSMStateSize is the size of the recurrent state in SSM and similar architectures.
 		SSMStateSize uint32 `json:"ssmStateSize,omitempty"`
-		// SSMTimeStepRank is the rank of the time steps in SSM.
+		// SSMTimeStepRank is the rank of the time steps in SSM and similar architectures.
 		SSMTimeStepRank uint32 `json:"ssmTimeStepRank,omitempty"`
+		// SSMGroupCount is the number of groups in the SSM and similar architectures.
+		SSMGroupCount uint32 `json:"ssmGroupCount,omitempty"`
+		// WKVHeadSize is the size of the head in RWKV and similar architectures.
+		RWKVHeadSize uint32 `json:"rwkvHeadSize,omitempty"`
+		// RWKVRescaleEveryNLayers is the number of layers after which the rescaling is applied in RWKV and similar architectures.
+		RWKVRescaleEveryNLayers uint32 `json:"rwkvRescaleEveryNLayers,omitempty"`
+		// RWKVTimeMixExtraDimension indicates whether the RWKV architecture has an extra dimension for time mixing.
+		RWKVTimeMixExtraDimension uint32 `json:"rwkvTimeMixExtraDimension,omitempty"`
+		// RWKVTimeDecayExtraDimension indicates whether the RWKV architecture has an extra dimension for time decay.
+		RWKVTimeDecayExtraDimension uint32 `json:"rwkvTimeDecayExtraDimension,omitempty"`
+		// TokenShiftCount is the number of token shifts used in RWKV and similar architectures.
+		RWKVTokenShiftCount uint32 `json:"rwkvTokenShiftCount,omitempty"`
 		// VocabularyLength is the size of the vocabulary.
 		//
 		// VocabularyLength is the same as the tokenizer's token size.
 		VocabularyLength uint64 `json:"vocabularyLength,omitempty"`
 
 		/* Appendix */
-
-		// EmbeddingGGQA is the GQA of the embedding layer.
-		EmbeddingGQA uint64 `json:"embeddingGQA,omitempty"`
-		// EmbeddingKeyGQA is the number of key GQA in the embedding layer.
-		EmbeddingKeyGQA uint64 `json:"embeddingKeyGQA,omitempty"`
-		// EmbeddingValueGQA is the number of value GQA in the embedding layer.
-		EmbeddingValueGQA uint64 `json:"embeddingValueGQA,omitempty"`
 
 		// ClipProjectorType is the type of the projector used in the clip model.
 		//
@@ -721,24 +726,6 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 
 	ga.AttentionHeadCountKV = ga.AttentionHeadCount
 
-	{
-		if ga.AttentionHeadCountKV > 0 {
-			ga.EmbeddingGQA = ga.AttentionHeadCount / ga.AttentionHeadCountKV
-		}
-		if ga.AttentionHeadCount > 0 {
-			akl, avl := uint64(ga.AttentionKeyLength), uint64(ga.AttentionValueLength)
-			if ga.AttentionKeyLengthMLA > 0 && ga.AttentionValueLengthMLA > 0 {
-				akl, avl = uint64(ga.AttentionKeyLengthMLA), uint64(ga.AttentionValueLengthMLA)
-			}
-			ga.EmbeddingKeyGQA = akl * ga.AttentionHeadCountKV
-			ga.EmbeddingValueGQA = avl * ga.AttentionHeadCountKV
-		}
-		if ga.Architecture == "mamba" {
-			ga.EmbeddingKeyGQA = uint64((ga.SSMConvolutionKernel - 1) * ga.SSMInnerSize)
-			ga.EmbeddingValueGQA = uint64(ga.SSMStateSize * ga.SSMInnerSize)
-		}
-	}
-
 	return ga
 }
 
@@ -820,6 +807,13 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 		ssmInnerSizeKey         = arch + ".ssm.inner_size"
 		ssmStateSizeKey         = arch + ".ssm.state_size"
 		ssmTimeStepRankKey      = arch + ".ssm.time_step_rank"
+		ssmGroupCountKey        = arch + ".ssm.group_count"
+
+		rwkvHeadSizeKey                = arch + ".wkv.head_size"
+		rwkvRescaleEveryNLayersKey     = arch + ".rescale_every_n_layers"
+		rwkvTimeMixExtraDimensionKey   = arch + ".time_mix_extra_dim"
+		rwkvTimeDecayExtraDimensionKey = arch + ".time_decay_extra_dim"
+		rwkvTokenShiftCountKey         = arch + ".token_shift_count"
 
 		vocabularyLengthKey    = arch + ".vocab_size"
 		tokenizerGGMLTokensKey = "tokenizer.ggml.tokens"
@@ -866,6 +860,12 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 		ssmInnerSizeKey,
 		ssmStateSizeKey,
 		ssmTimeStepRankKey,
+		ssmGroupCountKey,
+		rwkvHeadSizeKey,
+		rwkvRescaleEveryNLayersKey,
+		rwkvTimeMixExtraDimensionKey,
+		rwkvTimeDecayExtraDimensionKey,
+		rwkvTokenShiftCountKey,
 		vocabularyLengthKey,
 		tokenizerGGMLTokensKey,
 	})
@@ -1007,6 +1007,7 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 		"jamba",
 		"falcon-h1",
 	}, ga.Architecture)
+	ga.AttentionRecurrent = ga.AttentionHybrid || ga.AttentionRecurrent
 
 	if v, ok := m[ropeDimensionCountKey]; ok {
 		ga.RoPEDimensionCount = ValueNumeric[uint64](v)
@@ -1054,25 +1055,32 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 	if v, ok := m[ssmTimeStepRankKey]; ok {
 		ga.SSMTimeStepRank = ValueNumeric[uint32](v)
 	}
+	if v, ok := m[ssmGroupCountKey]; ok {
+		ga.SSMGroupCount = ValueNumeric[uint32](v)
+	}
+
+	if v, ok := m[rwkvHeadSizeKey]; ok {
+		ga.RWKVHeadSize = ValueNumeric[uint32](v)
+	}
+	if v, ok := m[rwkvRescaleEveryNLayersKey]; ok {
+		ga.RWKVRescaleEveryNLayers = ValueNumeric[uint32](v)
+	}
+	if v, ok := m[rwkvTimeMixExtraDimensionKey]; ok {
+		ga.RWKVTimeMixExtraDimension = ValueNumeric[uint32](v)
+	}
+	if v, ok := m[rwkvTimeDecayExtraDimensionKey]; ok {
+		ga.RWKVTimeDecayExtraDimension = ValueNumeric[uint32](v)
+	}
+	if v, ok := m[rwkvTokenShiftCountKey]; ok {
+		ga.RWKVTokenShiftCount = ValueNumeric[uint32](v)
+	} else if ga.AttentionRecurrent {
+		ga.RWKVTokenShiftCount = 2
+	}
 
 	if v, ok := m[vocabularyLengthKey]; ok {
 		ga.VocabularyLength = ValueNumeric[uint64](v)
 	} else if v, ok := m[tokenizerGGMLTokensKey]; ok {
 		ga.VocabularyLength = v.ValueArray().Len
-	}
-
-	{
-		if ga.AttentionHeadCountKV > 0 {
-			ga.EmbeddingGQA = ga.AttentionHeadCount / ga.AttentionHeadCountKV
-		}
-		if ga.AttentionHeadCount > 0 {
-			ga.EmbeddingKeyGQA = uint64(ga.AttentionKeyLength) * ga.AttentionHeadCountKV
-			ga.EmbeddingValueGQA = uint64(ga.AttentionValueLength) * ga.AttentionHeadCountKV
-		}
-		if ga.Architecture == "mamba" {
-			ga.EmbeddingKeyGQA = uint64((ga.SSMConvolutionKernel - 1) * ga.SSMInnerSize)
-			ga.EmbeddingValueGQA = uint64(ga.SSMStateSize * ga.SSMInnerSize)
-		}
 	}
 
 	return ga

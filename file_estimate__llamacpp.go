@@ -390,12 +390,12 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 	// Init hyperparameters,
 	// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L6957-L7000.
 	var (
-		nContext  uint64
-		nTokens   uint64
-		nBatch    uint64
-		nOutputs  uint64
-		nParallel uint64
-		nKV       uint64
+		nContext uint64
+		nTokens  uint64
+		nBatch   uint64
+		nOutputs uint64
+		nSeq     uint64
+		nKV      uint64
 	)
 	{
 		nContext = a.MaximumContextLength
@@ -414,16 +414,8 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		nTokens = min(nContext, uint64(*o.LMCPhysicalBatchSize))
 		nBatch = nTokens
 		nOutputs = nTokens
-		nParallel = uint64(ptr.Deref(o.ParallelSize, 1))
+		nSeq = uint64(ptr.Deref(o.ParallelSize, 1))
 		nKV = nContext
-
-		// For recurrent models,
-		// see https://github.com/ggerganov/llama.cpp/blob/7672adeec7a79ea271058c63106c142ba84f951a/llama.cpp#L16122-L16129.
-		if a.AttentionRecurrent {
-			nKV = nParallel
-			o.LMCCacheKeyType = ptr.To(GGMLTypeF32)
-			o.LMCCacheValueType = ptr.To(GGMLTypeF32)
-		}
 
 		e.ContextSize = nContext
 	}
@@ -541,7 +533,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		if _, ok := opLs.Get("output.weight"); ok {
 			wg = GGUFBytesScalar(opLs.Bytes())
 			ps = GGUFParametersScalar(opLs.Elements())
-		} else if a.AttentionCausal {
+		} else {
 			wg = GGUFBytesScalar(opLs.Bytes()) + e.Devices[0].Weight.Input /* duplicate the input layer */
 			ps = GGUFParametersScalar(opLs.Elements() + ipLs.Elements())
 		}
@@ -554,48 +546,93 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		}
 	}
 
-	// KV cache,
-	// see https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L2479-L2501.
+	// KV cache.
 	if a.AttentionCausal {
-		kps, vps := a.EmbeddingKeyGQA*nKV, a.EmbeddingValueGQA*nKV
-		krs, vrs := o.LMCCacheKeyType.RowSizeOf([]uint64{kps}), o.LMCCacheValueType.RowSizeOf([]uint64{vps})
+		switch {
+		// Recurrent,
+		// see https://github.com/ggml-org/llama.cpp/blob/704bb7a71c01dc07c1478b85f6322bf5dfde1eaf/src/llama-hparams.cpp#L68-L88.
+		case a.AttentionRecurrent:
+			var r, s uint64
+			if a.RWKVHeadSize > 0 {
+				r = uint64(a.RWKVTokenShiftCount) * a.EmbeddingLength
+				s = uint64(a.RWKVHeadSize) * a.EmbeddingLength
+			} else {
+				r = uint64((a.SSMConvolutionKernel - 1) * (a.SSMInnerSize + 2*a.SSMGroupCount*a.SSMStateSize))
+				s = uint64(a.SSMStateSize * a.SSMInnerSize)
+			}
 
-		if !usingSWA {
-			e.Devices[0].KVCache.Key = GGUFBytesScalar(krs * nLoadLayers)
-			e.Devices[0].KVCache.Value = GGUFBytesScalar(vrs * nLoadLayers)
-			e.Devices[0].Parameter.KVCache = GGUFParametersScalar((kps + vps) * nLoadLayers)
+			rps, sps := r*nSeq, s*nSeq
+			rrs, srs := GGMLTypeF32.RowSizeOf([]uint64{rps}), GGMLTypeF32.RowSizeOf([]uint64{sps})
+
+			e.Devices[0].KVCache.Key += GGUFBytesScalar(rrs * nLoadLayers)
+			e.Devices[0].KVCache.Value += GGUFBytesScalar(srs * nLoadLayers)
+			e.Devices[0].Parameter.KVCache += GGUFParametersScalar((rrs + srs) * nLoadLayers)
 			if !*o.LMCOffloadKVCache {
-				e.Devices[0].KVCache.Key += GGUFBytesScalar(krs * nOffloadLayers)
-				e.Devices[0].KVCache.Value += GGUFBytesScalar(vrs * nOffloadLayers)
-				e.Devices[0].Parameter.KVCache += GGUFParametersScalar((kps + vps) * nOffloadLayers)
+				e.Devices[0].KVCache.Key += GGUFBytesScalar(rrs * nOffloadLayers)
+				e.Devices[0].KVCache.Value += GGUFBytesScalar(srs * nOffloadLayers)
+				e.Devices[0].Parameter.KVCache += GGUFParametersScalar((rrs + srs) * nOffloadLayers)
 			} else if !zeroOffload {
 				for i, d := range e.Devices[1:] {
-					e.Devices[i+1].KVCache.Key = GGUFBytesScalar(krs * d.HandleLayers)
-					e.Devices[i+1].KVCache.Value = GGUFBytesScalar(vrs * d.HandleLayers)
-					e.Devices[i+1].Parameter.KVCache = GGUFParametersScalar((kps + vps) * d.HandleLayers)
+					e.Devices[i+1].KVCache.Key += GGUFBytesScalar(rrs * d.HandleLayers)
+					e.Devices[i+1].KVCache.Value += GGUFBytesScalar(srs * d.HandleLayers)
+					e.Devices[i+1].Parameter.KVCache += GGUFParametersScalar((rrs + srs) * d.HandleLayers)
 				}
 			}
-		} else {
-			// Sliding window attention size,
-			// see https://github.com/ggml-org/llama.cpp/blob/3079e9ac8e04ef6eddeb0c164d72edb6b6fd2df5/src/llama-kv-cache.cpp#L1640-L1642.
-			swas := min(nKV, GGMLPadding(a.AttentionSlidingWindow*nParallel+uint64(*o.LMCLogicalBatchSize), paddingAlign))
-			swaKps, swaVps := a.EmbeddingKeyGQA*swas, a.EmbeddingValueGQA*swas
-			swaKrs, swaVrs := o.LMCCacheKeyType.RowSizeOf([]uint64{swaKps}), o.LMCCacheValueType.RowSizeOf([]uint64{swaVps})
 
-			nNonSWALoadLayers, nNonSWAOffloadLayers := nLoadLayers-nSWALoadLayers, nOffloadLayers-nSWAOffloadLayers
+			if !a.AttentionHybrid {
+				break
+			}
 
-			e.Devices[0].KVCache.Key = GGUFBytesScalar(swaKrs*nSWALoadLayers + krs*nNonSWALoadLayers)
-			e.Devices[0].KVCache.Value = GGUFBytesScalar(swaVrs*nSWALoadLayers + vrs*nNonSWALoadLayers)
-			e.Devices[0].Parameter.KVCache = GGUFParametersScalar((swaKps+swaVps)*nSWALoadLayers + (kps+vps)*nNonSWALoadLayers)
-			if !*o.LMCOffloadKVCache {
-				e.Devices[0].KVCache.Key += GGUFBytesScalar(swaKrs*nSWAOffloadLayers + krs*nNonSWAOffloadLayers)
-				e.Devices[0].KVCache.Value += GGUFBytesScalar(swaVrs*nSWAOffloadLayers + vrs*nNonSWAOffloadLayers)
-				e.Devices[0].Parameter.KVCache += GGUFParametersScalar((swaKps+swaVps)*nSWAOffloadLayers + (kps+vps)*nNonSWAOffloadLayers)
-			} else if !zeroOffload {
-				for i, d := range e.Devices[1:] {
-					e.Devices[i+1].KVCache.Key = GGUFBytesScalar(swaKrs*d.HandleSWALayers + krs*(d.HandleLayers-d.HandleSWALayers))
-					e.Devices[i+1].KVCache.Value = GGUFBytesScalar(swaVrs*d.HandleSWALayers + vrs*(d.HandleLayers-d.HandleSWALayers))
-					e.Devices[i+1].Parameter.KVCache = GGUFParametersScalar((swaKps+swaVps)*d.HandleSWALayers + (kps+vps)*(d.HandleLayers-d.HandleSWALayers))
+			fallthrough
+		// Causal,
+		// see https://github.com/ggml-org/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L2479-L2501.
+		default:
+			akl, avl := uint64(a.AttentionKeyLength), uint64(a.AttentionValueLength)
+			if a.AttentionKeyLengthMLA > 0 && a.AttentionValueLengthMLA > 0 {
+				akl, avl = uint64(a.AttentionKeyLengthMLA), uint64(a.AttentionValueLengthMLA)
+			}
+			kGQA := akl * a.AttentionHeadCountKV
+			vGQA := avl * a.AttentionHeadCountKV
+			kps, vps := kGQA*nKV, vGQA*nKV
+			krs, vrs := o.LMCCacheKeyType.RowSizeOf([]uint64{kps}), o.LMCCacheValueType.RowSizeOf([]uint64{vps})
+
+			if !usingSWA {
+				e.Devices[0].KVCache.Key += GGUFBytesScalar(krs * nLoadLayers)
+				e.Devices[0].KVCache.Value += GGUFBytesScalar(vrs * nLoadLayers)
+				e.Devices[0].Parameter.KVCache += GGUFParametersScalar((kps + vps) * nLoadLayers)
+				if !*o.LMCOffloadKVCache {
+					e.Devices[0].KVCache.Key += GGUFBytesScalar(krs * nOffloadLayers)
+					e.Devices[0].KVCache.Value += GGUFBytesScalar(vrs * nOffloadLayers)
+					e.Devices[0].Parameter.KVCache += GGUFParametersScalar((kps + vps) * nOffloadLayers)
+				} else if !zeroOffload {
+					for i, d := range e.Devices[1:] {
+						e.Devices[i+1].KVCache.Key += GGUFBytesScalar(krs * d.HandleLayers)
+						e.Devices[i+1].KVCache.Value += GGUFBytesScalar(vrs * d.HandleLayers)
+						e.Devices[i+1].Parameter.KVCache += GGUFParametersScalar((kps + vps) * d.HandleLayers)
+					}
+				}
+			} else {
+				// Sliding window attention size,
+				// see https://github.com/ggml-org/llama.cpp/blob/3079e9ac8e04ef6eddeb0c164d72edb6b6fd2df5/src/llama-kv-cache.cpp#L1640-L1642.
+				swas := min(nKV, GGMLPadding(a.AttentionSlidingWindow*nSeq+uint64(*o.LMCLogicalBatchSize), paddingAlign))
+				swaKps, swaVps := kGQA*swas, vGQA*swas
+				swaKrs, swaVrs := o.LMCCacheKeyType.RowSizeOf([]uint64{swaKps}), o.LMCCacheValueType.RowSizeOf([]uint64{swaVps})
+
+				nNonSWALoadLayers, nNonSWAOffloadLayers := nLoadLayers-nSWALoadLayers, nOffloadLayers-nSWAOffloadLayers
+
+				e.Devices[0].KVCache.Key += GGUFBytesScalar(swaKrs*nSWALoadLayers + krs*nNonSWALoadLayers)
+				e.Devices[0].KVCache.Value += GGUFBytesScalar(swaVrs*nSWALoadLayers + vrs*nNonSWALoadLayers)
+				e.Devices[0].Parameter.KVCache += GGUFParametersScalar((swaKps+swaVps)*nSWALoadLayers + (kps+vps)*nNonSWALoadLayers)
+				if !*o.LMCOffloadKVCache {
+					e.Devices[0].KVCache.Key += GGUFBytesScalar(swaKrs*nSWAOffloadLayers + krs*nNonSWAOffloadLayers)
+					e.Devices[0].KVCache.Value += GGUFBytesScalar(swaVrs*nSWAOffloadLayers + vrs*nNonSWAOffloadLayers)
+					e.Devices[0].Parameter.KVCache += GGUFParametersScalar((swaKps+swaVps)*nSWAOffloadLayers + (kps+vps)*nNonSWAOffloadLayers)
+				} else if !zeroOffload {
+					for i, d := range e.Devices[1:] {
+						e.Devices[i+1].KVCache.Key += GGUFBytesScalar(swaKrs*d.HandleSWALayers + krs*(d.HandleLayers-d.HandleSWALayers))
+						e.Devices[i+1].KVCache.Value += GGUFBytesScalar(swaVrs*d.HandleSWALayers + vrs*(d.HandleLayers-d.HandleSWALayers))
+						e.Devices[i+1].Parameter.KVCache += GGUFParametersScalar((swaKps+swaVps)*d.HandleSWALayers + (kps+vps)*(d.HandleLayers-d.HandleSWALayers))
+					}
 				}
 			}
 		}
@@ -630,8 +667,8 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			inpPos    = GGMLTypeI32.RowSizeOf([]uint64{nBatch})                    // I32 [n_batch]
 			inpOutIds = GGMLTypeI32.RowSizeOf([]uint64{nOutputs})                  // I32 [n_outputs],
 			inpKQMask = GGMLTypeF32.RowSizeOf([]uint64{nKV, nBatch})               // F32 [n_kv, n_batch]
-			inpSMask  = GGMLTypeF32.RowSizeOf([]uint64{1, nKV})                    // F32 [1, n_kv]
-			inpSSeq   = GGMLTypeI32.RowSizeOf([]uint64{nKV, nBatch})               // I32 [n_kv, n_batch]
+			inpSMask  = GGMLTypeF32.RowSizeOf([]uint64{1, nSeq})                   // F32 [1, n_seq]
+			inpSSeq   = GGMLTypeI32.RowSizeOf([]uint64{nSeq, nBatch})              // I32 [n_seq, n_batch]
 		)
 		if a.AttentionRecurrent {
 			e.Devices[0].Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + inpSMask + inpSSeq + inpOutIds)
@@ -661,8 +698,13 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		// So, we only consider the usage of the largest layer,
 		// which is the last layer by default.
 		if a.AttentionRecurrent {
-			// TODO: support recurrent models, like RWKV series, Mamba2.
-			convInc := GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingKeyGQA, nKV}) // F32 [n_embd_key_gqa, n_kv] reshape
+			var r uint64
+			if a.RWKVHeadSize > 0 {
+				r = uint64(a.RWKVTokenShiftCount) * a.EmbeddingLength
+			} else {
+				r = uint64((a.SSMConvolutionKernel - 1) * (a.SSMInnerSize + 2*a.SSMGroupCount*a.SSMStateSize))
+			}
+			convInc := GGMLTypeF32.RowSizeOf([]uint64{r, nSeq}) // F32 [n_embd_key_gqa, nSeq] reshape
 			for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.(attn_norm|ssm_in|ssm_conv1d)\.weight`)) {
 				if !strings.HasSuffix(l.Name, ".ssm_conv1d.weight") {
 					rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
@@ -670,7 +712,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 					continue
 				}
 				// https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L10379.
-				rs := GGMLTypeF32.RowSizeOf([]uint64{uint64(a.SSMInnerSize)*nTokens + uint64(a.SSMConvolutionKernel)*uint64(a.SSMInnerSize)*nKV})
+				rs := GGMLTypeF32.RowSizeOf([]uint64{uint64(a.SSMInnerSize)*nTokens + uint64(a.SSMConvolutionKernel)*uint64(a.SSMInnerSize)*nSeq})
 				convInc += rs
 			}
 			ssmInc := uint64(0)
@@ -681,7 +723,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 					continue
 				}
 				// https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L10413.
-				rs := GGMLTypeF32.RowSizeOf([]uint64{uint64(a.SSMInnerSize)*nTokens + uint64(a.SSMStateSize)*uint64(a.SSMInnerSize)*nKV})
+				rs := GGMLTypeF32.RowSizeOf([]uint64{uint64(a.SSMInnerSize)*nTokens + uint64(a.SSMStateSize)*uint64(a.SSMInnerSize)*nSeq})
 				ssmInc += rs
 			}
 			cp := GGUFBytesScalar(convInc + ssmInc)

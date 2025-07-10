@@ -1854,7 +1854,6 @@ func mainAction(c *cli.Context) error {
 					{
 						"Max Context Len",
 						"Embedding Len",
-						"Embedding GQA",
 						"Attention Causal",
 						"Attention Head Cnt",
 						"Layers",
@@ -1867,7 +1866,6 @@ func mainAction(c *cli.Context) error {
 					{
 						sprintf(a.MaximumContextLength),
 						sprintf(a.EmbeddingLength),
-						sprintf(a.EmbeddingGQA),
 						sprintf(a.AttentionCausal),
 						sprintf(tenary(
 							a.AttentionHeadCountKV == 0 || a.AttentionHeadCountKV == a.AttentionHeadCount,
