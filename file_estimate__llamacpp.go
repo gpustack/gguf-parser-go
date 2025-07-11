@@ -671,7 +671,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			inpSSeq   = GGMLTypeI32.RowSizeOf([]uint64{nSeq, nBatch})              // I32 [n_seq, n_batch]
 		)
 		if a.AttentionRecurrent {
-			e.Devices[0].Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + inpSMask + inpSSeq + inpOutIds)
+			e.Devices[0].Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + 2*inpSMask + inpSSeq + inpOutIds)
 		} else {
 			e.Devices[0].Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + inpPos + inpKQMask + inpOutIds)
 		}
@@ -697,38 +697,59 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		// the allocated memory can be reused for the next layer.
 		// So, we only consider the usage of the largest layer,
 		// which is the last layer by default.
-		if a.AttentionRecurrent {
-			var r uint64
+		if a.AttentionRecurrent && !a.AttentionHybrid {
 			if a.RWKVHeadSize > 0 {
-				r = uint64(a.RWKVTokenShiftCount) * a.EmbeddingLength
+				attnInc := uint64(0)
+				for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.(attn_norm|attn_norm_2)\.weight`)) {
+					rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nBatch})
+					attnInc += rs
+				}
+				ffnInc := uint64(0)
+				for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.time_mix_(lerp_x|receptance|decay_w2|key|value|gate|w2|output)\.weight`)) { // nolint: lll
+					switch {
+					case strings.HasSuffix(l.Name, ".time_mix_w2.weight"):
+						rs := GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingLength, 1, nTokens, l.Dimensions[l.NDimensions-1]})
+						ffnInc += rs
+					case strings.HasSuffix(l.Name, ".time_mix_output.weight"):
+						rs := GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingLength, nBatch + uint64(a.RWKVHeadSize)*nSeq})
+						ffnInc += rs
+					default:
+						rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nBatch})
+						ffnInc += rs
+					}
+				}
+				cp := GGUFBytesScalar(attnInc + ffnInc)
+				for i := range e.Devices[1:] {
+					e.Devices[i+1].Computation.Compute = cp
+				}
 			} else {
-				r = uint64((a.SSMConvolutionKernel - 1) * (a.SSMInnerSize + 2*a.SSMGroupCount*a.SSMStateSize))
-			}
-			convInc := GGMLTypeF32.RowSizeOf([]uint64{r, nSeq}) // F32 [n_embd_key_gqa, nSeq] reshape
-			for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.(attn_norm|ssm_in|ssm_conv1d)\.weight`)) {
-				if !strings.HasSuffix(l.Name, ".ssm_conv1d.weight") {
-					rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
+				r := uint64((a.SSMConvolutionKernel - 1) * (a.SSMInnerSize + 2*a.SSMGroupCount*a.SSMStateSize))
+				convInc := GGMLTypeF32.RowSizeOf([]uint64{r, nSeq}) // F32 [n_embd_key_gqa, nSeq] reshape
+				for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.(attn_norm|ssm_in|ssm_conv1d)\.weight`)) {
+					if !strings.HasSuffix(l.Name, ".ssm_conv1d.weight") {
+						rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
+						convInc += rs
+						continue
+					}
+					// https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L10379.
+					rs := GGMLTypeF32.RowSizeOf([]uint64{uint64(a.SSMInnerSize)*nTokens + uint64(a.SSMConvolutionKernel)*uint64(a.SSMInnerSize)*nSeq})
 					convInc += rs
-					continue
 				}
-				// https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L10379.
-				rs := GGMLTypeF32.RowSizeOf([]uint64{uint64(a.SSMInnerSize)*nTokens + uint64(a.SSMConvolutionKernel)*uint64(a.SSMInnerSize)*nSeq})
-				convInc += rs
-			}
-			ssmInc := uint64(0)
-			for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.ssm_(dt\.weight|a)`)) {
-				if !strings.HasSuffix(l.Name, ".ssm_a") {
-					rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
+				ssmInc := uint64(0)
+				for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.ssm_(dt\.weight|a)`)) {
+					if !strings.HasSuffix(l.Name, ".ssm_a") {
+						rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
+						ssmInc += rs
+						continue
+					}
+					// https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L10413.
+					rs := GGMLTypeF32.RowSizeOf([]uint64{uint64(a.SSMInnerSize)*nTokens + uint64(a.SSMStateSize)*uint64(a.SSMInnerSize)*nSeq})
 					ssmInc += rs
-					continue
 				}
-				// https://github.com/ggerganov/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L10413.
-				rs := GGMLTypeF32.RowSizeOf([]uint64{uint64(a.SSMInnerSize)*nTokens + uint64(a.SSMStateSize)*uint64(a.SSMInnerSize)*nSeq})
-				ssmInc += rs
-			}
-			cp := GGUFBytesScalar(convInc + ssmInc)
-			for i := range e.Devices[1:] {
-				e.Devices[i+1].Computation.Compute = cp
+				cp := GGUFBytesScalar(convInc + ssmInc)
+				for i := range e.Devices[1:] {
+					e.Devices[i+1].Computation.Compute = cp
+				}
 			}
 		} else {
 			loadAttnInc, offloadAttnInc := uint64(0), uint64(0)
@@ -829,6 +850,10 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			var outInc uint64
 			if a.AttentionRecurrent {
 				outInc += inpSMask + inpSSeq
+			}
+			if l, ok := opLs.Get("output_norm.weight"); ok {
+				rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
+				outInc += rs
 			}
 			if l, ok := opLs.Get("output.weight"); ok {
 				rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
