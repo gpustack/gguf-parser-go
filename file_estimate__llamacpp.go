@@ -675,7 +675,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		} else {
 			e.Devices[0].Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + inpPos + inpKQMask + inpOutIds)
 		}
-		if !zeroOffload {
+		{
 			var v GGUFBytesScalar
 			if a.AttentionRecurrent {
 				v = GGUFBytesScalar(inpEmbd + inpSMask + inpSSeq)
@@ -829,7 +829,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			} else {
 				e.Devices[0].Computation.Compute = GGUFBytesScalar(loadAttnInc)
 			}
-			if !zeroOffload {
+			{
 				cp := GGUFBytesScalar(max(offloadAttnInc, ffnInc))
 				for i := range e.Devices[1:] {
 					e.Devices[i+1].Computation.Compute = cp
