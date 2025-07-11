@@ -1006,6 +1006,7 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 	ga.AttentionHybrid = slices.Contains([]string{ // TODO(thxCode): calculate this from the metadata.
 		"jamba",
 		"falcon-h1",
+		"granitehybrid",
 	}, ga.Architecture)
 	ga.AttentionRecurrent = ga.AttentionHybrid || ga.AttentionRecurrent
 
