@@ -146,6 +146,9 @@ var _GGUFPotentialDiffusionArchitectureTensorsRegexes = []*regexp.Regexp{
 	regexp.MustCompile(`^model\.diffusion_model\..*`),
 	regexp.MustCompile(`^double_blocks\..*`),
 	regexp.MustCompile(`^joint_blocks\..*`),
+	regexp.MustCompile(`^decoder\..*`),
+	regexp.MustCompile(`^encoder\..*`),
+	regexp.MustCompile(`^text_model\..*`),
 }
 
 // Metadata returns the metadata of the GGUF file.

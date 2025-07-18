@@ -641,7 +641,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 	// Computation.
 	{
 		// See https://github.com/ggml-org/llama.cpp/blob/ec9e0301fef6476df83e94842c3b625501c95566/src/llama-context.cpp#L1241-L1243.
-		maxNodes := max(65536, uint64(5*len(gf.TensorInfos)))
+		maxNodes := max(1024, uint64(8*len(gf.TensorInfos)))
 
 		// Bootstrap, compute metadata.
 		cm := GGMLTensorOverhead()*maxNodes + GGMLComputationGraphOverhead(maxNodes, false)

@@ -1844,7 +1844,7 @@ func mainAction(c *cli.Context) error {
 				}
 				bds = [][]any{
 					{
-						a.DiffusionArchitecture,
+						sprintf(tenary(a.DiffusionArchitecture != "", a.DiffusionArchitecture, "N/A")),
 						sprintf(tenary(a.DiffusionHasConditioners(), a.DiffusionConditioners, "N/A")),
 						sprintf(tenary(a.DiffusionHasAutoencoder(), a.DiffusionAutoencoder, "N/A")),
 					},
@@ -2000,14 +2000,14 @@ func mainAction(c *cli.Context) error {
 		for i := range lmes.Items {
 			if !inShort {
 				bds[i] = []any{
-					sprintf(lmes.Architecture),
+					sprintf(tenary(lmes.Architecture != "", lmes.Architecture, "N/A")),
 					sprintf(lmes.ContextSize),
 					sprintf("%d / %d", lmes.LogicalBatchSize, lmes.PhysicalBatchSize),
 					sprintf(tenary(flashAttention, tenary(lmes.FlashAttention, "Enabled", "Unsupported"), "Disabled")),
 					sprintf(tenary(mmap, tenary(!lmes.NoMMap, "Enabled", "Unsupported"), "Disabled")),
 					sprintf(tenary(lmes.EmbeddingOnly, "Yes", "No")),
 					sprintf(tenary(lmes.Reranking, "Supported", "Unsupported")),
-					sprintf(tenary(lmes.Distributable, "Supported", "Unsupported")),
+					sprintf(tenary(lmes.Architecture != "" && lmes.Distributable, "Supported", "Unsupported")),
 					sprintf(tenary(lmes.Items[i].FullOffloaded, sprintf("%d (%d + 1)",
 						lmes.Items[i].OffloadLayers, lmes.Items[i].OffloadLayers-1), lmes.Items[i].OffloadLayers)),
 					sprintf(tenary(lmes.Items[i].FullOffloaded, "Yes", "No")),
@@ -2071,10 +2071,10 @@ func mainAction(c *cli.Context) error {
 		for i := range sdes.Items {
 			if !inShort {
 				bds[i] = []any{
-					sprintf(sdes.Architecture),
+					sprintf(tenary(sdes.Architecture != "", sdes.Architecture, "N/A")),
 					sprintf(tenary(flashAttention, tenary(sdes.FlashAttention, "Enabled", "Unsupported"), "Disabled")),
 					sprintf(tenary(mmap, tenary(!sdes.NoMMap, "Enabled", "Unsupported"), "Disabled")),
-					sprintf(tenary(sdes.Distributable, "Supported", "Unsupported")),
+					sprintf(tenary(sdes.Architecture != "" && sdes.Distributable, "Supported", "Unsupported")),
 					sprintf(tenary(sdes.Items[i].FullOffloaded, "Yes", "No")),
 				}
 			}

@@ -414,11 +414,15 @@ func (gf *GGUFFile) diffuserArchitecture() (ga GGUFArchitecture) {
 
 		// Conditioner
 
-		openAiClipVitL14Key = "cond_stage_model.transformer.text_model.encoder.layers.11.self_attn.k_proj.weight"   // OpenAI CLIP ViT-L/14
-		openClipVitH14Key   = "cond_stage_model.transformer.text_model.encoder.layers.22.self_attn.k_proj.weight"   // OpenCLIP ViT-H/14
-		openClipVitG14Key   = "cond_stage_model.1.transformer.text_model.encoder.layers.31.self_attn.k_proj.weight" // OpenCLIP ViT-G/14
-		t5xxlKey            = "cond_stage_model.1.transformer.encoder.block.23.layer.0.SelfAttention.k.weight"      // Google T5-xxl
-		t5xxlKey2           = "cond_stage_model.2.transformer.encoder.block.23.layer.0.SelfAttention.k.weight"
+		openAiClipVitL14Key  = "cond_stage_model.transformer.text_model.encoder.layers.11.self_attn.k_proj.weight" // OpenAI CLIP ViT-L/14
+		openAiClipVitL14Key2 = "text_model.encoder.layers.11.self_attn.k_proj.weight"
+		openClipVitH14Key    = "cond_stage_model.transformer.text_model.encoder.layers.22.self_attn.k_proj.weight" // OpenCLIP ViT-H/14
+		openClipVitH14Key2   = "text_model.encoder.layers.22.self_attn.k_proj.weight"
+		openClipVitG14Key    = "cond_stage_model.1.transformer.text_model.encoder.layers.31.self_attn.k_proj.weight" // OpenCLIP ViT-G/14
+		openClipVitG14Key2   = "text_model.encoder.layers.31.self_attn.k_proj.weight"
+		t5xxlKey             = "cond_stage_model.1.transformer.encoder.block.23.layer.0.SelfAttention.k.weight" // Google T5-xxl
+		t5xxlKey2            = "cond_stage_model.2.transformer.encoder.block.23.layer.0.SelfAttention.k.weight"
+		t5xxlKey3            = "encoder.block.23.layer.0.SelfAttention.k.weight"
 	)
 
 	tis, _ := gf.TensorInfos.Index([]string{
@@ -439,10 +443,14 @@ func (gf *GGUFFile) diffuserArchitecture() (ga GGUFArchitecture) {
 		fluxFillFeatureKey2,
 
 		openAiClipVitL14Key,
+		openAiClipVitL14Key2,
 		openClipVitH14Key,
+		openClipVitH14Key2,
 		openClipVitG14Key,
+		openClipVitG14Key2,
 		t5xxlKey,
 		t5xxlKey2,
+		t5xxlKey3,
 	})
 
 	ga.Type = "model"
@@ -513,8 +521,25 @@ func (gf *GGUFFile) diffuserArchitecture() (ga GGUFArchitecture) {
 			}
 		}
 		ga.DiffusionConditioners = append(ga.DiffusionConditioners, cond)
+	} else if ti, ok := tis[openAiClipVitL14Key2]; ok {
+		cond := GGUFArchitectureDiffusionConditioner{
+			Architecture: "OpenAI CLIP ViT-L/14",
+			FileType:     ti.GetFileType(),
+		}
+		if ti, ok = tis[openClipVitH14Key2]; ok {
+			cond = GGUFArchitectureDiffusionConditioner{
+				Architecture: "OpenCLIP ViT-H/14",
+				FileType:     ti.GetFileType(),
+			}
+		}
+		ga.DiffusionConditioners = append(ga.DiffusionConditioners, cond)
 	}
 	if ti, ok := tis[openClipVitG14Key]; ok {
+		ga.DiffusionConditioners = append(ga.DiffusionConditioners, GGUFArchitectureDiffusionConditioner{
+			Architecture: "OpenCLIP ViT-G/14",
+			FileType:     ti.GetFileType(),
+		})
+	} else if ti, ok = tis[openClipVitG14Key2]; ok {
 		ga.DiffusionConditioners = append(ga.DiffusionConditioners, GGUFArchitectureDiffusionConditioner{
 			Architecture: "OpenCLIP ViT-G/14",
 			FileType:     ti.GetFileType(),
@@ -530,12 +555,23 @@ func (gf *GGUFFile) diffuserArchitecture() (ga GGUFArchitecture) {
 			Architecture: "Google T5-xxl",
 			FileType:     ti.GetFileType(),
 		})
+	} else if ti, ok = tis[t5xxlKey3]; ok {
+		ga.DiffusionConditioners = append(ga.DiffusionConditioners, GGUFArchitectureDiffusionConditioner{
+			Architecture: "Google T5-xxl",
+			FileType:     ti.GetFileType(),
+		})
 	}
 
-	if tis := gf.TensorInfos.Search(regexp.MustCompile(`^first_stage_model\..*`)); len(tis) != 0 {
-		ga.DiffusionAutoencoder = &GGUFArchitectureDiffusionAutoencoder{
-			Architecture: ga.DiffusionArchitecture + " VAE",
-			FileType:     GGUFTensorInfos(tis).GetFileType(),
+	for _, re := range []*regexp.Regexp{
+		regexp.MustCompile(`^first_stage_model\..*`),
+		regexp.MustCompile(`^decoder\.conv_in\..*`),
+	} {
+		if tis := gf.TensorInfos.Search(re); len(tis) != 0 {
+			ga.DiffusionAutoencoder = &GGUFArchitectureDiffusionAutoencoder{
+				Architecture: ga.DiffusionArchitecture + " VAE",
+				FileType:     GGUFTensorInfos(tis).GetFileType(),
+			}
+			break
 		}
 	}
 
