@@ -55,7 +55,8 @@ func (c GGUFFileCache) Get(key string, exp time.Duration) (*GGUFFile, error) {
 			return nil, fmt.Errorf("GGUF file cache get: %w", err)
 		}
 	}
-	if len(gf.Header.MetadataKV) == 0 || len(gf.TensorInfos) == 0 {
+
+	if len(gf.TensorInfos) == 0 {
 		_ = os.Remove(p)
 		return nil, ErrGGUFFileCacheCorrupted
 	}
