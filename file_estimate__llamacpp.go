@@ -846,7 +846,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			}
 		}
 		// Finally, get the usage of output layer.
-		{
+		if a.AttentionCausal {
 			var outInc uint64
 			if a.AttentionRecurrent {
 				outInc += inpSMask + inpSSeq
