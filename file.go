@@ -1713,7 +1713,7 @@ func (rd _GGUFTensorInfoReader) Read() (ti GGUFTensorInfo, err error) {
 		}
 		ti.Type = GGMLType(v)
 		if ti.Type >= _GGMLTypeCount {
-			return ti, fmt.Errorf("invalid type: %v", ti.Type)
+			return ti, fmt.Errorf("%v: This quantized type is currently unsupported", ti.Type)
 		}
 	}
 
