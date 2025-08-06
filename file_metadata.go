@@ -75,8 +75,8 @@ type GGUFMetadata struct {
 }
 
 // GGUFFileType is a type of GGUF file,
-// see https://github.com/ggerganov/llama.cpp/blob/278d0e18469aacf505be18ce790a63c7cc31be26/ggml/include/ggml.h#L404-L433,
-// and https://github.com/huggingface/huggingface.js/blob/2475d6d316135c0a4fceff6b3fe2aed0dde36ac1/packages/gguf/src/types.ts#L11-L48.
+// see https://github.com/ggml-org/llama.cpp/blob/fd1234cb468935ea087d6929b2487926c3afff4b/ggml/include/ggml.h#L419-L445,
+// and https://github.com/huggingface/huggingface.js/blob/d67a464473ca07fee9811a129e5fac8cc7487098/packages/tasks/src/gguf.ts#L4-L52.
 type GGUFFileType uint32
 
 // GGUFFileType constants.
@@ -123,6 +123,9 @@ const (
 	GGUFFileTypeMostlyQ4_0_4_4                          // MOSTLY_Q4_0_4_4
 	GGUFFileTypeMostlyQ4_0_4_8                          // MOSTLY_Q4_0_4_8
 	GGUFFileTypeMostlyQ4_0_8_8                          // MOSTLY_Q4_0_8_8
+	GGUFFileTypeMostlyTQ1_0                             // MOSTLY_TQ1_0
+	GGUFFileTypeMostlyTQ2_0                             // MOSTLY_TQ2_0
+	GGUFFileTypeMostlyMXFP4                             // MOSTLY_MXFP4
 	_GGUFFileTypeCount                                  // Unknown
 )
 
@@ -314,6 +317,12 @@ func (t GGUFFileType) GGMLType() GGMLType {
 		return GGMLTypeQ4_0_4_8
 	case GGUFFileTypeMostlyQ4_0_8_8:
 		return GGMLTypeQ4_0_8_8
+	case GGUFFileTypeMostlyTQ1_0:
+		return GGMLTypeTQ1_0
+	case GGUFFileTypeMostlyTQ2_0:
+		return GGMLTypeTQ2_0
+	case GGUFFileTypeMostlyMXFP4:
+		return GGMLTypeMXFP4
 	default:
 	}
 	return _GGMLTypeCount
@@ -529,6 +538,12 @@ func GetFileType(cm map[GGMLType]int) GGUFFileType {
 		return GGUFFileTypeMostlyQ4_0_4_8
 	case GGMLTypeQ4_0_8_8:
 		return GGUFFileTypeMostlyQ4_0_8_8
+	case GGMLTypeTQ1_0:
+		return GGUFFileTypeMostlyTQ1_0
+	case GGMLTypeTQ2_0:
+		return GGUFFileTypeMostlyTQ2_0
+	case GGMLTypeMXFP4:
+		return GGUFFileTypeMostlyMXFP4
 	default:
 	}
 	return _GGUFFileTypeCount
