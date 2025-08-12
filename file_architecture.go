@@ -162,8 +162,12 @@ type (
 		ClipHasMiniCPMVProjector bool `json:"clipHasMiniCPMVProject,omitempty"`
 		// ClipMiniCPMVVersion is the version of the MiniCPMV projector.
 		//
-		// Only used when Architecture is "clip" and ClipHasMiniCPMVProjector is true.
+		// Only used when Architecture is "clip".
 		ClipMiniCPMVVersion int32 `json:"clipMiniCPMVVersion,omitempty"`
+		// ClipMiniCPMVQueryNum is the number of queries used in the MiniCPMV projector.
+		//
+		// Only used when Architecture is "clip".
+		ClipMiniCPMVQueryNum int32 `json:"clipMiniCPMVQueryNum,omitempty"`
 		// ClipHasGLMProjector indicates whether the clip model has GLM projector or not.
 		//
 		// Only used when Architecture is "clip".
@@ -584,6 +588,7 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 		hasLLaVAProjectorKey = "clip.has_llava_projector"
 		hasMiniCPMVProjector = "clip.has_minicpmv_projector"
 		miniCPMVVersionKey   = "clip.minicpmv_version"
+		miniCPMVQueryNumKey  = "clip.minicpmv_query_num"
 		hasGLMProjectorKey   = "clip.has_glm_projector"
 		hasQwen2VLMergerKey  = "clip.has_qwen2vl_merger"
 
@@ -620,6 +625,7 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 		hasLLaVAProjectorKey,
 		hasMiniCPMVProjector,
 		miniCPMVVersionKey,
+		miniCPMVQueryNumKey,
 		hasGLMProjectorKey,
 		hasQwen2VLMergerKey,
 		// Vision
@@ -661,6 +667,9 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 	}
 	if v, ok := m[miniCPMVVersionKey]; ok {
 		ga.ClipMiniCPMVVersion = ValueNumeric[int32](v)
+	}
+	if v, ok := m[miniCPMVQueryNumKey]; ok {
+		ga.ClipMiniCPMVQueryNum = ValueNumeric[int32](v)
 	}
 	if v, ok := m[hasGLMProjectorKey]; ok {
 		ga.ClipHasGLMProjector = v.ValueBool()
