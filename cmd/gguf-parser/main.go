@@ -1643,6 +1643,10 @@ func mainAction(c *cli.Context) error {
 		}
 	}
 
+	if m.Type == "imatrix" {
+		m.Architecture = "N/A"
+	}
+
 	if inJson {
 		o := map[string]any{}
 
@@ -1736,7 +1740,7 @@ func mainAction(c *cli.Context) error {
 			})
 	}
 
-	if !skipArchitecture {
+	if !skipArchitecture && m.Type != "imatrix" {
 		var (
 			hds [][]any
 			bds [][]any
