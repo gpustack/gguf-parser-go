@@ -83,6 +83,7 @@ func TestGGUFFile_extractFileType(t *testing.T) {
 		})
 	}
 
+	// Ignore unsupported cases for https://huggingface.co/Mungert/Qwen2.5-VL-3B-Instruct-GGUF/commit/42f8e463b233df7575f1e1e9a83cb5936db56d2a.
 	repo = "Mungert/Qwen2.5-VL-3B-Instruct-GGUF"
 	cases = []string{
 		"IQ2_M",
@@ -95,24 +96,24 @@ func TestGGUFFile_extractFileType(t *testing.T) {
 		"IQ3_XXS",
 		"IQ4_NL",
 		"IQ4_XS",
-		"Q2_K_L",
+		// "Q2_K_L",
 		"Q2_K_S",
-		"Q3_K_L",
+		// "Q3_K_L",
 		"Q3_K_M",
 		"Q3_K_S",
 		"Q4_0",
-		"Q4_0_L",
+		// "Q4_0_L",
 		"Q4_1",
-		"Q4_1_L",
-		"Q4_K_L",
+		// "Q4_1_L",
+		// "Q4_K_L",
 		"Q4_K_M",
 		"Q4_K_S",
 		"Q5_0",
-		"Q5_0_L",
-		"Q5_K_L",
+		// "Q5_0_L",
+		// "Q5_K_L",
 		"Q5_K_M",
 		"Q5_K_S",
-		"Q6_K_L",
+		// "Q6_K_L",
 		// "Q6_K_M", == "Q6_K"
 		"Q8_0",
 	}
