@@ -392,6 +392,8 @@ func (gf *GGUFFile) Architecture() (ga GGUFArchitecture) {
 		return gf.adapterArchitecture(arch)
 	case typ == "adapter":
 		return gf.adapterArchitecture(arch)
+	case typ == "imatrix":
+		return gf.imatrixArchitecture(arch)
 	}
 	return gf.transformerArchitecture(arch)
 }
@@ -805,6 +807,13 @@ func (gf *GGUFFile) adapterArchitecture(arch string) (ga GGUFArchitecture) {
 	} else if v, ok := m[controlVectorLayerCountKey2]; ok {
 		ga.AdapterControlVectorLayerCount = ValueNumeric[uint32](v)
 	}
+
+	return ga
+}
+
+func (gf *GGUFFile) imatrixArchitecture(_ string) (ga GGUFArchitecture) {
+	ga.Type = "imatrix"
+	ga.Architecture = "imatrix"
 
 	return ga
 }

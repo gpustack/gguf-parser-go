@@ -1571,6 +1571,7 @@ func mainAction(c *cli.Context) error {
 		sde StableDiffusionCppRunEstimate
 	)
 
+	skipArchitecture = skipArchitecture || m.Type == "imatrix"
 	skipTokenizer = skipTokenizer || t.Model == ""
 	skipEstimate = skipEstimate || m.Type != "model"
 

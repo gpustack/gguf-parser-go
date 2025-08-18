@@ -236,7 +236,9 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...GGUFRunEstimateOption) (e LLaMAC
 		}
 		gf.estimateLLaMACppRunInProjector(&o, &a, &e)
 	case "adapter":
-		gf.estimateLLaMaCppRunInAdapter(&o, &a, &e)
+		gf.estimateLLaMACppRunInAdapter(&o, &a, &e)
+	case "imatrix":
+		gf.estimateLLaMACppRunInIMatrix(&o, &a, &e)
 	}
 
 	return e
@@ -1273,7 +1275,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 }
 
 // estimateLLaMACppRunInAdapter estimates the usages of the GGUF file for adapter.
-func (gf *GGUFFile) estimateLLaMaCppRunInAdapter(o *_GGUFRunEstimateOptions, a *GGUFArchitecture, e *LLaMACppRunEstimate) {
+func (gf *GGUFFile) estimateLLaMACppRunInAdapter(o *_GGUFRunEstimateOptions, a *GGUFArchitecture, e *LLaMACppRunEstimate) {
 	ls := gf.Layers()
 	ioLs, tfLs, _ := ls.Cut([]string{
 		"position_*",
@@ -1392,6 +1394,36 @@ func (gf *GGUFFile) estimateLLaMaCppRunInAdapter(o *_GGUFRunEstimateOptions, a *
 		} else {
 			e.Devices[0].Parameter.Output = ps
 		}
+	}
+}
+
+// estimateLLaMACppRunInIMatrix estimates the usages of the GGUF file for imatrix.
+func (gf *GGUFFile) estimateLLaMACppRunInIMatrix(_ *_GGUFRunEstimateOptions, a *GGUFArchitecture, e *LLaMACppRunEstimate) {
+	ls := gf.Layers()
+
+	if a.BlockCount == 0 {
+		a.BlockCount = uint64(len(ls))
+	}
+
+	// Distributable.
+	e.Distributable = false
+
+	// Footprint.
+	{
+		// Bootstrap.
+		e.Devices[0].Footprint = GGUFBytesScalar(5*1024*1024) /* model load */ + (gf.Size - gf.ModelSize) /* metadata */
+	}
+
+	// Weight & Parameter.
+	{
+		var (
+			wg GGUFBytesScalar
+			ps GGUFParametersScalar
+		)
+		wg = GGUFBytesScalar(ls.Bytes())
+		ps = GGUFParametersScalar(ls.Elements())
+		e.Devices[0].Weight.Compute = wg
+		e.Devices[0].Parameter.Compute = ps
 	}
 }
 

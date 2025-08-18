@@ -197,6 +197,8 @@ func (gf *GGUFFile) Metadata() (gm GGUFMetadata) {
 		if gm.Architecture == "clip" {
 			gm.Type = "projector"
 		}
+	} else if gm.Type == "imatrix" {
+		gm.Architecture = "imatrix" // Default to imatrix.
 	} else {
 		gm.Architecture = "llama" // Default to llama.
 		for _, re := range _GGUFPotentialDiffusionArchitectureTensorsRegexes {
