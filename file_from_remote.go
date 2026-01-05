@@ -72,6 +72,11 @@ func ParseGGUFFileRemote(ctx context.Context, url string, opts ...GGUFReadOption
 					return x.WithBearerAuth(o.BearerAuthToken)
 				},
 			).
+			If(len(o.Headers) > 0,
+				func(x *httpx.ClientOption) *httpx.ClientOption {
+					return x.WithHeaders(o.Headers)
+				},
+			).
 			WithTimeout(0).
 			WithTransport(
 				httpx.TransportOptions().
