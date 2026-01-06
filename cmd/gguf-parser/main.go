@@ -205,6 +205,13 @@ func main() {
 				Usage: "Bearer auth token to load GGUF file, optional, " +
 					"works with \"--url/--draft-url\".",
 			},
+			&cli.StringSliceFlag{
+				Destination: &headers,
+				Category:    "Model/Remote",
+				Name:        "header",
+				Usage: "Custom HTTP header in \"Key: Value\" format, " +
+					"works with \"--url/--draft-url\".",
+			},
 			&cli.StringFlag{
 				Destination: &hfRepo,
 				Value:       hfRepo,
@@ -1030,6 +1037,7 @@ var (
 	upscaleUrl           string          // for estimate
 	controlNetUrl        string          // for estimate
 	token                string
+	headers              cli.StringSlice
 	hfRepo               string
 	hfFile               string
 	hfDraftRepo          string          // for estimate
@@ -1127,6 +1135,21 @@ func mainAction(c *cli.Context) error {
 		SkipLargeMetadata(),
 		UseMMap(),
 		UseCache(),
+	}
+	if hs := headers.Value(); len(hs) > 0 {
+		hm := make(map[string]string, len(hs))
+		for _, h := range hs {
+			parts := strings.SplitN(h, ":", 2)
+			if len(parts) == 2 {
+				hm[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+			}
+		}
+		if len(hm) > 0 {
+			ropts = append(ropts, UseHeaders(hm))
+		}
+	}
+	if token != "" {
+		ropts = append(ropts, UseBearerAuth(token))
 	}
 	if debug {
 		ropts = append(ropts, UseDebug())

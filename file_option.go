@@ -20,6 +20,7 @@ type (
 
 		// Remote.
 		BearerAuthToken            string
+		Headers                    map[string]string
 		ProxyURL                   *url.URL
 		SkipProxy                  bool
 		SkipTLSVerification        bool
@@ -60,6 +61,13 @@ func UseMMap() GGUFReadOption {
 func UseBearerAuth(token string) GGUFReadOption {
 	return func(o *_GGUFReadOptions) {
 		o.BearerAuthToken = token
+	}
+}
+
+// UseHeaders uses the given headers when reading from remote.
+func UseHeaders(headers map[string]string) GGUFReadOption {
+	return func(o *_GGUFReadOptions) {
+		o.Headers = headers
 	}
 }
 

@@ -98,6 +98,7 @@ GLOBAL OPTIONS:
    --control-net-url value                                    Url where the GGUF file to load for the Control Net model, optional.
    --control-vector-url value [ --control-vector-url value ]  Url where the GGUF file to load for the Control Vector adapter, optional.
    --draft-url value                                          Url where the GGUF file to load for the draft model, optional, e.g. "https://huggingface.co/QuantFactory/Qwen2-1.5B-Instruct-GGUF/resolve/main/Qwen2-1.5B-Instruct.Q5_K_M.gguf". Note that gguf-parser does not need to download the entire GGUF file.
+   --header value [ --header value ]                          Custom HTTP header in "Key: Value" format, works with "--url/--draft-url".
    --lora-url value [ --lora-url value ]                      Url where the GGUF file to load for the LoRA adapter, optional.
    --mmproj-url value                                         Url where the GGUF file to load for the multimodal projector, optional.
    --token value                                              Bearer auth token to load GGUF file, optional, works with "--url/--draft-url". [$TOKEN]
