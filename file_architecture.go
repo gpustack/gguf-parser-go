@@ -117,6 +117,8 @@ type (
 		RoPEScalingOriginalContextLength uint64 `json:"ropeScalingOriginalContextLength,omitempty"`
 		// RoPEScalingFinetuned is true if the RoPE scaling is fine-tuned.
 		RoPEScalingFinetuned bool `json:"ropeScalingFinetuned,omitempty"`
+		// PoolingType is the type of pooling used in the model.
+		PoolingType uint32 `json:"poolingType,omitempty"`
 		// SSMConvolutionKernel is the size of the convolution kernel used in the Selective State Space Model (SSM) and similar architectures.
 		SSMConvolutionKernel uint32 `json:"ssmConvolutionKernel,omitempty"`
 		// SSMInnerSize is the embedding size of the state in SSM and similar architectures.
@@ -857,6 +859,8 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 		ropeScalingOriginalContextKey = arch + ".rope.scaling.original_context_length" // uint32 maybe
 		ropeScalingFinetunedKey       = arch + ".rope.scaling.finetuned"
 
+		poolingTypeKey = arch + ".pooling_type"
+
 		ssmConvolutionKernelKey = arch + ".ssm.conv_kernel"
 		ssmInnerSizeKey         = arch + ".ssm.inner_size"
 		ssmStateSizeKey         = arch + ".ssm.state_size"
@@ -910,6 +914,7 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 		ropeScalingFactorKey,
 		ropeScalingOriginalContextKey,
 		ropeScalingFinetunedKey,
+		poolingTypeKey,
 		ssmConvolutionKernelKey,
 		ssmInnerSizeKey,
 		ssmStateSizeKey,
@@ -1096,6 +1101,13 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 	}
 	if v, ok := m[ropeScalingFinetunedKey]; ok {
 		ga.RoPEScalingFinetuned = v.ValueBool()
+	}
+
+	if v, ok := m[poolingTypeKey]; ok {
+		ga.PoolingType = v.ValueUint32()
+		if ga.AttentionCausal && ga.PoolingType > 2 {
+			ga.AttentionCausal = false
+		}
 	}
 
 	if v, ok := m[ssmConvolutionKernelKey]; ok {

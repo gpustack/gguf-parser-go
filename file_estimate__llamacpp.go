@@ -373,6 +373,9 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		if _, found := gf.TensorInfos.Index([]string{"cls.bias", "cls.weight"}); found > 0 {
 			e.Reranking = true
 		}
+		if !e.Reranking && a.PoolingType == 4 { // 0: None, 1: Mean, 2: Cls, 3: Last, 4: Rank
+			e.Reranking = true
+		}
 	}
 
 	// Distributable,
