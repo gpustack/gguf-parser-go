@@ -1881,7 +1881,7 @@ func mainAction(c *cli.Context) error {
 						"Attention Causal",
 						"Attention Head Cnt",
 						"Layers",
-						"Feed Forward Len",
+						tenary(a.ExpertFeedForwardLength != 0, "Expert Feed Forward Len", "Feed Forward Len"),
 						"Expert Cnt",
 						"Vocabulary Len",
 					},
@@ -1896,10 +1896,24 @@ func mainAction(c *cli.Context) error {
 							"N/A",
 							a.AttentionHeadCount)),
 						sprintf(a.BlockCount),
-						sprintf(tenary(
-							a.FeedForwardLength[0] == a.FeedForwardLength[1],
-							a.FeedForwardLength[0],
-							sprintf("[%d, %d, ...]", a.FeedForwardLength[0], a.FeedForwardLength[1]))),
+						sprintf(tenaryFunc(
+							a.ExpertFeedForwardLength != 0,
+							func() any {
+								return a.ExpertFeedForwardLength
+							},
+							func() any {
+								switch {
+								case len(a.FeedForwardLength) == 0:
+									return "N/A"
+								case len(a.FeedForwardLength) == 1:
+									return a.FeedForwardLength[0]
+								case a.FeedForwardLength[0] == a.FeedForwardLength[1]:
+									return a.FeedForwardLength[0]
+								default:
+									return sprintf("[%d, %d, ...]", a.FeedForwardLength[0], a.FeedForwardLength[1])
+								}
+							},
+						)),
 						sprintf(a.ExpertCount),
 						sprintf(a.VocabularyLength),
 					},
@@ -2164,6 +2178,13 @@ func tenary(c bool, t, f any) any {
 		return t
 	}
 	return f
+}
+
+func tenaryFunc(c bool, t, f func() any) any {
+	if c {
+		return t()
+	}
+	return f()
 }
 
 func toGGMLType(s string) GGMLType {
