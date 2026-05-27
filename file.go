@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"math/bits"
 	"regexp"
 	"strings"
 
@@ -207,6 +209,49 @@ type (
 )
 
 var ErrGGUFFileInvalidFormat = errors.New("invalid GGUF format")
+
+// GGMLMaxDims is the maximum number of tensor dimensions supported by GGML,
+// mirroring GGML_MAX_DIMS in ggml.h. A NDimensions value above this bound
+// is rejected to avoid pathological allocations and to keep tensor size math
+// bounded — see CWE-190 hardening (analog of llama.cpp GHSA-vgg9-87g3-85w8).
+const GGMLMaxDims uint32 = 4
+
+// mulU64 returns a*b and panics on uint64 overflow. Used in tensor element
+// and byte size math where a wrapped result would silently understate memory
+// usage and mislead downstream sizing (e.g. GPU layer allocation). Panic is
+// chosen over a return error to keep the public Elements/Bytes signatures
+// intact; a crafted GGUF that hits this is already malformed.
+func mulU64(a, b uint64, what string) uint64 {
+	hi, lo := bits.Mul64(a, b)
+	if hi != 0 {
+		panic(fmt.Errorf("gguf: uint64 overflow in %s: %d * %d", what, a, b))
+	}
+	return lo
+}
+
+// addU64 returns a+b and panics on uint64 overflow. Paired with mulU64 in
+// Bytes() so that the accumulated stride sum cannot wrap either.
+func addU64(a, b uint64, what string) uint64 {
+	s := a + b
+	if s < a {
+		panic(fmt.Errorf("gguf: uint64 overflow in %s: %d + %d", what, a, b))
+	}
+	return s
+}
+
+// safeSeekDelta computes count*size and converts to a positive int64 suitable
+// for io.SeekCurrent. Returns an error rather than panicking because the
+// inputs come straight from untrusted file bytes (string lengths, array
+// lengths); a crafted GGUF should surface as a parse error, not a crash.
+// Without this guard, int64(uint64) silently wraps to a negative offset when
+// the value exceeds math.MaxInt64, letting an attacker seek backwards.
+func safeSeekDelta(count, size uint64, what string) (int64, error) {
+	hi, lo := bits.Mul64(count, size)
+	if hi != 0 || lo > math.MaxInt64 {
+		return 0, fmt.Errorf("seek delta overflow in %s: %d * %d", what, count, size)
+	}
+	return int64(lo), nil
+}
 
 // ParseGGUFFile parses a GGUF file from the local given path,
 // and returns the GGUFFile, or an error if any.
@@ -946,7 +991,9 @@ func (ti GGUFTensorInfo) Elements(filter ...GGUFTensorInfoFilter) uint64 {
 
 	ret := uint64(1)
 	for i := uint32(0); i < ti.NDimensions; i++ {
-		ret *= ti.Dimensions[i]
+		// Overflow-checked: a wrapped product would silently understate the
+		// element count and mislead memory/VRAM estimation downstream.
+		ret = mulU64(ret, ti.Dimensions[i], "Elements")
 	}
 	return ret
 }
@@ -971,12 +1018,16 @@ func (ti GGUFTensorInfo) Bytes(filter ...GGUFTensorInfoFilter) uint64 {
 	}
 
 	// https://github.com/ggerganov/ggml/blob/a10a8b880c059b3b29356eb9a9f8df72f03cdb6a/src/ggml.c#L3210-L3214
+	//
+	// Every uint64 multiplication and addition below is overflow-checked. A
+	// silent wrap here would cause Bytes() to drastically understate tensor
+	// memory and let crafted GGUFs bypass sizing/allocation guards.
 	nb := make([]uint64, 0, ti.NDimensions)
 	{
 		nb = append(nb, tt.TypeSize)
-		nb = append(nb, nb[0]*(ti.Dimensions[0]/tt.BlockSize))
+		nb = append(nb, mulU64(nb[0], ti.Dimensions[0]/tt.BlockSize, "Bytes nb[1]"))
 		for i := uint32(2); i < ti.NDimensions; i++ {
-			nb = append(nb, nb[i-1]*ti.Dimensions[i-1])
+			nb = append(nb, mulU64(nb[i-1], ti.Dimensions[i-1], "Bytes nb[i]"))
 		}
 	}
 
@@ -984,14 +1035,14 @@ func (ti GGUFTensorInfo) Bytes(filter ...GGUFTensorInfoFilter) uint64 {
 	if tt.BlockSize == 1 {
 		ret = tt.TypeSize
 		for i := uint32(0); i < ti.NDimensions; i++ {
-			ret += (ti.Dimensions[i] - 1) * nb[i]
+			ret = addU64(ret, mulU64(ti.Dimensions[i]-1, nb[i], "Bytes stride"), "Bytes sum")
 		}
 		return ret
 	}
 
-	ret = ti.Dimensions[0] * nb[0] / tt.BlockSize
+	ret = mulU64(ti.Dimensions[0], nb[0], "Bytes head") / tt.BlockSize
 	for i := uint32(1); i < ti.NDimensions; i++ {
-		ret += (ti.Dimensions[i] - 1) * nb[i]
+		ret = addU64(ret, mulU64(ti.Dimensions[i]-1, nb[i], "Bytes stride"), "Bytes sum")
 	}
 	return ret
 }
@@ -1550,7 +1601,13 @@ func (rd _GGUFReader) SkipReadingString() (err error) {
 	if err != nil {
 		return fmt.Errorf("read string length: %w", err)
 	}
-	_, err = rd.f.Seek(int64(l), io.SeekCurrent)
+	// Bound-check before casting to int64: a length > math.MaxInt64 would
+	// wrap to a negative offset and seek backwards through the file.
+	delta, err := safeSeekDelta(l, 1, "skip string")
+	if err != nil {
+		return err
+	}
+	_, err = rd.f.Seek(delta, io.SeekCurrent)
 	if err != nil {
 		return fmt.Errorf("seek string: %w", err)
 	}
@@ -1599,15 +1656,35 @@ func (rd _GGUFReader) ReadArray(key string) (v GGUFMetadataKVArrayValue, err err
 		return v, nil
 	}
 
+	// Each branch computes v.Len*elemSize through safeSeekDelta so a crafted
+	// array length cannot overflow int64 and turn the forward seek into a
+	// negative-offset seek (which would re-expose earlier bytes to the
+	// parser at an attacker-chosen offset).
 	switch v.Type {
 	case GGUFMetadataValueTypeUint8, GGUFMetadataValueTypeInt8, GGUFMetadataValueTypeBool:
-		_, err = rd.f.Seek(int64(v.Len), io.SeekCurrent)
+		var delta int64
+		delta, err = safeSeekDelta(v.Len, 1, "skip array u8")
+		if err == nil {
+			_, err = rd.f.Seek(delta, io.SeekCurrent)
+		}
 	case GGUFMetadataValueTypeUint16, GGUFMetadataValueTypeInt16:
-		_, err = rd.f.Seek(int64(v.Len)*2, io.SeekCurrent)
+		var delta int64
+		delta, err = safeSeekDelta(v.Len, 2, "skip array u16")
+		if err == nil {
+			_, err = rd.f.Seek(delta, io.SeekCurrent)
+		}
 	case GGUFMetadataValueTypeUint32, GGUFMetadataValueTypeInt32, GGUFMetadataValueTypeFloat32:
-		_, err = rd.f.Seek(int64(v.Len)*4, io.SeekCurrent)
+		var delta int64
+		delta, err = safeSeekDelta(v.Len, 4, "skip array u32")
+		if err == nil {
+			_, err = rd.f.Seek(delta, io.SeekCurrent)
+		}
 	case GGUFMetadataValueTypeUint64, GGUFMetadataValueTypeInt64, GGUFMetadataValueTypeFloat64:
-		_, err = rd.f.Seek(int64(v.Len)*8, io.SeekCurrent)
+		var delta int64
+		delta, err = safeSeekDelta(v.Len, 8, "skip array u64")
+		if err == nil {
+			_, err = rd.f.Seek(delta, io.SeekCurrent)
+		}
 	case GGUFMetadataValueTypeString:
 		for i := uint64(0); i < v.Len; i++ {
 			if err = rd.SkipReadingString(); err != nil {
@@ -1744,6 +1821,12 @@ func (rd _GGUFTensorInfoReader) Read() (ti GGUFTensorInfo, err error) {
 	ti.NDimensions, err = rd.ReadUint32()
 	if err != nil {
 		return ti, fmt.Errorf("read n dimensions: %w", err)
+	}
+	// Reject malformed dimension counts before allocating; GGML caps tensors
+	// at GGMLMaxDims, and 0 is meaningless. Without this a crafted file with
+	// NDimensions == math.MaxUint32 would request a huge slice allocation.
+	if ti.NDimensions == 0 || ti.NDimensions > GGMLMaxDims {
+		return ti, fmt.Errorf("invalid n dimensions: %d (must be 1..%d)", ti.NDimensions, GGMLMaxDims)
 	}
 
 	ti.Dimensions = make([]uint64, ti.NDimensions)

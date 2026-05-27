@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"math"
 	"os"
 	"testing"
 	"time"
@@ -315,5 +316,165 @@ func TestParseGGUFFileWithFuzzInput(t *testing.T) {
 		t.Error("expected error for fuzz-generated data")
 	} else {
 		t.Logf("got expected error: %v", err)
+	}
+}
+
+// Regression tests for CWE-190 (integer overflow) hardening — analog of
+// llama.cpp GHSA-vgg9-87g3-85w8. A crafted GGUF with tensor dimensions like
+// [0xFFFFFFFFFFFFFFFF, 2, 1, 1] must not silently wrap to a tiny size.
+
+func TestElementsOverflowPanics(t *testing.T) {
+	ti := GGUFTensorInfo{
+		Name:        "overflow",
+		NDimensions: 2,
+		Dimensions:  []uint64{math.MaxUint64, 2},
+		Type:        GGMLTypeF32,
+	}
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic on Elements overflow, got none")
+		}
+	}()
+	_ = ti.Elements()
+}
+
+func TestBytesOverflowPanics(t *testing.T) {
+	ti := GGUFTensorInfo{
+		Name:        "overflow",
+		NDimensions: 2,
+		Dimensions:  []uint64{math.MaxUint64, 2},
+		Type:        GGMLTypeF32,
+	}
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic on Bytes overflow, got none")
+		}
+	}()
+	_ = ti.Bytes()
+}
+
+func TestElementsAndBytesValid(t *testing.T) {
+	ti := GGUFTensorInfo{
+		Name:        "ok",
+		NDimensions: 2,
+		Dimensions:  []uint64{4, 8},
+		Type:        GGMLTypeF32, // TypeSize=4, BlockSize=1
+	}
+	if got, want := ti.Elements(), uint64(32); got != want {
+		t.Fatalf("Elements: got %d, want %d", got, want)
+	}
+	// nb[0]=4, nb[1]=16; ret = 4 + (4-1)*4 + (8-1)*16 = 4 + 12 + 112 = 128
+	if got, want := ti.Bytes(), uint64(128); got != want {
+		t.Fatalf("Bytes: got %d, want %d", got, want)
+	}
+}
+
+func TestMulU64Overflow(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic on mulU64 overflow")
+		}
+	}()
+	_ = mulU64(math.MaxUint64, 2, "test")
+}
+
+func TestAddU64Overflow(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic on addU64 overflow")
+		}
+	}()
+	_ = addU64(math.MaxUint64, 1, "test")
+}
+
+func TestSafeSeekDeltaOverflow(t *testing.T) {
+	cases := []struct {
+		name   string
+		count  uint64
+		size   uint64
+		wantOK bool
+	}{
+		{"zero", 0, 8, true},
+		{"small", 1024, 8, true},
+		{"maxInt64 boundary", math.MaxInt64, 1, true},
+		{"just over int64", math.MaxInt64 + 1, 1, false},
+		{"uint64-product overflow", math.MaxUint64, 2, false},
+		{"len times size overflow", 1 << 62, 8, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := safeSeekDelta(c.count, c.size, c.name)
+			if (err == nil) != c.wantOK {
+				t.Fatalf("safeSeekDelta(%d,%d) err=%v, wantOK=%v", c.count, c.size, err, c.wantOK)
+			}
+		})
+	}
+}
+
+func TestSkipReadingStringRejectsHugeLength(t *testing.T) {
+	// Length = math.MaxUint64; int64(l) would have wrapped to -1 and seek
+	// backwards. Expect SkipReadingString to surface a parse error instead.
+	var buf bytes.Buffer
+	_ = binary.Write(&buf, binary.LittleEndian, uint64(math.MaxUint64))
+	rd := _GGUFReader{
+		v:  GGUFVersionV3,
+		bo: binary.LittleEndian,
+		f:  bytes.NewReader(buf.Bytes()),
+	}
+	if err := rd.SkipReadingString(); err == nil {
+		t.Fatal("expected error skipping a string with length > MaxInt64")
+	}
+}
+
+func TestReadArraySkipRejectsOverflowingLen(t *testing.T) {
+	// Build the minimal byte stream ReadArray expects: u32 element type +
+	// u64 length. Use Uint16 (size 2) with v.Len > MaxInt64/2 so the
+	// pre-fix code (int64(v.Len)*2) would have wrapped negative.
+	var buf bytes.Buffer
+	_ = binary.Write(&buf, binary.LittleEndian, uint32(GGUFMetadataValueTypeUint16))
+	_ = binary.Write(&buf, binary.LittleEndian, uint64(math.MaxUint64))
+
+	rd := _GGUFReader{
+		v:  GGUFVersionV3,
+		o:  _GGUFReadOptions{SkipLargeMetadata: true},
+		bo: binary.LittleEndian,
+		f:  bytes.NewReader(buf.Bytes()),
+	}
+	// Use a key that does NOT match the always-load suffixes, so we enter
+	// the seek-skip branch.
+	if _, err := rd.ReadArray("test.array"); err == nil {
+		t.Fatal("expected error reading array with overflowing length")
+	}
+}
+
+func TestTensorInfoReaderRejectsBadNDimensions(t *testing.T) {
+	cases := []struct {
+		name        string
+		nDimensions uint32
+	}{
+		{"zero dimensions", 0},
+		{"too many dimensions", 5},
+		{"max uint32", math.MaxUint32},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			// name: u64 length=1, body "x"
+			_ = binary.Write(&buf, binary.LittleEndian, uint64(1))
+			buf.WriteByte('x')
+			// n_dimensions
+			_ = binary.Write(&buf, binary.LittleEndian, c.nDimensions)
+
+			rd := _GGUFTensorInfoReader{
+				_GGUFReader: _GGUFReader{
+					v:  GGUFVersionV3,
+					bo: binary.LittleEndian,
+					f:  bytes.NewReader(buf.Bytes()),
+				},
+			}
+			if _, err := rd.Read(); err == nil {
+				t.Fatalf("expected error for NDimensions=%d", c.nDimensions)
+			}
+		})
 	}
 }
