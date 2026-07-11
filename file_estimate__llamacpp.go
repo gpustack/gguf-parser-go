@@ -1023,8 +1023,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 			a.ClipProjectorType == "qwen2vl_merger" ||
 			a.ClipProjectorType == "qwen2.5vl_merger" ||
 			a.ClipProjectorType == "qwen2.5o" ||
-			a.ClipProjectorType == "pixtral" ||
-			a.ClipProjectorType == "lightonocr" {
+			a.ClipProjectorType == "pixtral" {
 			// See https://github.com/ggml-org/llama.cpp/blob/ec9e0301fef6476df83e94842c3b625501c95566/tools/mtmd/clip.cpp#L2217.
 			heightMaxSize = uint64(ptr.Deref(o.LMCVisualMaxImageSize, 1024))
 			widthMaxSize = heightMaxSize
@@ -1113,7 +1112,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 			if ti, ok := gf.TensorInfos.Get("mm.model.fc.weight"); ok {
 				projectionDim = ti.Dimensions[1]
 			}
-		case "pixtral", "lightonocr":
+		case "pixtral":
 			heightPatchSize := heightMaxSize / uint64(a.ClipVisionPatchSize)
 			if a.ClipVisionSpatialMergeSize > 0 {
 				heightPatchSize /= uint64(a.ClipVisionSpatialMergeSize)
@@ -1122,14 +1121,9 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 			if a.ClipVisionSpatialMergeSize > 0 {
 				widthPatchSize /= uint64(a.ClipVisionSpatialMergeSize)
 			}
-			nPatches = heightPatchSize * widthPatchSize
-			if a.ClipProjectorType == "pixtral" {
-				nPatches += heightPatchSize - 1 /* [IMG_BREAK] per row */
-				if ti, ok := gf.TensorInfos.Get("mm.2.bias"); ok {
-					projectionDim = ti.Dimensions[0]
-				}
-			} else if ti, ok := gf.TensorInfos.Get("mm.2.weight"); ok {
-				projectionDim = ti.Dimensions[1]
+			nPatches = heightPatchSize*widthPatchSize + heightPatchSize - 1 /* [IMG_BREAK] per row */
+			if ti, ok := gf.TensorInfos.Get("mm.2.bias"); ok {
+				projectionDim = ti.Dimensions[0]
 			}
 		case "internvl":
 			nPatches /= uint64(a.ClipVisionProjectorScaleFactor * a.ClipVisionProjectorScaleFactor)
@@ -1138,18 +1132,36 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 			}
 		default:
 			if !a.ClipHasQwen2VLMerger && !a.ClipHasLLaVAProjector && !a.ClipHasMiniCPMVProjector {
-				// Approximate an unknown projector type instead of falling through every special case:
-				// cap the image size instead of trusting the native one,
-				// honor the spatial merge size if present,
-				// and fall back to the declared projection dimension,
+				// Approximate a projector type without a special case above from what the GGUF declares,
+				// so that new llama.cpp projector types (lightonocr, paddleocr, dots_ocr, kimivl, ...)
+				// degrade to a rough estimate rather than an inflated one,
 				// see https://github.com/gpustack/gguf-parser-go/issues/21.
-				if ms := uint64(ptr.Deref(o.LMCVisualMaxImageSize, 1024)); heightMaxSize > ms {
-					heightMaxSize = ms
-					widthMaxSize = ms
-					nPatches = (heightMaxSize / nPatchSize) * (widthMaxSize / nPatchSize)
+				//
+				// Cap the image size like the known dynamic-resolution projector types,
+				// without inflating a smaller native image size by default.
+				ms := uint64(ptr.Deref(o.LMCVisualMaxImageSize, 1024))
+				if o.LMCVisualMaxImageSize == nil && heightMaxSize < ms {
+					ms = heightMaxSize
 				}
+				heightMaxSize = ms
+				widthMaxSize = ms
+				heightPatchSize := (heightMaxSize + nPatchSize - 1) / nPatchSize
+				widthPatchSize := (widthMaxSize + nPatchSize - 1) / nPatchSize
+				// Honor the patch reduction the metadata declares,
+				// like llama.cpp does for every projector type carrying it,
+				// rounding up so the estimate never undercounts.
 				if a.ClipVisionSpatialMergeSize > 1 {
-					nPatches /= uint64(a.ClipVisionSpatialMergeSize) * uint64(a.ClipVisionSpatialMergeSize)
+					sms := uint64(a.ClipVisionSpatialMergeSize)
+					heightPatchSize = (heightPatchSize + sms - 1) / sms
+					widthPatchSize = (widthPatchSize + sms - 1) / sms
+				} else if a.ClipVisionProjectorScaleFactor > 1 {
+					psf := uint64(a.ClipVisionProjectorScaleFactor)
+					heightPatchSize = (heightPatchSize + psf - 1) / psf
+					widthPatchSize = (widthPatchSize + psf - 1) / psf
+				}
+				nPatches = heightPatchSize * widthPatchSize
+				if _, ok := gf.TensorInfos.Get("v.token_embd.img_break"); ok {
+					nPatches += heightPatchSize - 1 /* [IMG_BREAK] per row */
 				}
 				projectionDim = uint64(a.ClipVisionProjectionDim)
 			}
