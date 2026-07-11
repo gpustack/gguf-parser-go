@@ -154,6 +154,15 @@ func TestGGUFFile_EstimateLLaMACppRun_Projector(t *testing.T) {
 			smaller.VRAMs[0].NonUMA, dflt.VRAMs[0].NonUMA)
 	}
 
+	// Flash attention must take effect for the projector as well:
+	// the clip encoder does not materialize the attention score matrix with it,
+	// see https://github.com/gpustack/gguf-parser-go/issues/23.
+	fa := f.EstimateLLaMACppRun(WithFlashAttention()).SummarizeItem(false, 0, 0)
+	if fa.VRAMs[0].NonUMA >= dflt.VRAMs[0].NonUMA {
+		t.Errorf("flash attention estimate: NonUMA VRAM %s is not lower than default %s",
+			fa.VRAMs[0].NonUMA, dflt.VRAMs[0].NonUMA)
+	}
+
 	// Unknown or new projector types must be bounded as well,
 	// instead of falling through every special case.
 	for i := range f.Header.MetadataKV {
