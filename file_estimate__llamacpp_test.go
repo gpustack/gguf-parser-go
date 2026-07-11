@@ -123,3 +123,46 @@ func TestGGUFFile_EstimateLLaMACppRun_OffloadLayers(t *testing.T) {
 		})
 	}
 }
+
+func TestGGUFFile_EstimateLLaMACppRun_Projector(t *testing.T) {
+	ctx := context.Background()
+
+	f, err := ParseGGUFFileFromHuggingFace(
+		ctx,
+		"noctrex/LightOnOCR-2-1B-GGUF",
+		"mmproj-BF16.gguf",
+		SkipLargeMetadata())
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	const gib = 1 << 30
+
+	// The projector must not be estimated with the native image size and
+	// an un-merged patch count,
+	// see https://github.com/gpustack/gguf-parser-go/issues/21.
+	dflt := f.EstimateLLaMACppRun().SummarizeItem(false, 0, 0)
+	if nonUMA := dflt.VRAMs[0].NonUMA; nonUMA > 2*gib {
+		t.Errorf("default estimate: NonUMA VRAM %s exceeds 2 GiB", nonUMA)
+	}
+
+	// The visual max image size option must take effect for this projector type.
+	smaller := f.EstimateLLaMACppRun(WithLLaMACppVisualMaxImageSize(512)).SummarizeItem(false, 0, 0)
+	if smaller.VRAMs[0].NonUMA >= dflt.VRAMs[0].NonUMA {
+		t.Errorf("visual max image size 512 estimate: NonUMA VRAM %s is not lower than default %s",
+			smaller.VRAMs[0].NonUMA, dflt.VRAMs[0].NonUMA)
+	}
+
+	// Unknown or new projector types must be bounded as well,
+	// instead of falling through every special case.
+	for i := range f.Header.MetadataKV {
+		if f.Header.MetadataKV[i].Key == "clip.projector_type" {
+			f.Header.MetadataKV[i].Value = "future_projector_type"
+		}
+	}
+	unknown := f.EstimateLLaMACppRun().SummarizeItem(false, 0, 0)
+	if nonUMA := unknown.VRAMs[0].NonUMA; nonUMA > 2*gib {
+		t.Errorf("unknown projector type estimate: NonUMA VRAM %s exceeds 2 GiB", nonUMA)
+	}
+}

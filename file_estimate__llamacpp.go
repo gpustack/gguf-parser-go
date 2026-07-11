@@ -909,6 +909,23 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 	}
 }
 
+// isKnownClipProjector returns true if the clip projector of the given architecture
+// is one of those estimated explicitly by estimateLLaMACppRunInProjector.
+func isKnownClipProjector(a *GGUFArchitecture) bool {
+	if a.ClipHasQwen2VLMerger || a.ClipHasLLaVAProjector || a.ClipHasMiniCPMVProjector {
+		return true
+	}
+	switch a.ClipProjectorType {
+	case "mlp", "mlp_norm", "ldp", "ldpv2",
+		"resampler", "adapter",
+		"qwen2vl_merger", "qwen2.5vl_merger", "qwen2.5o",
+		"gemma3", "idefics3", "llama4",
+		"pixtral", "internvl", "lightonocr":
+		return true
+	}
+	return false
+}
+
 // estimateLLaMACppRunInProjector estimates the usages of the GGUF file for projector.
 func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a *GGUFArchitecture, e *LLaMACppRunEstimate) {
 	ls := gf.Layers()
@@ -1019,14 +1036,24 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 		//     https://github.com/ggerganov/llama.cpp/blob/0827b2c1da299805288abbd556d869318f2b121e/examples/llava/clip.cpp#L2767-L2794.
 		heightMaxSize = uint64(a.ClipVisionImageSize)
 		widthMaxSize = heightMaxSize
-		if a.ClipHasQwen2VLMerger ||
+		switch {
+		case a.ClipHasQwen2VLMerger ||
 			a.ClipProjectorType == "qwen2vl_merger" ||
 			a.ClipProjectorType == "qwen2.5vl_merger" ||
 			a.ClipProjectorType == "qwen2.5o" ||
-			a.ClipProjectorType == "pixtral" {
+			a.ClipProjectorType == "pixtral" ||
+			a.ClipProjectorType == "lightonocr":
 			// See https://github.com/ggml-org/llama.cpp/blob/ec9e0301fef6476df83e94842c3b625501c95566/tools/mtmd/clip.cpp#L2217.
 			heightMaxSize = uint64(ptr.Deref(o.LMCVisualMaxImageSize, 1024))
 			widthMaxSize = heightMaxSize
+		case !isKnownClipProjector(a):
+			// Cap the image size of an unknown projector type instead of trusting the native image size,
+			// which otherwise inflates the estimate,
+			// see https://github.com/gpustack/gguf-parser-go/issues/21.
+			if ms := uint64(ptr.Deref(o.LMCVisualMaxImageSize, 1024)); heightMaxSize > ms {
+				heightMaxSize = ms
+				widthMaxSize = ms
+			}
 		}
 		nPatchSize := uint64(a.ClipVisionPatchSize)
 		nPatchesHeight := heightMaxSize / nPatchSize
@@ -1112,7 +1139,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 			if ti, ok := gf.TensorInfos.Get("mm.model.fc.weight"); ok {
 				projectionDim = ti.Dimensions[1]
 			}
-		case "pixtral":
+		case "pixtral", "lightonocr":
 			heightPatchSize := heightMaxSize / uint64(a.ClipVisionPatchSize)
 			if a.ClipVisionSpatialMergeSize > 0 {
 				heightPatchSize /= uint64(a.ClipVisionSpatialMergeSize)
@@ -1121,14 +1148,30 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 			if a.ClipVisionSpatialMergeSize > 0 {
 				widthPatchSize /= uint64(a.ClipVisionSpatialMergeSize)
 			}
-			nPatches = heightPatchSize*widthPatchSize + heightPatchSize - 1 /* [IMG_BREAK] per row */
-			if ti, ok := gf.TensorInfos.Get("mm.2.bias"); ok {
-				projectionDim = ti.Dimensions[0]
+			nPatches = heightPatchSize * widthPatchSize
+			if a.ClipProjectorType == "pixtral" {
+				nPatches += heightPatchSize - 1 /* [IMG_BREAK] per row */
+				if ti, ok := gf.TensorInfos.Get("mm.2.bias"); ok {
+					projectionDim = ti.Dimensions[0]
+				}
+			} else if ti, ok := gf.TensorInfos.Get("mm.2.weight"); ok {
+				projectionDim = ti.Dimensions[1]
 			}
 		case "internvl":
 			nPatches /= uint64(a.ClipVisionProjectorScaleFactor * a.ClipVisionProjectorScaleFactor)
 			if ti, ok := gf.TensorInfos.Get("mm.model.mlp.3.weight"); ok {
 				projectionDim = ti.Dimensions[1]
+			}
+		default:
+			if !isKnownClipProjector(a) {
+				// Approximate an unknown projector type instead of falling through every special case:
+				// honor the spatial merge size if present,
+				// and fall back to the declared projection dimension,
+				// see https://github.com/gpustack/gguf-parser-go/issues/21.
+				if a.ClipVisionSpatialMergeSize > 1 {
+					nPatches /= uint64(a.ClipVisionSpatialMergeSize) * uint64(a.ClipVisionSpatialMergeSize)
+				}
+				projectionDim = uint64(a.ClipVisionProjectionDim)
 			}
 		}
 
