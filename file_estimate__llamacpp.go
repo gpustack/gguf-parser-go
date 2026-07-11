@@ -1160,7 +1160,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 					widthPatchSize = (widthPatchSize + psf - 1) / psf
 				}
 				nPatches = heightPatchSize * widthPatchSize
-				if _, ok := gf.TensorInfos.Get("v.token_embd.img_break"); ok {
+				if _, ok := gf.TensorInfos.Get("v.token_embd.img_break"); ok && heightPatchSize > 0 {
 					nPatches += heightPatchSize - 1 /* [IMG_BREAK] per row */
 				}
 				projectionDim = uint64(a.ClipVisionProjectionDim)
