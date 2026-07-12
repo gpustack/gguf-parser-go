@@ -176,6 +176,29 @@ func TestGGUFFile_EstimateLLaMACppRun_Projector(t *testing.T) {
 	}
 }
 
+func TestGGUFFile_EstimateLLaMACppRun_ProjectorConvolutionalEncoder(t *testing.T) {
+	ctx := context.Background()
+
+	// Gemma 3n's MobileNetV5 encoder outputs a fixed token grid and its patch size is a
+	// convolution stride; treating it as transformer patches charged a ~130 GiB attention
+	// buffer for this ~1.4 GB projector.
+	f, err := ParseGGUFFileFromHuggingFace(
+		ctx,
+		"Anthonyg5005/gemma-3n-e4b-mmproj-gguf",
+		"gemma-3n-mmproj.gguf",
+		SkipLargeMetadata())
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	const gib = 1 << 30
+	dflt := f.EstimateLLaMACppRun().SummarizeItem(false, 0, 0)
+	if nonUMA := dflt.VRAMs[0].NonUMA; nonUMA > 3*gib {
+		t.Errorf("default estimate: NonUMA VRAM %s exceeds 3 GiB", nonUMA)
+	}
+}
+
 func TestGGUFFile_EstimateLLaMACppRun_ProjectorFlashAttention(t *testing.T) {
 	ctx := context.Background()
 

@@ -1139,6 +1139,13 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 			if ti, ok := gf.TensorInfos.Get("mm.model.mlp.3.weight"); ok {
 				projectionDim = ti.Dimensions[1]
 			}
+		case "gemma3nv":
+			// MobileNetV5 is a convolutional encoder that always outputs a fixed 16x16 token grid
+			// regardless of the input size; its patch size is a convolution stride,
+			// not a transformer patch,
+			// see https://github.com/ggml-org/llama.cpp/blob/e3546c7948e3af463d0b401e6421d5a4c2faf565/tools/mtmd/clip.cpp#L3389-L3394.
+			nPatches = uint64(a.ClipVisionImageSize) / nPatchSize
+			projectionDim = uint64(a.ClipVisionProjectionDim)
 		default:
 			if !a.ClipHasQwen2VLMerger && !a.ClipHasLLaVAProjector && !a.ClipHasMiniCPMVProjector {
 				// Approximate a projector type without a special case above from what the GGUF declares,
