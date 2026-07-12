@@ -1155,8 +1155,11 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 				//
 				// Cap the image size like the known dynamic-resolution projector types,
 				// without inflating a smaller native image size by default.
+				// A projector declaring no image size at all is dynamic resolution
+				// (dots_ocr does this); assume the default cap rather than zero-pixel images,
+				// which would charge nothing for the encoder.
 				ms := uint64(ptr.Deref(o.LMCVisualMaxImageSize, 1024))
-				if o.LMCVisualMaxImageSize == nil && heightMaxSize < ms {
+				if o.LMCVisualMaxImageSize == nil && heightMaxSize > 0 && heightMaxSize < ms {
 					ms = heightMaxSize
 				}
 				heightMaxSize = ms

@@ -176,6 +176,33 @@ func TestGGUFFile_EstimateLLaMACppRun_Projector(t *testing.T) {
 	}
 }
 
+func TestGGUFFile_EstimateLLaMACppRun_ProjectorWithoutImageSize(t *testing.T) {
+	ctx := context.Background()
+
+	// dots.ocr's projector declares no clip.vision.image_size; assuming zero-pixel images
+	// charged nothing for the 42-block encoder, and real usage measured above the estimate.
+	f, err := ParseGGUFFileFromHuggingFace(
+		ctx,
+		"ggml-org/dots.ocr-GGUF",
+		"mmproj-dots.ocr-f16.gguf",
+		SkipLargeMetadata())
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	const gib = 1 << 30
+	weights := uint64(f.ModelSize)
+	dflt := f.EstimateLLaMACppRun().SummarizeItem(false, 0, 0)
+	if nonUMA := uint64(dflt.VRAMs[0].NonUMA); nonUMA < weights+gib/2 {
+		t.Errorf("default estimate: NonUMA VRAM %s charges almost nothing beyond the %s weights",
+			dflt.VRAMs[0].NonUMA, GGUFBytesScalar(weights))
+	}
+	if nonUMA := dflt.VRAMs[0].NonUMA; nonUMA > 8*gib {
+		t.Errorf("default estimate: NonUMA VRAM %s exceeds 8 GiB", nonUMA)
+	}
+}
+
 func TestGGUFFile_EstimateLLaMACppRun_ProjectorAudioChunked(t *testing.T) {
 	ctx := context.Background()
 
