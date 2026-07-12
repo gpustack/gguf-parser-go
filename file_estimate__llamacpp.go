@@ -1326,13 +1326,15 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 				// The encoder attends over one audio chunk, not the position table's whole
 				// capacity; the two coincide for the whisper family (30s chunks, 1500-row
 				// tables) but not for conformer projectors with 1-second chunks,
-				// see https://github.com/ggml-org/llama.cpp/blob/e3546c7948e3af463d0b401e6421d5a4c2faf565/tools/mtmd/clip.cpp#L1611-L1618
-				// and https://github.com/gpustack/gguf-parser-go/issues/26.
+				// see https://github.com/ggml-org/llama.cpp/blob/e3546c7948e3af463d0b401e6421d5a4c2faf565/tools/mtmd/clip.cpp#L1557,
+				//     https://github.com/ggml-org/llama.cpp/blob/e3546c7948e3af463d0b401e6421d5a4c2faf565/tools/mtmd/clip.cpp#L1611-L1618,
+				//     https://github.com/gpustack/gguf-parser-go/issues/26.
 				audioChunkSeconds := uint64(30)
 				if a.ClipProjectorType == "lfm2a" {
 					audioChunkSeconds = 1
 				}
-				if chunkPositions := audioChunkSeconds * 100 /* mel frames per second, 16 kHz / 160 hop */; nPositions > chunkPositions {
+				// One second of 16 kHz audio at hop length 160 is 100 mel frames.
+				if chunkPositions := audioChunkSeconds * 100; nPositions > chunkPositions {
 					nPositions = chunkPositions
 				}
 				nBatch = 1
