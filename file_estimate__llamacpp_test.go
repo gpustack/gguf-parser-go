@@ -139,12 +139,12 @@ func TestGGUFFile_EstimateLLaMACppRun_Projector(t *testing.T) {
 
 	const gib = 1 << 30
 
-	// The projector must not be estimated with the native image size and
-	// an un-merged patch count,
+	// The projector must not be estimated with the native image size,
+	// which charges an 8.7 GiB attention buffer for this one,
 	// see https://github.com/gpustack/gguf-parser-go/issues/21.
 	dflt := f.EstimateLLaMACppRun().SummarizeItem(false, 0, 0)
-	if nonUMA := dflt.VRAMs[0].NonUMA; nonUMA > 2*gib {
-		t.Errorf("default estimate: NonUMA VRAM %s exceeds 2 GiB", nonUMA)
+	if nonUMA := dflt.VRAMs[0].NonUMA; nonUMA > 4*gib {
+		t.Errorf("default estimate: NonUMA VRAM %s exceeds 4 GiB", nonUMA)
 	}
 
 	// The visual max image size option must take effect for this projector type.
@@ -171,8 +171,8 @@ func TestGGUFFile_EstimateLLaMACppRun_Projector(t *testing.T) {
 		}
 	}
 	unknown := f.EstimateLLaMACppRun().SummarizeItem(false, 0, 0)
-	if nonUMA := unknown.VRAMs[0].NonUMA; nonUMA > 2*gib {
-		t.Errorf("unknown projector type estimate: NonUMA VRAM %s exceeds 2 GiB", nonUMA)
+	if nonUMA := unknown.VRAMs[0].NonUMA; nonUMA > 4*gib {
+		t.Errorf("unknown projector type estimate: NonUMA VRAM %s exceeds 4 GiB", nonUMA)
 	}
 }
 

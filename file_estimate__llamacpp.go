@@ -1014,6 +1014,12 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 			// See https://github.com/ggml-org/llama.cpp/blob/6385b843a8dc8e15b8362196039720c58dd79fa2/tools/mtmd/clip.cpp#L3462.
 			nPatches       uint64
 			patchesMaxSize uint64
+			// nPatchesMerged is how many patches the projector merges into one output token.
+			//
+			// The vision encoder attends over the patches before the merge,
+			// so nPatches counts the projector's output tokens while the encoder's positions
+			// are nPatches scaled back up by this factor.
+			nPatchesMerged uint64 = 1
 			// See https://github.com/ggml-org/llama.cpp/blob/6385b843a8dc8e15b8362196039720c58dd79fa2/tools/mtmd/clip.cpp#L4016.
 			projectionDim uint64 // NB(thxCode): do not sure if there is the correct name.
 		)
@@ -1153,14 +1159,19 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 				// Honor the patch reduction the metadata declares,
 				// like llama.cpp does for every projector type carrying it,
 				// rounding up so the estimate never undercounts.
+				//
+				// This reduces the projector's output tokens, not the encoder's positions:
+				// the merge happens after the vision transformer.
+				merge := uint64(1)
 				if a.ClipVisionSpatialMergeSize > 1 {
-					sms := uint64(a.ClipVisionSpatialMergeSize)
-					heightPatchSize = (heightPatchSize + sms - 1) / sms
-					widthPatchSize = (widthPatchSize + sms - 1) / sms
+					merge = uint64(a.ClipVisionSpatialMergeSize)
 				} else if a.ClipVisionProjectorScaleFactor > 1 {
-					psf := uint64(a.ClipVisionProjectorScaleFactor)
-					heightPatchSize = (heightPatchSize + psf - 1) / psf
-					widthPatchSize = (widthPatchSize + psf - 1) / psf
+					merge = uint64(a.ClipVisionProjectorScaleFactor)
+				}
+				if merge > 1 {
+					heightPatchSize = (heightPatchSize + merge - 1) / merge
+					widthPatchSize = (widthPatchSize + merge - 1) / merge
+					nPatchesMerged = merge * merge
 				}
 				nPatches = heightPatchSize * widthPatchSize
 				if _, ok := gf.TensorInfos.Get("v.token_embd.img_break"); ok && heightPatchSize > 0 {
@@ -1214,6 +1225,10 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 					a.ClipProjectorType == "qwen2.5vl_merger" ||
 					a.ClipProjectorType == "qwen2.5o" {
 					nPositions *= 4
+				} else if nPatchesMerged > 1 {
+					// The merged patch count is what the projector emits;
+					// the encoder attends over the patches before the merge.
+					nPositions *= nPatchesMerged
 				}
 				nBatch = 1
 				nEmbd = a.ClipVisionEmbeddingLength
