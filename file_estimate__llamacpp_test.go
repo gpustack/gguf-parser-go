@@ -203,6 +203,45 @@ func TestGGUFFile_EstimateLLaMACppRun_ProjectorWithoutImageSize(t *testing.T) {
 	}
 }
 
+func TestGGUFFile_EstimateLLaMACppRun_ProjectorMergedClassEmbedding(t *testing.T) {
+	ctx := context.Background()
+
+	// InternVL's encoder carries a class embedding token.
+	f, err := ParseGGUFFileFromHuggingFace(
+		ctx,
+		"ggml-org/InternVL2_5-1B-GGUF",
+		"mmproj-InternVL2_5-1B-f16.gguf",
+		SkipLargeMetadata())
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	// A spatial merge reduces the projector's output tokens, so declaring a larger merge must
+	// never increase the estimate. The class embedding is a single position regardless of the
+	// merge; multiplying it by the merge factor too would grow the attention buffer
+	// quadratically with the merge instead.
+	for i := range f.Header.MetadataKV {
+		if f.Header.MetadataKV[i].Key == "clip.projector_type" {
+			f.Header.MetadataKV[i].Value = "future_projector_type"
+		}
+	}
+	f.Header.MetadataKV = append(f.Header.MetadataKV, GGUFMetadataKV{
+		Key:       "clip.vision.spatial_merge_size",
+		ValueType: GGUFMetadataValueTypeUint32,
+		Value:     uint32(2),
+	})
+	merged2 := f.EstimateLLaMACppRun().SummarizeItem(false, 0, 0)
+	// 448px at patch size 14 is 32 patches per side, so a merge of 32 collapses the projector's
+	// output to a single token while the encoder still attends over every patch.
+	f.Header.MetadataKV[len(f.Header.MetadataKV)-1].Value = uint32(32)
+	merged32 := f.EstimateLLaMACppRun().SummarizeItem(false, 0, 0)
+	if merged32.VRAMs[0].NonUMA > merged2.VRAMs[0].NonUMA {
+		t.Errorf("spatial merge 32 estimate: NonUMA VRAM %s exceeds the spatial merge 2 estimate %s",
+			merged32.VRAMs[0].NonUMA, merged2.VRAMs[0].NonUMA)
+	}
+}
+
 func TestGGUFFile_EstimateLLaMACppRun_ProjectorAudioChunked(t *testing.T) {
 	ctx := context.Background()
 

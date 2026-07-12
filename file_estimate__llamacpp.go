@@ -1142,7 +1142,8 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 		case "gemma3nv":
 			// MobileNetV5 is a convolutional encoder that always outputs a fixed 16x16 token grid
 			// regardless of the input size; its patch size is a convolution stride,
-			// not a transformer patch,
+			// not a transformer patch. image_size/patch_size is llama.cpp's own expression for
+			// the TOTAL token count of that grid (768/3 = 256 = 16x16), not a per-side count,
 			// see https://github.com/ggml-org/llama.cpp/blob/e3546c7948e3af463d0b401e6421d5a4c2faf565/tools/mtmd/clip.cpp#L3389-L3394.
 			nPatches = uint64(a.ClipVisionImageSize) / nPatchSize
 			projectionDim = uint64(a.ClipVisionProjectionDim)
@@ -1238,7 +1239,11 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 				} else if nPatchesMerged > 1 {
 					// The merged patch count is what the projector emits;
 					// the encoder attends over the patches before the merge.
-					nPositions *= nPatchesMerged
+					// The class embedding, if any, is a single position and is not merged.
+					nPositions = nPatches * nPatchesMerged
+					if hasClassEmbd {
+						nPositions += 1
+					}
 				}
 				nBatch = 1
 				nEmbd = a.ClipVisionEmbeddingLength
