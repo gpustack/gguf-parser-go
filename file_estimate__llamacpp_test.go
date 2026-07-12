@@ -176,6 +176,30 @@ func TestGGUFFile_EstimateLLaMACppRun_Projector(t *testing.T) {
 	}
 }
 
+func TestGGUFFile_EstimateLLaMACppRun_ProjectorAudioChunked(t *testing.T) {
+	ctx := context.Background()
+
+	// LFM2.5-Audio's position table holds 16392 positions but its encoder runs on 1-second
+	// chunks (~100 positions); sizing attention over the whole table charged 8.5 GiB for
+	// this 0.4 GB projector,
+	// see https://github.com/gpustack/gguf-parser-go/issues/26.
+	f, err := ParseGGUFFileFromHuggingFace(
+		ctx,
+		"LiquidAI/LFM2.5-Audio-1.5B-GGUF",
+		"mmproj-LFM2.5-Audio-1.5B-F16.gguf",
+		SkipLargeMetadata())
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	const gib = 1 << 30
+	dflt := f.EstimateLLaMACppRun().SummarizeItem(false, 0, 0)
+	if nonUMA := dflt.VRAMs[0].NonUMA; nonUMA > 2*gib {
+		t.Errorf("default estimate: NonUMA VRAM %s exceeds 2 GiB", nonUMA)
+	}
+}
+
 func TestGGUFFile_EstimateLLaMACppRun_ProjectorConvolutionalEncoder(t *testing.T) {
 	ctx := context.Background()
 
