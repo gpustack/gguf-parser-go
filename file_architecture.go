@@ -664,14 +664,13 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 		audioNumMelBinsKey,
 	})
 
-	switch {
-	case m[projectorTypeKey].Key != "":
-		ga.ClipProjectorType = m[projectorTypeKey].ValueString()
-	case m[visionProjectorTypeKey].Key != "":
-		ga.ClipProjectorType = m[visionProjectorTypeKey].ValueString()
-	case m[audioProjectorTypeKey].Key != "":
-		ga.ClipProjectorType = m[audioProjectorTypeKey].ValueString()
-	default:
+	if v, ok := m[projectorTypeKey]; ok {
+		ga.ClipProjectorType = v.ValueString()
+	} else if v, ok := m[visionProjectorTypeKey]; ok {
+		ga.ClipProjectorType = v.ValueString()
+	} else if v, ok := m[audioProjectorTypeKey]; ok {
+		ga.ClipProjectorType = v.ValueString()
+	} else {
 		ga.ClipProjectorType = "mlp"
 	}
 	if v, ok := m[hasLLaVAProjectorKey]; ok {
