@@ -175,3 +175,37 @@ func TestGGUFFile_EstimateLLaMACppRun_Projector(t *testing.T) {
 		t.Errorf("unknown projector type estimate: NonUMA VRAM %s exceeds 2 GiB", nonUMA)
 	}
 }
+
+func TestGGUFFile_EstimateLLaMACppRun_ProjectorFlashAttention(t *testing.T) {
+	ctx := context.Background()
+
+	cases := []struct {
+		name string
+		repo string
+		file string
+	}{
+		{"vision", "ggml-org/pixtral-12b-GGUF", "mmproj-pixtral-12b-f16.gguf"},
+		{"audio", "ggml-org/ultravox-v0_5-llama-3_2-1b-GGUF", "mmproj-ultravox-v0_5-llama-3_2-1b-f16.gguf"},
+		// Declares no attention head count, so the encoder's attention is not modeled at all;
+		// enabling flash attention must not conjure a buffer the estimate did not charge before.
+		{"without attention head count", "ggml-org/gemma-4-12B-it-GGUF", "mmproj-gemma-4-12B-it-bf16.gguf"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, err := ParseGGUFFileFromHuggingFace(ctx, tc.repo, tc.file, SkipLargeMetadata())
+			if err != nil {
+				t.Fatal(err)
+				return
+			}
+
+			// Flash attention never costs more than not using it,
+			// see https://github.com/gpustack/gguf-parser-go/issues/23.
+			dflt := f.EstimateLLaMACppRun().SummarizeItem(false, 0, 0)
+			fa := f.EstimateLLaMACppRun(WithFlashAttention()).SummarizeItem(false, 0, 0)
+			if fa.VRAMs[0].NonUMA > dflt.VRAMs[0].NonUMA {
+				t.Errorf("flash attention estimate: NonUMA VRAM %s exceeds the estimate without it %s",
+					fa.VRAMs[0].NonUMA, dflt.VRAMs[0].NonUMA)
+			}
+		})
+	}
+}

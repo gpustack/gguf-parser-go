@@ -1251,10 +1251,13 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 				compVcur := GGMLTypeF32.RowSizeOf([]uint64{nEmbd, nPositions})
 				compKcur := GGMLTypeF32.RowSizeOf([]uint64{nEmbd, nPositions})
 				compKQcur := GGMLTypeF32.RowSizeOf([]uint64{nPositions, nPositions, nHead})
-				if o.FlashAttention {
+				if o.FlashAttention && nHead > 0 {
 					// The attention score matrix is not materialized with flash attention,
 					// the largest quadratic tensor left is the F16-cast mask,
 					// see https://github.com/ggml-org/llama.cpp/blob/e3546c7948e3af463d0b401e6421d5a4c2faf565/tools/mtmd/clip.cpp#L690-L700.
+					//
+					// A projector declaring no attention head count is not charged for attention at all,
+					// so flash attention must not add a buffer here either.
 					compKQcur = GGMLTypeF16.RowSizeOf([]uint64{nPositions, nPositions})
 				}
 				e.Devices[idx].Computation.Compute += GGUFBytesScalar(compNorm + compVcur + compKcur + compKQcur)
@@ -1315,7 +1318,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 				compVcur := GGMLTypeF32.RowSizeOf([]uint64{nEmbd, nPositions})
 				compKcur := GGMLTypeF32.RowSizeOf([]uint64{nEmbd, nPositions})
 				compKQcur := GGMLTypeF32.RowSizeOf([]uint64{nPositions, nPositions, nHead})
-				if o.FlashAttention {
+				if o.FlashAttention && nHead > 0 {
 					// The audio encoder shares the clip attention graph,
 					// see https://github.com/ggml-org/llama.cpp/blob/e3546c7948e3af463d0b401e6421d5a4c2faf565/tools/mtmd/clip.cpp#L690-L700.
 					compKQcur = GGMLTypeF16.RowSizeOf([]uint64{nPositions, nPositions})
