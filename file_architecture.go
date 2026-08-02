@@ -101,8 +101,15 @@ type (
 		AttentionRecurrent bool `json:"attentionRecurrent,omitempty"`
 		// AttentionHybrid is true if the attention is hybrid (causal (self-attention) + recurrent).
 		//
-		// Used in Jamba, Falcon-H1, and similar architectures.
+		// Used in Jamba, Falcon-H1, Qwen3.5, and similar architectures.
 		AttentionHybrid bool `json:"attentionHybrid,omitempty"`
+		// FullAttentionInterval is the interval at which a hybrid architecture places
+		// a full (self-)attention layer, the layers in between are recurrent.
+		//
+		// 0 means the architecture does not declare the interleaving.
+		// N means every Nth layer is a full (self-)attention layer, counting the layers from 1,
+		// unlike AttentionSlidingWindowPattern above counting them from 0.
+		FullAttentionInterval uint32 `json:"fullAttentionInterval,omitempty"`
 		// RoPEDimensionCount is the number of dimensions in the RoPE(Rotary Positional Encoding).
 		RoPEDimensionCount uint64 `json:"ropeDimensionCount,omitempty"`
 		// RoPEFrequencyBase is the base frequency of the RoPE.
@@ -324,6 +331,32 @@ type (
 		FileType GGUFFileType `json:"fileType"`
 	}
 )
+
+// interleavesFullAttention returns true if the architecture is hybrid and declares how it
+// interleaves its full (self-)attention layers with its recurrent layers.
+func (ga GGUFArchitecture) interleavesFullAttention() bool {
+	return ga.AttentionHybrid && ga.FullAttentionInterval > 1
+}
+
+// memoryKindOfLayer returns whether the layer at the given index holds a full (self-)attention KV cache,
+// and whether it holds a recurrent (conv + ssm) state.
+//
+// A hybrid architecture declaring its interleaving holds exactly one of the two per layer,
+// as llama.cpp allocates them from the complementary `filter_attn` and `filter_recr` predicates,
+// see https://github.com/ggml-org/llama.cpp/blob/272700b360944e40816a7ea13da8cd723119000a/src/llama-model.cpp#L2176-L2182.
+func (ga GGUFArchitecture) memoryKindOfLayer(i uint64) (fullAttention, recurrent bool) {
+	switch {
+	case ga.interleavesFullAttention():
+		fullAttention = (i+1)%uint64(ga.FullAttentionInterval) == 0
+		return fullAttention, !fullAttention
+	case ga.AttentionHybrid:
+		// Both on every layer, as before, when the interleaving is not declared.
+		return true, true
+	case ga.AttentionRecurrent:
+		return false, true
+	}
+	return true, false
+}
 
 // DiffusionHasConditioners returns true if the diffusion model has conditioners.
 func (ga GGUFArchitecture) DiffusionHasConditioners() bool {
@@ -871,6 +904,8 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 
 		poolingTypeKey = arch + ".pooling_type"
 
+		fullAttentionIntervalKey = arch + ".full_attention_interval"
+
 		ssmConvolutionKernelKey = arch + ".ssm.conv_kernel"
 		ssmInnerSizeKey         = arch + ".ssm.inner_size"
 		ssmStateSizeKey         = arch + ".ssm.state_size"
@@ -925,6 +960,7 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 		ropeScalingOriginalContextKey,
 		ropeScalingFinetunedKey,
 		poolingTypeKey,
+		fullAttentionIntervalKey,
 		ssmConvolutionKernelKey,
 		ssmInnerSizeKey,
 		ssmStateSizeKey,
@@ -1071,8 +1107,22 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 		"rwkv7",
 		"arwkv7",
 	}, ga.Architecture)
-	// See https://github.com/ggml-org/llama.cpp/blob/a57d1bcb3c0165ac87b1f0dbb429839b0da69689/src/llama-arch.cpp#L2029-L2038.
-	ga.AttentionHybrid = slices.Contains([]string{ // TODO(thxCode): calculate this from the metadata.
+	// A hybrid architecture interleaves recurrent layers with full (self-)attention layers.
+	//
+	// Prefer the metadata: only the hybrid QWEN3NEXT/QWEN35/QWEN35MOE read
+	// `<architecture>.full_attention_interval`, and its value says which layer is which,
+	// so neither the architecture nor its layer split has to be hardcoded,
+	// see https://github.com/ggml-org/llama.cpp/blob/272700b360944e40816a7ea13da8cd723119000a/src/models/qwen35moe.cpp#L22-L30.
+	if v, ok := m[fullAttentionIntervalKey]; ok {
+		ga.FullAttentionInterval = ValueNumeric[uint32](v)
+	}
+	// Fall back to the hardcoded list for the hybrid architectures declaring no interval,
+	// see https://github.com/ggml-org/llama.cpp/blob/a57d1bcb3c0165ac87b1f0dbb429839b0da69689/src/llama-arch.cpp#L2029-L2038.
+	// TODO(thxCode): drop the remaining entries once their interleaving can be read as well.
+	// Falcon-H1 has none to read, it runs attention and recurrence in parallel on every layer.
+	// Jamba and Granite-Hybrid declare theirs per layer in `<architecture>.attention.head_count_kv`,
+	// which needs AttentionHeadCountKV above to become per layer as well.
+	ga.AttentionHybrid = ga.FullAttentionInterval > 1 || slices.Contains([]string{
 		"jamba",
 		"falcon-h1",
 		"granitehybrid",

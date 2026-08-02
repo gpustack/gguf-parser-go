@@ -322,3 +322,85 @@ func TestGGUFFile_EstimateLLaMACppRun_ProjectorFlashAttention(t *testing.T) {
 		})
 	}
 }
+
+func TestGGUFFile_EstimateLLaMACppRun_HybridInterleavedKVCache(t *testing.T) {
+	ctx := context.Background()
+
+	// Qwen3.6 interleaves 30 recurrent layers with 10 full (self-)attention layers over its 40 blocks,
+	// declaring the interleaving with "qwen35moe.full_attention_interval" = 4.
+	// llama.cpp caches a KV for the full (self-)attention layers only,
+	// and a recurrent state for the recurrent layers only,
+	// see https://github.com/ggml-org/llama.cpp/blob/272700b360944e40816a7ea13da8cd723119000a/src/llama-model.cpp#L2176-L2182.
+	f, err := ParseGGUFFileFromHuggingFace(
+		ctx,
+		"unsloth/Qwen3.6-35B-A3B-GGUF",
+		"Qwen3.6-35B-A3B-UD-IQ1_M.gguf",
+		SkipLargeMetadata())
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+	if a := f.Architecture(); a.Architecture != "qwen35moe" || a.BlockCount != 40 || a.FullAttentionInterval != 4 {
+		t.Fatalf("architecture: got %q with %d blocks at an interval of %d, want %q with 40 blocks at an interval of 4",
+			a.Architecture, a.BlockCount, a.FullAttentionInterval, "qwen35moe")
+	}
+
+	// declareInterval rewrites the declared interval, or drops the key declaring it.
+	declareInterval := func(interval uint32, declared bool) {
+		kvs := make(GGUFMetadataKVs, 0, len(f.Header.MetadataKV))
+		for _, kv := range f.Header.MetadataKV {
+			if kv.Key == "qwen35moe.full_attention_interval" {
+				if !declared {
+					continue
+				}
+				kv.Value = interval
+			}
+			kvs = append(kvs, kv)
+		}
+		f.Header.MetadataKV = kvs
+	}
+	// Full offload places every block on the single GPU device.
+	kvCache := func() uint64 {
+		return uint64(f.EstimateLLaMACppRun(WithLLaMACppContextSize(131072)).Devices[1].KVCache.Sum())
+	}
+
+	// Each full (self-)attention layer caches 2 kv heads * (256 key + 256 value) head size *
+	// 131072 context * 2 bytes, which is 256 MiB, so the 10 of them cache 2.5 GiB,
+	// plus about 2 MiB of context independent state for each of the 30 recurrent layers.
+	const mib = 1 << 20
+	got := kvCache()
+	if got < 2500*mib || got > 2700*mib {
+		t.Errorf("KV cache at an interval of 4: got %s, want within [2500 MiB, 2700 MiB]", GGUFBytesScalar(got))
+	}
+
+	// Splitting the blocks over three GPU devices splits the interleaved KV cache with them,
+	// while not offloading it puts all of it back on the host device.
+	split := f.EstimateLLaMACppRun(WithLLaMACppContextSize(131072), WithTensorSplitFraction([]float64{1.0 / 3, 2.0 / 3, 1}))
+	var splitted uint64
+	for i := range split.Devices[1:] {
+		if split.Devices[i+1].KVCache.Sum() == 0 {
+			t.Errorf("KV cache of the device %d: got 0, want more", i+1)
+		}
+		splitted += uint64(split.Devices[i+1].KVCache.Sum())
+	}
+	if splitted != got {
+		t.Errorf("KV cache over three devices: got %s, want %s", GGUFBytesScalar(splitted), GGUFBytesScalar(got))
+	}
+	hosted := f.EstimateLLaMACppRun(WithLLaMACppContextSize(131072), WithoutLLaMACppOffloadKVCache())
+	if uint64(hosted.Devices[0].KVCache.Sum()) != got {
+		t.Errorf("KV cache without offloading: got %s, want %s", hosted.Devices[0].KVCache.Sum(), GGUFBytesScalar(got))
+	}
+
+	// Halving the declared interval doubles the full (self-)attention layers, and so the KV cache.
+	declareInterval(2, true)
+	if halved := kvCache(); halved < 5000*mib || halved > 5400*mib {
+		t.Errorf("KV cache at an interval of 2: got %s, want within [5000 MiB, 5400 MiB]", GGUFBytesScalar(halved))
+	}
+
+	// Dropping the key leaves the estimate as it was before any interleaving was parsed:
+	// a KV cache charged to all 40 blocks, 10 GiB of it.
+	declareInterval(0, false)
+	if undeclared := kvCache(); undeclared < 10*1024*mib || undeclared > 10*1024*mib+8*mib {
+		t.Errorf("KV cache without a declared interval: got %s, want about 10 GiB", GGUFBytesScalar(undeclared))
+	}
+}
