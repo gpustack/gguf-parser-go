@@ -279,6 +279,15 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 
 		fullOffload, zeroOffload          bool
 		nSWALoadLayers, nSWAOffloadLayers uint64
+
+		// Layers holding a full (self-)attention KV cache, and layers holding a recurrent state,
+		// counted per device as e.Devices is indexed. Both equal the layer counters above for every
+		// architecture but a hybrid one declaring how it interleaves the two,
+		// see GGUFArchitecture.memoryKindOfLayer.
+		nFullAttentionLayers = make([]uint64, len(e.Devices))
+		nRecurrentLayers     = make([]uint64, len(e.Devices))
+		// The same over the offloaded devices, mirroring nSWAOffloadLayers above.
+		nFullAttentionOffloadLayers, nRecurrentOffloadLayers uint64
 	)
 	{
 		var isOffloadOutputLayer bool
@@ -308,6 +317,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		e.OffloadLayers = nOffloadLayers
 
 		for i, j, offloadStart := uint64(0), 0, a.BlockCount-nOffloadLayers; i < a.BlockCount; i++ {
+			isFullAttentionLayer, isRecurrentLayer := a.memoryKindOfLayer(i)
 			switch {
 			case i < nLoadLayers:
 				e.Devices[0].HandleLayers += 1
@@ -315,6 +325,12 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 				if usingSWA && (a.AttentionSlidingWindowPattern == 0 || i%uint64(a.AttentionSlidingWindowPattern) != 0) {
 					e.Devices[0].HandleSWALayers += 1
 					nSWALoadLayers += 1
+				}
+				if isFullAttentionLayer {
+					nFullAttentionLayers[0] += 1
+				}
+				if isRecurrentLayer {
+					nRecurrentLayers[0] += 1
 				}
 			case i >= offloadStart:
 				x := float64(i-offloadStart) / float64(nActualOffloadLayers)
@@ -324,6 +340,14 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 				if usingSWA && (a.AttentionSlidingWindowPattern == 0 || i%uint64(a.AttentionSlidingWindowPattern) != 0) {
 					e.Devices[j+1].HandleSWALayers += 1
 					nSWAOffloadLayers += 1
+				}
+				if isFullAttentionLayer {
+					nFullAttentionLayers[j+1] += 1
+					nFullAttentionOffloadLayers += 1
+				}
+				if isRecurrentLayer {
+					nRecurrentLayers[j+1] += 1
+					nRecurrentOffloadLayers += 1
 				}
 				if fullOffload && i == a.BlockCount-1 {
 					idxOutputDevice = j + 1
@@ -569,18 +593,20 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			rps, sps := r*nSeq, s*nSeq
 			rrs, srs := GGMLTypeF32.RowSizeOf([]uint64{rps}), GGMLTypeF32.RowSizeOf([]uint64{sps})
 
-			e.Devices[0].KVCache.Key += GGUFBytesScalar(rrs * nLoadLayers)
-			e.Devices[0].KVCache.Value += GGUFBytesScalar(srs * nLoadLayers)
-			e.Devices[0].Parameter.KVCache += GGUFParametersScalar((rrs + srs) * nLoadLayers)
+			// Only the recurrent layers hold a recurrent state, which is every layer
+			// unless the architecture declares how it interleaves them.
+			e.Devices[0].KVCache.Key += GGUFBytesScalar(rrs * nRecurrentLayers[0])
+			e.Devices[0].KVCache.Value += GGUFBytesScalar(srs * nRecurrentLayers[0])
+			e.Devices[0].Parameter.KVCache += GGUFParametersScalar((rrs + srs) * nRecurrentLayers[0])
 			if !*o.LMCOffloadKVCache {
-				e.Devices[0].KVCache.Key += GGUFBytesScalar(rrs * nOffloadLayers)
-				e.Devices[0].KVCache.Value += GGUFBytesScalar(srs * nOffloadLayers)
-				e.Devices[0].Parameter.KVCache += GGUFParametersScalar((rrs + srs) * nOffloadLayers)
+				e.Devices[0].KVCache.Key += GGUFBytesScalar(rrs * nRecurrentOffloadLayers)
+				e.Devices[0].KVCache.Value += GGUFBytesScalar(srs * nRecurrentOffloadLayers)
+				e.Devices[0].Parameter.KVCache += GGUFParametersScalar((rrs + srs) * nRecurrentOffloadLayers)
 			} else if !zeroOffload {
-				for i, d := range e.Devices[1:] {
-					e.Devices[i+1].KVCache.Key += GGUFBytesScalar(rrs * d.HandleLayers)
-					e.Devices[i+1].KVCache.Value += GGUFBytesScalar(srs * d.HandleLayers)
-					e.Devices[i+1].Parameter.KVCache += GGUFParametersScalar((rrs + srs) * d.HandleLayers)
+				for i := range e.Devices[1:] {
+					e.Devices[i+1].KVCache.Key += GGUFBytesScalar(rrs * nRecurrentLayers[i+1])
+					e.Devices[i+1].KVCache.Value += GGUFBytesScalar(srs * nRecurrentLayers[i+1])
+					e.Devices[i+1].Parameter.KVCache += GGUFParametersScalar((rrs + srs) * nRecurrentLayers[i+1])
 				}
 			}
 
@@ -602,18 +628,20 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			krs, vrs := o.LMCCacheKeyType.RowSizeOf([]uint64{kps}), o.LMCCacheValueType.RowSizeOf([]uint64{vps})
 
 			if !usingSWA {
-				e.Devices[0].KVCache.Key += GGUFBytesScalar(krs * nLoadLayers)
-				e.Devices[0].KVCache.Value += GGUFBytesScalar(vrs * nLoadLayers)
-				e.Devices[0].Parameter.KVCache += GGUFParametersScalar((kps + vps) * nLoadLayers)
+				// Only the full (self-)attention layers hold a KV cache, which is every layer
+				// unless the architecture declares how it interleaves them.
+				e.Devices[0].KVCache.Key += GGUFBytesScalar(krs * nFullAttentionLayers[0])
+				e.Devices[0].KVCache.Value += GGUFBytesScalar(vrs * nFullAttentionLayers[0])
+				e.Devices[0].Parameter.KVCache += GGUFParametersScalar((kps + vps) * nFullAttentionLayers[0])
 				if !*o.LMCOffloadKVCache {
-					e.Devices[0].KVCache.Key += GGUFBytesScalar(krs * nOffloadLayers)
-					e.Devices[0].KVCache.Value += GGUFBytesScalar(vrs * nOffloadLayers)
-					e.Devices[0].Parameter.KVCache += GGUFParametersScalar((kps + vps) * nOffloadLayers)
+					e.Devices[0].KVCache.Key += GGUFBytesScalar(krs * nFullAttentionOffloadLayers)
+					e.Devices[0].KVCache.Value += GGUFBytesScalar(vrs * nFullAttentionOffloadLayers)
+					e.Devices[0].Parameter.KVCache += GGUFParametersScalar((kps + vps) * nFullAttentionOffloadLayers)
 				} else if !zeroOffload {
-					for i, d := range e.Devices[1:] {
-						e.Devices[i+1].KVCache.Key += GGUFBytesScalar(krs * d.HandleLayers)
-						e.Devices[i+1].KVCache.Value += GGUFBytesScalar(vrs * d.HandleLayers)
-						e.Devices[i+1].Parameter.KVCache += GGUFParametersScalar((kps + vps) * d.HandleLayers)
+					for i := range e.Devices[1:] {
+						e.Devices[i+1].KVCache.Key += GGUFBytesScalar(krs * nFullAttentionLayers[i+1])
+						e.Devices[i+1].KVCache.Value += GGUFBytesScalar(vrs * nFullAttentionLayers[i+1])
+						e.Devices[i+1].Parameter.KVCache += GGUFParametersScalar((kps + vps) * nFullAttentionLayers[i+1])
 					}
 				}
 			} else {
@@ -675,16 +703,27 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			inpSMask  = GGMLTypeF32.RowSizeOf([]uint64{1, nSeq})                   // F32 [1, n_seq]
 			inpSSeq   = GGMLTypeI32.RowSizeOf([]uint64{nSeq, nBatch})              // I32 [n_seq, n_batch]
 		)
-		if a.AttentionRecurrent {
+		switch {
+		// A hybrid architecture holding a KV cache above needs the inputs of its full (self-)attention
+		// layers here as well, otherwise it silently loses `inpPos + inpKQMask`.
+		//
+		// TODO(thxCode): so does a hybrid architecture declaring no interleaving, like Jamba,
+		// but charging it here changes the estimate of architectures shipping today.
+		case a.interleavesFullAttention():
+			e.Devices[0].Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + inpPos + inpKQMask + 2*inpSMask + inpSSeq + inpOutIds)
+		case a.AttentionRecurrent:
 			e.Devices[0].Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + 2*inpSMask + inpSSeq + inpOutIds)
-		} else {
+		default:
 			e.Devices[0].Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + inpPos + inpKQMask + inpOutIds)
 		}
 		{
 			var v GGUFBytesScalar
-			if a.AttentionRecurrent {
+			switch {
+			case a.interleavesFullAttention():
+				v = GGUFBytesScalar(inpEmbd + inpPos + inpKQMask + inpSMask + inpSSeq)
+			case a.AttentionRecurrent:
 				v = GGUFBytesScalar(inpEmbd + inpSMask + inpSSeq)
-			} else {
+			default:
 				v = GGUFBytesScalar(inpEmbd + inpPos + inpKQMask)
 			}
 			if len(o.RPCServers) == 0 && len(o.TensorSplitFraction) > 1 {
