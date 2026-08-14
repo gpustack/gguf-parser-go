@@ -459,3 +459,137 @@ func TestGGUFFile_EstimateLLaMACppRun_PerLayerKVHeadsKVCache(t *testing.T) {
 		t.Errorf("KV cache without offloading: got %s, want %s", hosted.Devices[0].KVCache.Sum(), GGUFBytesScalar(got))
 	}
 }
+
+func TestGGUFFile_EstimateLLaMACppRun_SlidingWindowKVCache(t *testing.T) {
+	ctx := context.Background()
+
+	const mib = 1 << 20
+	cases := []struct {
+		name string
+		repo string
+		file string
+
+		// kvCacheMin/kvCacheMax bound the KV cache of the fully offloaded device
+		// at a context of 32768 with the default f16 cache.
+		kvCacheMin, kvCacheMax uint64
+	}{
+		{
+			// gpt-oss-20b holds a full KV cache on 12 of its 24 layers (64 MiB each at 32768)
+			// and a 128-token window on the other 12 (about 4.3 MiB each).
+			name: "gpt-oss", repo: "ggml-org/gpt-oss-20b-GGUF", file: "gpt-oss-20b-MXFP4.gguf",
+			kvCacheMin: 815 * mib, kvCacheMax: 825 * mib,
+		},
+		{
+			// gemma-3n-E4B holds a full KV cache on 4 of its first 20 layers (64 MiB each at 32768),
+			// a 512-token window on the other 16 (5 MiB each), and nothing on the remaining 15,
+			// which reuse the leading caches.
+			name: "gemma3n", repo: "ggml-org/gemma-3n-E4B-it-GGUF", file: "gemma-3n-E4B-it-Q8_0.gguf",
+			kvCacheMin: 330 * mib, kvCacheMax: 342 * mib,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, err := ParseGGUFFileFromHuggingFace(ctx, tc.repo, tc.file, SkipLargeMetadata())
+			if err != nil {
+				t.Fatal(err)
+				return
+			}
+			got := uint64(f.EstimateLLaMACppRun(WithLLaMACppContextSize(32768)).Devices[1].KVCache.Sum())
+			if got < tc.kvCacheMin || got > tc.kvCacheMax {
+				t.Errorf("KV cache at 32768 context: got %s, want within [%s, %s]",
+					GGUFBytesScalar(got), GGUFBytesScalar(tc.kvCacheMin), GGUFBytesScalar(tc.kvCacheMax))
+			}
+			// The full-size SWA cache option restores a full KV cache on every windowed layer.
+			full := uint64(f.EstimateLLaMACppRun(WithLLaMACppContextSize(32768), WithLLaMACppFullSizeSWACache()).Devices[1].KVCache.Sum())
+			if full <= got {
+				t.Errorf("full-size SWA cache: got %s, want more than %s", GGUFBytesScalar(full), GGUFBytesScalar(got))
+			}
+		})
+	}
+}
+
+func TestGGUFFile_EstimateLLaMACppRun_NextNPredictLayersKVCache(t *testing.T) {
+	ctx := context.Background()
+
+	// The hybrid family filters its NextN/MTP blocks out of the main context cache,
+	// see https://github.com/ggml-org/llama.cpp/blob/16d222fc5f2c0fdc3d0180e0b772516ec6e2eddd/src/llama-model.cpp#L2290-L2296.
+	// Qwen3.6 declares no NextN blocks; declaring one must uncharge exactly the last
+	// layer, a full (self-)attention one at an interval of 4 over 64 blocks.
+	f, err := ParseGGUFFileFromHuggingFace(
+		ctx,
+		"unsloth/Qwen3.6-27B-GGUF",
+		"Qwen3.6-27B-Q4_K_M.gguf",
+		SkipLargeMetadata())
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	kvCache := func() uint64 {
+		return uint64(f.EstimateLLaMACppRun(WithLLaMACppContextSize(32768)).Devices[1].KVCache.Sum())
+	}
+	before := kvCache()
+
+	f.Header.MetadataKV = append(f.Header.MetadataKV, GGUFMetadataKV{
+		Key:       "qwen35.nextn_predict_layers",
+		ValueType: GGUFMetadataValueTypeUint32,
+		Value:     uint32(1),
+	})
+	after := kvCache()
+
+	// One less full (self-)attention layer: 4 KV heads * (256 key + 256 value) head size *
+	// 32768 context * 2 bytes.
+	const wantDelta = 4 * (256 + 256) * 32768 * 2
+	if before-after != wantDelta {
+		t.Errorf("KV cache delta for one NextN block: got %s, want %s",
+			GGUFBytesScalar(before-after), GGUFBytesScalar(uint64(wantDelta)))
+	}
+}
+
+func TestGGUFFile_EstimateLLaMACppRun_LFM2SlidingWindowKVCache(t *testing.T) {
+	ctx := context.Background()
+
+	// LFM2 windows its attention layers when it declares a sliding window; the shipped
+	// LFM2-1.2B declares none, so declare one and the 6 attention layers must shrink from
+	// full context rows to windowed rows while the conv layers stay recurrent,
+	// see https://github.com/ggml-org/llama.cpp/blob/16d222fc5f2c0fdc3d0180e0b772516ec6e2eddd/src/models/lfm2.cpp#L24-L29.
+	f, err := ParseGGUFFileFromHuggingFace(
+		ctx,
+		"LiquidAI/LFM2-1.2B-GGUF",
+		"LFM2-1.2B-Q8_0.gguf",
+		SkipLargeMetadata())
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	kvCache := func() uint64 {
+		return uint64(f.EstimateLLaMACppRun(WithLLaMACppContextSize(32768)).Devices[1].KVCache.Sum())
+	}
+	before := kvCache()
+
+	f.Header.MetadataKV = append(f.Header.MetadataKV, GGUFMetadataKV{
+		Key:       "lfm2.attention.sliding_window",
+		ValueType: GGUFMetadataValueTypeUint32,
+		Value:     uint32(4096),
+	})
+	a := f.Architecture()
+	swaLayers := 0
+	for i := uint64(0); i < a.BlockCount; i++ {
+		if a.isSWALayer(i) {
+			swaLayers++
+		}
+	}
+	if swaLayers != 6 {
+		t.Errorf("sliding window layers: got %d, want the 6 attention layers", swaLayers)
+	}
+
+	// 6 layers * 512 K elems * 2 (K+V) * 2 bytes over 6144 window rows
+	// (4096 window + 2048 logical batch), plus the constant conv state.
+	const mib = 1 << 20
+	after := kvCache()
+	if after >= before || after < 72*mib || after > 74*mib {
+		t.Errorf("windowed KV cache: got %s, want within [72 MiB, 74 MiB] and below %s",
+			GGUFBytesScalar(after), GGUFBytesScalar(before))
+	}
+}

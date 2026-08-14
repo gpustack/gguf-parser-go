@@ -62,9 +62,33 @@ type (
 		// 0 means all layers are Sliding Window Attention.
 		// 1 means all layers are none Sliding Window Attention.
 		// N means every Nth layer is none Sliding Window Attention.
+		//
+		// AttentionSlidingWindowLayers below carries the per-layer resolution,
+		// including the dense-first phasing this period cannot express.
 		AttentionSlidingWindowPattern uint32 `json:"attentionSlidingWindowPattern,omitempty"`
+		// AttentionSlidingWindowLayers is the per-layer use of the sliding window attention.
+		//
+		// Resolved from "<architecture>.attention.sliding_window_pattern" when the file declares it,
+		// and from the per-architecture period of llama.cpp otherwise, see swaPatternDefaults.
+		// Empty means no layer uses the sliding window attention.
+		AttentionSlidingWindowLayers []bool `json:"attentionSlidingWindowLayers,omitempty"`
 		// AttentionSlidingWindow is the size of the sliding window used in the attention layer.
 		AttentionSlidingWindow uint64 `json:"attentionSlidingWindow,omitempty"`
+		// AttentionKeyLengthSWA(n_embd_head_k_swa) is the size of a key head on the sliding window layers.
+		//
+		// Defaults to AttentionKeyLength.
+		AttentionKeyLengthSWA uint32 `json:"attentionKeyLengthSWA,omitempty"`
+		// AttentionValueLengthSWA(n_embd_head_v_swa) is the size of a value head on the sliding window layers.
+		//
+		// Defaults to AttentionValueLength.
+		AttentionValueLengthSWA uint32 `json:"attentionValueLengthSWA,omitempty"`
+		// AttentionKVFromStartLayerCount(n_layer_kv_from_start) is the number of leading layers
+		// holding a KV cache, the layers behind reuse those caches.
+		//
+		// 0 means every layer holds its own KV cache.
+		AttentionKVFromStartLayerCount uint32 `json:"attentionKVFromStartLayerCount,omitempty"`
+		// NextNPredictLayers(n_layer_nextn) is the number of trailing NextN/MTP blocks inside BlockCount.
+		NextNPredictLayers uint32 `json:"nextNPredictLayers,omitempty"`
 		// AttentionMaxALiBIBias is the maximum bias to use for ALiBI.
 		AttentionMaxALiBIBias float32 `json:"attentionMaxALiBIBias,omitempty"`
 		// AttentionClampKQV describes a value `C`,
@@ -365,6 +389,16 @@ func (ga GGUFArchitecture) interleavesKVHeads() bool {
 // full (self-)attention and which are recurrent.
 func (ga GGUFArchitecture) interleavesAttention() bool {
 	return ga.interleavesFullAttention() || ga.interleavesKVHeads()
+}
+
+// usesSlidingWindowAttention returns true if any layer uses the sliding window attention.
+func (ga GGUFArchitecture) usesSlidingWindowAttention() bool {
+	return slices.Contains(ga.AttentionSlidingWindowLayers, true)
+}
+
+// isSWALayer returns true if the layer at the given index uses the sliding window attention.
+func (ga GGUFArchitecture) isSWALayer(i uint64) bool {
+	return i < uint64(len(ga.AttentionSlidingWindowLayers)) && ga.AttentionSlidingWindowLayers[i]
 }
 
 // memoryKindOfLayer returns whether the layer at the given index holds a full (self-)attention KV cache,
@@ -895,6 +929,41 @@ func (gf *GGUFFile) imatrixArchitecture(_ string) (ga GGUFArchitecture) {
 	return ga
 }
 
+// swaPatternDefaults carries the per-architecture sliding window layout of llama.cpp:
+// the period between full attention layers, whether the full layer leads each group
+// (dense first, full at layer%period == 0) or closes it (full at layer%period == period-1),
+// and the default window size for the architectures hardcoding one.
+//
+// A GGUF rarely declares "<architecture>.attention.sliding_window_pattern"
+// (convert_hf_to_gguf.py does not write it), so these mirror
+// https://github.com/ggml-org/llama.cpp/tree/16d222fc5f2c0fdc3d0180e0b772516ec6e2eddd/src/models.
+// A period applies when the sliding window resolves above zero; a zero period windows every layer.
+// DeepSeek-V4 windows every layer too, but its MLA + indexer caches diverge too far to model here.
+var swaPatternDefaults = map[string]struct {
+	period     uint32
+	denseFirst bool
+	window     uint64
+}{
+	"afmoe":           {period: 4},
+	"cohere2":         {period: 4},
+	"cohere2moe":      {period: 4, denseFirst: true},
+	"dflash":          {period: 0},
+	"exaone-moe":      {period: 4, window: 128},
+	"gemma-embedding": {period: 6},
+	"gemma2":          {period: 2, window: 4096},
+	"gemma3":          {period: 6},
+	"gemma3n":         {period: 5},
+	"gpt-oss":         {period: 2},
+	"laguna":          {period: 4, denseFirst: true},
+	"llama4":          {period: 4, window: 8192},
+	"mellum":          {period: 4},
+	"modern-bert":     {period: 3, denseFirst: true},
+	"muse-glimmer":    {period: 4},
+	"olmo2":           {period: 4},
+	"plamo3":          {period: 8},
+	"smallthinker":    {period: 4, denseFirst: true, window: 4096},
+}
+
 func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 	var (
 		contextLengthKey     = arch + ".context_length"
@@ -908,22 +977,27 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 		expertUsedCountKey               = arch + ".expert_used_count"
 		expertSharedCountKey             = arch + ".expert_shared_count"
 
-		attentionHeadCountKey           = arch + ".attention.head_count"
-		attentionHeadCountKVKey         = arch + ".attention.head_count_kv"
-		attentionSlidingWindowKey       = arch + ".attention.sliding_window"
-		attentionMaxALiBIBiasKey        = arch + ".attention.max_alibi_bias"
-		attentionMaxALiBIBiasKey2       = arch + ".attention.alibi_bias_max"
-		attentionClampKQVKey            = arch + ".attention.clamp_kqv"
-		attentionClampKQVKey2           = arch + ".attention.clip_kqv"
-		attentionLayerNormEpsilonKey    = arch + ".attention.layer_norm_epsilon"
-		attentionLayerNormRMSEpsilonKey = arch + ".attention.layer_norm_rms_epsilon"
-		attentionQueryLORARankKey       = arch + ".attention.q_lora_rank"
-		attentionKeyValueLORARankKey    = arch + ".attention.kv_lora_rank"
-		attentionKeyLengthKey           = arch + ".attention.key_length"
-		attentionKeyLengthMLAKey        = arch + ".attention.key_length_mla"
-		attentionValueLengthKey         = arch + ".attention.value_length"
-		attentionValueLengthMLAKey      = arch + ".attention.value_length_mla"
-		attentionCausalKey              = arch + ".attention.causal"
+		attentionHeadCountKey            = arch + ".attention.head_count"
+		attentionHeadCountKVKey          = arch + ".attention.head_count_kv"
+		attentionSlidingWindowKey        = arch + ".attention.sliding_window"
+		attentionSlidingWindowPatternKey = arch + ".attention.sliding_window_pattern"
+		attentionKeyLengthSWAKey         = arch + ".attention.key_length_swa"
+		attentionValueLengthSWAKey       = arch + ".attention.value_length_swa"
+		attentionSharedKVLayersKey       = arch + ".attention.shared_kv_layers"
+		nextNPredictLayersKey            = arch + ".nextn_predict_layers"
+		attentionMaxALiBIBiasKey         = arch + ".attention.max_alibi_bias"
+		attentionMaxALiBIBiasKey2        = arch + ".attention.alibi_bias_max"
+		attentionClampKQVKey             = arch + ".attention.clamp_kqv"
+		attentionClampKQVKey2            = arch + ".attention.clip_kqv"
+		attentionLayerNormEpsilonKey     = arch + ".attention.layer_norm_epsilon"
+		attentionLayerNormRMSEpsilonKey  = arch + ".attention.layer_norm_rms_epsilon"
+		attentionQueryLORARankKey        = arch + ".attention.q_lora_rank"
+		attentionKeyValueLORARankKey     = arch + ".attention.kv_lora_rank"
+		attentionKeyLengthKey            = arch + ".attention.key_length"
+		attentionKeyLengthMLAKey         = arch + ".attention.key_length_mla"
+		attentionValueLengthKey          = arch + ".attention.value_length"
+		attentionValueLengthMLAKey       = arch + ".attention.value_length_mla"
+		attentionCausalKey               = arch + ".attention.causal"
 
 		ropeDimensionCountKey         = arch + ".rope.dimension_count"
 		ropeFrequencyBaseKey          = arch + ".rope.freq_base"
@@ -973,6 +1047,11 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 		attentionHeadCountKey,
 		attentionHeadCountKVKey,
 		attentionSlidingWindowKey,
+		attentionSlidingWindowPatternKey,
+		attentionKeyLengthSWAKey,
+		attentionValueLengthSWAKey,
+		attentionSharedKVLayersKey,
+		nextNPredictLayersKey,
 		attentionMaxALiBIBiasKey,
 		attentionMaxALiBIBiasKey2,
 		attentionClampKQVKey,
@@ -1078,24 +1157,85 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 			ga.AttentionSlidingWindow = ValueNumeric[uint64](v)
 		}
 	}
-	switch arch {
-	case "llama4":
+	if v, ok := m[nextNPredictLayersKey]; ok {
+		ga.NextNPredictLayers = ValueNumeric[uint32](v)
+	}
+	// Sliding window layout, from the per-architecture period table swaPatternDefaults.
+	swaPeriod, swaDenseFirst := uint32(1), false
+	if d, ok := swaPatternDefaults[arch]; ok {
+		swaDenseFirst = d.denseFirst
 		if ga.AttentionSlidingWindow == 0 {
-			ga.AttentionSlidingWindow = 8192
+			ga.AttentionSlidingWindow = d.window
 		}
-		ga.AttentionSlidingWindowPattern = 4
+		if ga.AttentionSlidingWindow > 0 {
+			swaPeriod = d.period
+		}
+	}
+	switch arch {
 	case "phi3":
 		// See https://github.com/ggml-org/llama.cpp/pull/13676
 		ga.AttentionSlidingWindow = 0
-	case "gemma2":
-		if ga.AttentionSlidingWindow == 0 {
-			ga.AttentionSlidingWindow = 4096
+	case "exaone4":
+		// Only the 64-layer EXAONE 4.0 interleaves windows; the count excludes the
+		// NextN blocks, as llama.cpp's n_layer() does,
+		// see https://github.com/ggml-org/llama.cpp/blob/16d222fc5f2c0fdc3d0180e0b772516ec6e2eddd/src/models/exaone4.cpp#L4-L14.
+		if ga.BlockCount > uint64(ga.NextNPredictLayers) && ga.BlockCount-uint64(ga.NextNPredictLayers) == 64 {
+			if ga.AttentionSlidingWindow == 0 {
+				ga.AttentionSlidingWindow = 4096
+			}
+			swaPeriod = 4
 		}
-		ga.AttentionSlidingWindowPattern = 2
-	case "gemma3":
-		ga.AttentionSlidingWindowPattern = 6
-	case "cohere2":
-		ga.AttentionSlidingWindowPattern = 4
+	case "gemma3n":
+		// The first 20 layers hold a KV cache, the layers behind reuse those,
+		// see https://github.com/ggml-org/llama.cpp/blob/16d222fc5f2c0fdc3d0180e0b772516ec6e2eddd/src/models/gemma3n.cpp#L9.
+		ga.AttentionKVFromStartLayerCount = 20
+	}
+	if v, ok := m[attentionSlidingWindowPatternKey]; ok {
+		// The declared pattern is either the period as a scalar, or the per-layer use as a bool
+		// array (Gemma 4), see llama_model_loader::get_key_or_arr.
+		if v.ValueType == GGUFMetadataValueTypeArray {
+			av := v.ValueArray()
+			ga.AttentionSlidingWindowLayers = make([]bool, min(av.Len, maxSaneBlockCount))
+			for i := range ga.AttentionSlidingWindowLayers {
+				b, _ := av.Array[i].(bool)
+				ga.AttentionSlidingWindowLayers[i] = b
+			}
+		} else {
+			swaPeriod = ValueNumeric[uint32](v)
+		}
+	}
+	if len(ga.AttentionSlidingWindowLayers) == 0 && swaPeriod != 1 && ga.AttentionSlidingWindow > 0 &&
+		ga.BlockCount > 0 && ga.BlockCount <= maxSaneBlockCount {
+		ga.AttentionSlidingWindowLayers = make([]bool, ga.BlockCount)
+		for i := range ga.AttentionSlidingWindowLayers {
+			if swaDenseFirst {
+				ga.AttentionSlidingWindowLayers[i] = swaPeriod == 0 || uint32(i)%swaPeriod != 0
+			} else {
+				ga.AttentionSlidingWindowLayers[i] = swaPeriod == 0 || uint32(i)%swaPeriod < swaPeriod-1
+			}
+		}
+	}
+	// LFM2 windows its attention layers when it declares a window; its recurrent layers hold no KV,
+	// see https://github.com/ggml-org/llama.cpp/blob/16d222fc5f2c0fdc3d0180e0b772516ec6e2eddd/src/models/lfm2.cpp#L24-L29.
+	if (arch == "lfm2" || arch == "lfm2moe") && ga.AttentionSlidingWindow > 0 {
+		ga.AttentionSlidingWindowLayers = make([]bool, min(uint64(len(ga.AttentionHeadCountKVs)), maxSaneBlockCount))
+		for i := range ga.AttentionSlidingWindowLayers {
+			ga.AttentionSlidingWindowLayers[i] = ga.AttentionHeadCountKVs[i] > 0
+		}
+	}
+	ga.AttentionSlidingWindowPattern = swaPeriod
+	if v, ok := m[attentionKeyLengthSWAKey]; ok {
+		ga.AttentionKeyLengthSWA = ValueNumeric[uint32](v)
+	}
+	if v, ok := m[attentionValueLengthSWAKey]; ok {
+		ga.AttentionValueLengthSWA = ValueNumeric[uint32](v)
+	}
+	if v, ok := m[attentionSharedKVLayersKey]; ok && ga.BlockCount > 0 {
+		// Gemma 4 hangs its trailing layers off the leading caches,
+		// see https://github.com/ggml-org/llama.cpp/blob/16d222fc5f2c0fdc3d0180e0b772516ec6e2eddd/src/models/gemma4.cpp#L7-L10.
+		if shared := ValueNumeric[uint64](v); shared > 0 && shared <= ga.BlockCount {
+			ga.AttentionKVFromStartLayerCount = uint32(ga.BlockCount - shared)
+		}
 	}
 	if v, ok := m[attentionMaxALiBIBiasKey]; ok {
 		ga.AttentionMaxALiBIBias = ValueNumeric[float32](v)

@@ -235,3 +235,109 @@ func BenchmarkGGUFFile_Architecture(b *testing.B) {
 		_ = f.Architecture()
 	}
 }
+
+func TestGGUFFile_Architecture_SlidingWindowLayers(t *testing.T) {
+	ctx := context.Background()
+
+	cases := []struct {
+		name string
+		repo string
+		file string
+
+		expectedWindow      uint64
+		expectedPattern     uint32
+		expectedSWALayers   int
+		expectedKVFromStart uint32
+	}{
+		{
+			// gpt-oss declares its 128-token window but no pattern;
+			// llama.cpp interleaves it with a period of 2,
+			// see https://github.com/ggml-org/llama.cpp/blob/16d222fc5f2c0fdc3d0180e0b772516ec6e2eddd/src/models/openai-moe.cpp#L8-L12.
+			name: "gpt-oss", repo: "ggml-org/gpt-oss-20b-GGUF", file: "gpt-oss-20b-MXFP4.gguf",
+			expectedWindow: 128, expectedPattern: 2, expectedSWALayers: 12,
+		},
+		{
+			// Gemma3n windows with a period of 5, and only its first 20 layers hold a KV cache,
+			// see https://github.com/ggml-org/llama.cpp/blob/16d222fc5f2c0fdc3d0180e0b772516ec6e2eddd/src/models/gemma3n.cpp#L4-L9.
+			name: "gemma3n", repo: "ggml-org/gemma-3n-E4B-it-GGUF", file: "gemma-3n-E4B-it-Q8_0.gguf",
+			expectedWindow: 512, expectedPattern: 5, expectedSWALayers: 28, expectedKVFromStart: 20,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, err := ParseGGUFFileFromHuggingFace(ctx, tc.repo, tc.file, SkipLargeMetadata())
+			if err != nil {
+				t.Fatal(err)
+				return
+			}
+			a := f.Architecture()
+			if a.AttentionSlidingWindow != tc.expectedWindow {
+				t.Errorf("AttentionSlidingWindow: got %d, want %d", a.AttentionSlidingWindow, tc.expectedWindow)
+			}
+			if a.AttentionSlidingWindowPattern != tc.expectedPattern {
+				t.Errorf("AttentionSlidingWindowPattern: got %d, want %d", a.AttentionSlidingWindowPattern, tc.expectedPattern)
+			}
+			swaLayers := 0
+			for i := uint64(0); i < a.BlockCount; i++ {
+				if a.isSWALayer(i) {
+					swaLayers++
+				}
+			}
+			if swaLayers != tc.expectedSWALayers {
+				t.Errorf("sliding window layers: got %d, want %d", swaLayers, tc.expectedSWALayers)
+			}
+			if a.AttentionKVFromStartLayerCount != tc.expectedKVFromStart {
+				t.Errorf("AttentionKVFromStartLayerCount: got %d, want %d",
+					a.AttentionKVFromStartLayerCount, tc.expectedKVFromStart)
+			}
+		})
+	}
+}
+
+func TestGGUFFile_Architecture_SlidingWindowLayerArray(t *testing.T) {
+	ctx := context.Background()
+
+	// Gemma 4 declares the per-layer use as a bool array in
+	// "gemma4.attention.sliding_window_pattern", and sizes its windowed heads separately.
+	f, err := ParseGGUFFileFromHuggingFace(
+		ctx,
+		"ggml-org/gemma-4-12B-it-GGUF",
+		"gemma-4-12B-it-Q4_0.gguf",
+		SkipLargeMetadata())
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	a := f.Architecture()
+	if a.Architecture != "gemma4" || a.BlockCount != 48 {
+		t.Fatalf("architecture: got %q with %d blocks, want %q with 48 blocks",
+			a.Architecture, a.BlockCount, "gemma4")
+	}
+	if len(a.AttentionSlidingWindowLayers) != 48 {
+		t.Fatalf("AttentionSlidingWindowLayers: got %d entries, want 48", len(a.AttentionSlidingWindowLayers))
+	}
+	swaLayers := 0
+	for i := uint64(0); i < a.BlockCount; i++ {
+		if a.isSWALayer(i) {
+			swaLayers++
+		}
+	}
+	if swaLayers != 40 {
+		t.Errorf("sliding window layers: got %d, want 40", swaLayers)
+	}
+	if a.AttentionSlidingWindow != 1024 {
+		t.Errorf("AttentionSlidingWindow: got %d, want 1024", a.AttentionSlidingWindow)
+	}
+	if a.AttentionKeyLengthSWA != 256 || a.AttentionValueLengthSWA != 256 {
+		t.Errorf("AttentionKeyLengthSWA/AttentionValueLengthSWA: got %d/%d, want 256/256",
+			a.AttentionKeyLengthSWA, a.AttentionValueLengthSWA)
+	}
+	if a.AttentionKeyLength != 512 {
+		t.Errorf("AttentionKeyLength: got %d, want 512", a.AttentionKeyLength)
+	}
+	// This file shares no KV layers, so every layer holds its own cache.
+	if a.AttentionKVFromStartLayerCount != 0 {
+		t.Errorf("AttentionKVFromStartLayerCount: got %d, want 0", a.AttentionKVFromStartLayerCount)
+	}
+}
