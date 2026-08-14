@@ -277,17 +277,13 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		nLoadLayers          = a.BlockCount
 		idxOutputDevice      int
 
-		fullOffload, zeroOffload          bool
-		nSWALoadLayers, nSWAOffloadLayers uint64
+		fullOffload, zeroOffload bool
 
-		// Layers holding a full (self-)attention KV cache, and layers holding a recurrent state,
-		// counted per device as e.Devices is indexed. Both equal the layer counters above for every
-		// architecture but a hybrid one declaring how it interleaves the two,
-		// see GGUFArchitecture.memoryKindOfLayer.
-		nFullAttentionLayers = make([]uint64, len(e.Devices))
-		nRecurrentLayers     = make([]uint64, len(e.Devices))
-		// The same over the offloaded devices, mirroring nSWAOffloadLayers above.
-		nFullAttentionOffloadLayers, nRecurrentOffloadLayers uint64
+		// The device that holds each layer, as e.Devices is indexed:
+		// 0 for the host, 1+N for the N-th offload device.
+		// Bounded so a hostile block_count cannot size the allocation; the layers beyond
+		// the bound fall back to the host device, see maxSaneBlockCount.
+		layerDevices = make([]int, min(a.BlockCount, maxSaneBlockCount))
 	)
 	{
 		var isOffloadOutputLayer bool
@@ -317,37 +313,23 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		e.OffloadLayers = nOffloadLayers
 
 		for i, j, offloadStart := uint64(0), 0, a.BlockCount-nOffloadLayers; i < a.BlockCount; i++ {
-			isFullAttentionLayer, isRecurrentLayer := a.memoryKindOfLayer(i)
 			switch {
 			case i < nLoadLayers:
 				e.Devices[0].HandleLayers += 1
 				e.Devices[0].HandleLastLayer = int(i)
 				if usingSWA && (a.AttentionSlidingWindowPattern == 0 || i%uint64(a.AttentionSlidingWindowPattern) != 0) {
 					e.Devices[0].HandleSWALayers += 1
-					nSWALoadLayers += 1
-				}
-				if isFullAttentionLayer {
-					nFullAttentionLayers[0] += 1
-				}
-				if isRecurrentLayer {
-					nRecurrentLayers[0] += 1
 				}
 			case i >= offloadStart:
 				x := float64(i-offloadStart) / float64(nActualOffloadLayers)
 				j = slicex.UpperBound(o.TensorSplitFraction, x)
+				if i < uint64(len(layerDevices)) {
+					layerDevices[i] = j + 1
+				}
 				e.Devices[j+1].HandleLayers += 1
 				e.Devices[j+1].HandleLastLayer = int(i)
 				if usingSWA && (a.AttentionSlidingWindowPattern == 0 || i%uint64(a.AttentionSlidingWindowPattern) != 0) {
 					e.Devices[j+1].HandleSWALayers += 1
-					nSWAOffloadLayers += 1
-				}
-				if isFullAttentionLayer {
-					nFullAttentionLayers[j+1] += 1
-					nFullAttentionOffloadLayers += 1
-				}
-				if isRecurrentLayer {
-					nRecurrentLayers[j+1] += 1
-					nRecurrentOffloadLayers += 1
 				}
 				if fullOffload && i == a.BlockCount-1 {
 					idxOutputDevice = j + 1
@@ -577,97 +559,81 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 
 	// KV cache.
 	if a.AttentionCausal {
+		// Recurrent state per layer, context independent,
+		// see https://github.com/ggml-org/llama.cpp/blob/16d222fc5f2c0fdc3d0180e0b772516ec6e2eddd/src/llama-hparams.cpp#L183-L222.
+		var r, s uint64
 		switch {
-		// Recurrent,
-		// see https://github.com/ggml-org/llama.cpp/blob/704bb7a71c01dc07c1478b85f6322bf5dfde1eaf/src/llama-hparams.cpp#L68-L88.
-		case a.AttentionRecurrent:
-			var r, s uint64
-			if a.RWKVHeadSize > 0 {
-				r = uint64(a.RWKVTokenShiftCount) * a.EmbeddingLength
-				s = uint64(a.RWKVHeadSize) * a.EmbeddingLength
-			} else {
-				r = uint64((a.SSMConvolutionKernel - 1) * (a.SSMInnerSize + 2*a.SSMGroupCount*a.SSMStateSize))
-				s = uint64(a.SSMStateSize * a.SSMInnerSize)
+		case a.RWKVHeadSize > 0:
+			r = uint64(a.RWKVTokenShiftCount) * a.EmbeddingLength
+			s = uint64(a.RWKVHeadSize) * a.EmbeddingLength
+		case a.ShortConvLCache > 0:
+			r = uint64(a.ShortConvLCache-1) * a.EmbeddingLength
+		case a.KDAHeadDim > 0:
+			dConv := uint64(3)
+			if a.SSMConvolutionKernel > 0 {
+				dConv = uint64(a.SSMConvolutionKernel)
 			}
-
-			rps, sps := r*nSeq, s*nSeq
-			rrs, srs := GGMLTypeF32.RowSizeOf([]uint64{rps}), GGMLTypeF32.RowSizeOf([]uint64{sps})
-
-			// Only the recurrent layers hold a recurrent state, which is every layer
-			// unless the architecture declares how it interleaves them.
-			e.Devices[0].KVCache.Key += GGUFBytesScalar(rrs * nRecurrentLayers[0])
-			e.Devices[0].KVCache.Value += GGUFBytesScalar(srs * nRecurrentLayers[0])
-			e.Devices[0].Parameter.KVCache += GGUFParametersScalar((rrs + srs) * nRecurrentLayers[0])
-			if !*o.LMCOffloadKVCache {
-				e.Devices[0].KVCache.Key += GGUFBytesScalar(rrs * nRecurrentOffloadLayers)
-				e.Devices[0].KVCache.Value += GGUFBytesScalar(srs * nRecurrentOffloadLayers)
-				e.Devices[0].Parameter.KVCache += GGUFParametersScalar((rrs + srs) * nRecurrentOffloadLayers)
-			} else if !zeroOffload {
-				for i := range e.Devices[1:] {
-					e.Devices[i+1].KVCache.Key += GGUFBytesScalar(rrs * nRecurrentLayers[i+1])
-					e.Devices[i+1].KVCache.Value += GGUFBytesScalar(srs * nRecurrentLayers[i+1])
-					e.Devices[i+1].Parameter.KVCache += GGUFParametersScalar((rrs + srs) * nRecurrentLayers[i+1])
-				}
-			}
-
-			if !a.AttentionHybrid {
-				break
-			}
-
-			fallthrough
-		// Causal,
-		// see https://github.com/ggml-org/llama.cpp/blob/d6ef0e77dd25f54fb5856af47e3926cf6f36c281/llama.cpp#L2479-L2501.
+			r = 3 * (dConv - 1) * a.AttentionHeadCount * uint64(a.KDAHeadDim)
+			s = uint64(a.KDAHeadDim) * uint64(a.KDAHeadDim) * a.AttentionHeadCount
 		default:
-			akl, avl := uint64(a.AttentionKeyLength), uint64(a.AttentionValueLength)
-			if a.AttentionKeyLengthMLA > 0 && a.AttentionValueLengthMLA > 0 {
-				akl, avl = uint64(a.AttentionKeyLengthMLA), uint64(a.AttentionValueLengthMLA)
+			r = uint64((a.SSMConvolutionKernel - 1) * (a.SSMInnerSize + 2*a.SSMGroupCount*a.SSMStateSize))
+			s = uint64(a.SSMStateSize * a.SSMInnerSize)
+		}
+		rps, sps := r*nSeq, s*nSeq
+		rrs, srs := GGMLTypeF32.RowSizeOf([]uint64{rps}), GGMLTypeF32.RowSizeOf([]uint64{sps})
+
+		// Attention KV width per layer,
+		// see https://github.com/ggml-org/llama.cpp/blob/16d222fc5f2c0fdc3d0180e0b772516ec6e2eddd/src/llama-hparams.cpp#L131-L141.
+		akl, avl := uint64(a.AttentionKeyLength), uint64(a.AttentionValueLength)
+		if a.AttentionKeyLengthMLA > 0 && a.AttentionValueLengthMLA > 0 {
+			akl, avl = uint64(a.AttentionKeyLengthMLA), uint64(a.AttentionValueLengthMLA)
+		}
+		headsKVOfLayer := func(i uint64) uint64 {
+			if i < uint64(len(a.AttentionHeadCountKVs)) {
+				return a.AttentionHeadCountKVs[i]
 			}
-			kGQA := akl * a.AttentionHeadCountKV
-			vGQA := avl * a.AttentionHeadCountKV
-			kps, vps := kGQA*nKV, vGQA*nKV
-			krs, vrs := o.LMCCacheKeyType.RowSizeOf([]uint64{kps}), o.LMCCacheValueType.RowSizeOf([]uint64{vps})
+			return a.AttentionHeadCountKV
+		}
 
-			if !usingSWA {
-				// Only the full (self-)attention layers hold a KV cache, which is every layer
-				// unless the architecture declares how it interleaves them.
-				e.Devices[0].KVCache.Key += GGUFBytesScalar(krs * nFullAttentionLayers[0])
-				e.Devices[0].KVCache.Value += GGUFBytesScalar(vrs * nFullAttentionLayers[0])
-				e.Devices[0].Parameter.KVCache += GGUFParametersScalar((kps + vps) * nFullAttentionLayers[0])
-				if !*o.LMCOffloadKVCache {
-					e.Devices[0].KVCache.Key += GGUFBytesScalar(krs * nFullAttentionOffloadLayers)
-					e.Devices[0].KVCache.Value += GGUFBytesScalar(vrs * nFullAttentionOffloadLayers)
-					e.Devices[0].Parameter.KVCache += GGUFParametersScalar((kps + vps) * nFullAttentionOffloadLayers)
-				} else if !zeroOffload {
-					for i := range e.Devices[1:] {
-						e.Devices[i+1].KVCache.Key += GGUFBytesScalar(krs * nFullAttentionLayers[i+1])
-						e.Devices[i+1].KVCache.Value += GGUFBytesScalar(vrs * nFullAttentionLayers[i+1])
-						e.Devices[i+1].Parameter.KVCache += GGUFParametersScalar((kps + vps) * nFullAttentionLayers[i+1])
-					}
-				}
-			} else {
-				// Sliding window attention size,
-				// see https://github.com/ggml-org/llama.cpp/blob/3079e9ac8e04ef6eddeb0c164d72edb6b6fd2df5/src/llama-kv-cache.cpp#L1640-L1642.
-				swas := min(nKV, GGMLPadding(a.AttentionSlidingWindow*nSeq+uint64(*o.LMCLogicalBatchSize), paddingAlign))
-				swaKps, swaVps := kGQA*swas, vGQA*swas
-				swaKrs, swaVrs := o.LMCCacheKeyType.RowSizeOf([]uint64{swaKps}), o.LMCCacheValueType.RowSizeOf([]uint64{swaVps})
+		// Sliding window attention size,
+		// see https://github.com/ggml-org/llama.cpp/blob/3079e9ac8e04ef6eddeb0c164d72edb6b6fd2df5/src/llama-kv-cache.cpp#L1640-L1642.
+		swas := min(nKV, GGMLPadding(a.AttentionSlidingWindow*nSeq+uint64(*o.LMCLogicalBatchSize), paddingAlign))
 
-				nNonSWALoadLayers, nNonSWAOffloadLayers := nLoadLayers-nSWALoadLayers, nOffloadLayers-nSWAOffloadLayers
-
-				e.Devices[0].KVCache.Key += GGUFBytesScalar(swaKrs*nSWALoadLayers + krs*nNonSWALoadLayers)
-				e.Devices[0].KVCache.Value += GGUFBytesScalar(swaVrs*nSWALoadLayers + vrs*nNonSWALoadLayers)
-				e.Devices[0].Parameter.KVCache += GGUFParametersScalar((swaKps+swaVps)*nSWALoadLayers + (kps+vps)*nNonSWALoadLayers)
-				if !*o.LMCOffloadKVCache {
-					e.Devices[0].KVCache.Key += GGUFBytesScalar(swaKrs*nSWAOffloadLayers + krs*nNonSWAOffloadLayers)
-					e.Devices[0].KVCache.Value += GGUFBytesScalar(swaVrs*nSWAOffloadLayers + vrs*nNonSWAOffloadLayers)
-					e.Devices[0].Parameter.KVCache += GGUFParametersScalar((swaKps+swaVps)*nSWAOffloadLayers + (kps+vps)*nNonSWAOffloadLayers)
-				} else if !zeroOffload {
-					for i, d := range e.Devices[1:] {
-						e.Devices[i+1].KVCache.Key += GGUFBytesScalar(swaKrs*d.HandleSWALayers + krs*(d.HandleLayers-d.HandleSWALayers))
-						e.Devices[i+1].KVCache.Value += GGUFBytesScalar(swaVrs*d.HandleSWALayers + vrs*(d.HandleLayers-d.HandleSWALayers))
-						e.Devices[i+1].Parameter.KVCache += GGUFParametersScalar((swaKps+swaVps)*d.HandleSWALayers + (kps+vps)*(d.HandleLayers-d.HandleSWALayers))
-					}
-				}
+		charge := func(device int, key, value, parameter uint64) {
+			e.Devices[device].KVCache.Key += GGUFBytesScalar(key)
+			e.Devices[device].KVCache.Value += GGUFBytesScalar(value)
+			e.Devices[device].Parameter.KVCache += GGUFParametersScalar(parameter)
+		}
+		for i := uint64(0); i < a.BlockCount; i++ {
+			device := 0
+			if i < uint64(len(layerDevices)) {
+				device = layerDevices[i]
 			}
+			if device > 0 && !*o.LMCOffloadKVCache {
+				// The host holds the cache of every offloaded layer without KV offloading.
+				device = 0
+			}
+			fullAttention, recurrent := a.memoryKindOfLayer(i)
+			if recurrent {
+				charge(device, rrs, srs, rrs+srs)
+			}
+			if !fullAttention {
+				continue
+			}
+			kGQA, vGQA := akl*headsKVOfLayer(i), avl*headsKVOfLayer(i)
+			if kGQA == 0 && vGQA == 0 {
+				// Attention-free layer, a Deci-style dummy block.
+				continue
+			}
+			n := nKV
+			if usingSWA && (a.AttentionSlidingWindowPattern == 0 || i%uint64(a.AttentionSlidingWindowPattern) != 0) {
+				n = swas
+			}
+			kps, vps := kGQA*n, vGQA*n
+			charge(device,
+				o.LMCCacheKeyType.RowSizeOf([]uint64{kps}),
+				o.LMCCacheValueType.RowSizeOf([]uint64{vps}),
+				kps+vps)
 		}
 	}
 
@@ -707,9 +673,9 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		// A hybrid architecture holding a KV cache above needs the inputs of its full (self-)attention
 		// layers here as well, otherwise it silently loses `inpPos + inpKQMask`.
 		//
-		// TODO(thxCode): so does a hybrid architecture declaring no interleaving, like Jamba,
+		// TODO(thxCode): so does a hybrid architecture declaring no interleaving, like Falcon-H1,
 		// but charging it here changes the estimate of architectures shipping today.
-		case a.interleavesFullAttention():
+		case a.interleavesAttention():
 			e.Devices[0].Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + inpPos + inpKQMask + 2*inpSMask + inpSSeq + inpOutIds)
 		case a.AttentionRecurrent:
 			e.Devices[0].Computation.Input = GGUFBytesScalar(inpTokens + inpEmbd + 2*inpSMask + inpSSeq + inpOutIds)
@@ -719,7 +685,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		{
 			var v GGUFBytesScalar
 			switch {
-			case a.interleavesFullAttention():
+			case a.interleavesAttention():
 				v = GGUFBytesScalar(inpEmbd + inpPos + inpKQMask + inpSMask + inpSSeq)
 			case a.AttentionRecurrent:
 				v = GGUFBytesScalar(inpEmbd + inpSMask + inpSSeq)

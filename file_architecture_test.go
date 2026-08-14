@@ -3,6 +3,7 @@ package gguf_parser
 import (
 	"context"
 	"os"
+	"slices"
 	"testing"
 
 	"github.com/davecgh/go-spew/spew"
@@ -132,6 +133,28 @@ func TestGGUFArchitecture_memoryKindOfLayer(t *testing.T) {
 			fullAttention: []bool{true, true, true, true, true, true, true, true},
 			recurrent:     []bool{false, false, false, false, false, false, false, false},
 		},
+		{
+			// LFM2 declares its interleaving with zero entries in the per-layer head_count_kv:
+			// the zero layers are recurrent (short convolution), the others full (self-)attention.
+			name: "hybrid with per-layer KV heads",
+			arch: GGUFArchitecture{
+				BlockCount: 8, AttentionRecurrent: true, AttentionHybrid: true,
+				AttentionHeadCountKVs: []uint64{0, 0, 8, 0, 8, 0, 8, 8},
+			},
+			fullAttention: []bool{false, false, true, false, true, false, true, true},
+			recurrent:     []bool{true, true, false, true, false, true, false, false},
+		},
+		{
+			// The per-layer head_count_kv says which layer is which exactly,
+			// so it takes precedence over a declared interval.
+			name: "per-layer KV heads over a full attention interval",
+			arch: GGUFArchitecture{
+				BlockCount: 8, AttentionRecurrent: true, AttentionHybrid: true,
+				FullAttentionInterval: 4, AttentionHeadCountKVs: []uint64{8, 0, 0, 0, 8, 0, 0, 0},
+			},
+			fullAttention: []bool{true, false, false, false, true, false, false, false},
+			recurrent:     []bool{false, true, true, true, false, true, true, true},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -145,6 +168,50 @@ func TestGGUFArchitecture_memoryKindOfLayer(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestGGUFFile_Architecture_PerLayerKVHeads(t *testing.T) {
+	ctx := context.Background()
+
+	// LFM2 declares "lfm2.attention.head_count_kv" as a per-layer array:
+	// 6 of its 16 layers hold a KV cache with 8 KV heads,
+	// the 10 zero layers hold a short convolution state instead.
+	f, err := ParseGGUFFileFromHuggingFace(
+		ctx,
+		"LiquidAI/LFM2-1.2B-GGUF",
+		"LFM2-1.2B-Q8_0.gguf",
+		SkipLargeMetadata())
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	a := f.Architecture()
+	if a.Architecture != "lfm2" || a.BlockCount != 16 {
+		t.Fatalf("architecture: got %q with %d blocks, want %q with 16 blocks",
+			a.Architecture, a.BlockCount, "lfm2")
+	}
+	wantKVs := []uint64{0, 0, 8, 0, 0, 8, 0, 0, 8, 0, 8, 0, 8, 0, 8, 0}
+	if !slices.Equal(a.AttentionHeadCountKVs, wantKVs) {
+		t.Errorf("AttentionHeadCountKVs: got %v, want %v", a.AttentionHeadCountKVs, wantKVs)
+	}
+	if a.AttentionHeadCountKV != 8 {
+		t.Errorf("AttentionHeadCountKV: got %d, want 8", a.AttentionHeadCountKV)
+	}
+	if a.ShortConvLCache != 3 {
+		t.Errorf("ShortConvLCache: got %d, want 3", a.ShortConvLCache)
+	}
+	if !a.AttentionHybrid || !a.AttentionRecurrent {
+		t.Errorf("AttentionHybrid/AttentionRecurrent: got %v/%v, want true/true",
+			a.AttentionHybrid, a.AttentionRecurrent)
+	}
+	for i, wantAttention := range []bool{false, false, true, false} {
+		fullAttention, recurrent := a.memoryKindOfLayer(uint64(i))
+		if fullAttention != wantAttention || recurrent == wantAttention {
+			t.Errorf("layer %d: got fullAttention=%v recurrent=%v, want fullAttention=%v recurrent=%v",
+				i, fullAttention, recurrent, wantAttention, !wantAttention)
+		}
 	}
 }
 
