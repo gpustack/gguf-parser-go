@@ -1638,7 +1638,7 @@ func (rd _GGUFReader) ReadArray(key string) (v GGUFMetadataKVArrayValue, err err
 		return v, fmt.Errorf("seek array item start: %w", err)
 	}
 
-	if !rd.o.SkipLargeMetadata || stringx.HasSuffixes(key, ".feed_forward_length", ".attention.head_count") {
+	if !rd.o.SkipLargeMetadata || stringx.HasSuffixes(key, ".feed_forward_length", ".attention.head_count", ".attention.head_count_kv") {
 		v.Array = make([]any, v.Len)
 		for i := uint64(0); i < v.Len; i++ {
 			v.Array[i], err = rd.ReadValue(key, v.Type)

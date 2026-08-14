@@ -404,3 +404,58 @@ func TestGGUFFile_EstimateLLaMACppRun_HybridInterleavedKVCache(t *testing.T) {
 		t.Errorf("KV cache without a declared interval: got %s, want about 10 GiB", GGUFBytesScalar(undeclared))
 	}
 }
+
+func TestGGUFFile_EstimateLLaMACppRun_PerLayerKVHeadsKVCache(t *testing.T) {
+	ctx := context.Background()
+
+	// LFM2 marks its 10 short-convolution layers with zero entries in the per-layer
+	// "lfm2.attention.head_count_kv"; the other 6 layers hold a KV cache with 8 KV heads.
+	// llama.cpp allocates the two caches from complementary per-layer filters,
+	// see https://github.com/ggml-org/llama.cpp/blob/16d222fc5f2c0fdc3d0180e0b772516ec6e2eddd/src/models/lfm2.cpp#L9-L11.
+	f, err := ParseGGUFFileFromHuggingFace(
+		ctx,
+		"LiquidAI/LFM2-1.2B-GGUF",
+		"LFM2-1.2B-Q8_0.gguf",
+		SkipLargeMetadata())
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	// Full offload places every block on the single GPU device.
+	kvCache := func(contextSize int32) uint64 {
+		return uint64(f.EstimateLLaMACppRun(WithLLaMACppContextSize(contextSize)).Devices[1].KVCache.Sum())
+	}
+
+	// Each of the 6 attention layers caches 8 kv heads * (64 key + 64 value) head size *
+	// 32768 context * 2 bytes, which is 64 MiB; the 10 short-convolution layers hold
+	// n_embd * (l_cache - 1) floats each, about 16 KiB, independent of the context.
+	const mib = 1 << 20
+	got := kvCache(32768)
+	if got < 384*mib || got > 386*mib {
+		t.Errorf("KV cache at 32768 context: got %s, want within [384 MiB, 386 MiB]", GGUFBytesScalar(got))
+	}
+
+	// An eighth of the context caches an eighth of the KV, over the same constant state.
+	if gotSmall := kvCache(4096); gotSmall < 48*mib || gotSmall > 50*mib {
+		t.Errorf("KV cache at 4096 context: got %s, want within [48 MiB, 50 MiB]", GGUFBytesScalar(gotSmall))
+	}
+
+	// Splitting the blocks over two GPU devices splits the interleaved KV cache with them,
+	// while not offloading it puts all of it back on the host device.
+	split := f.EstimateLLaMACppRun(WithLLaMACppContextSize(32768), WithTensorSplitFraction([]float64{0.5, 1}))
+	var splitted uint64
+	for i := range split.Devices[1:] {
+		if split.Devices[i+1].KVCache.Sum() == 0 {
+			t.Errorf("KV cache of the device %d: got 0, want more", i+1)
+		}
+		splitted += uint64(split.Devices[i+1].KVCache.Sum())
+	}
+	if splitted != got {
+		t.Errorf("KV cache over two devices: got %s, want %s", GGUFBytesScalar(splitted), GGUFBytesScalar(got))
+	}
+	hosted := f.EstimateLLaMACppRun(WithLLaMACppContextSize(32768), WithoutLLaMACppOffloadKVCache())
+	if uint64(hosted.Devices[0].KVCache.Sum()) != got {
+		t.Errorf("KV cache without offloading: got %s, want %s", hosted.Devices[0].KVCache.Sum(), GGUFBytesScalar(got))
+	}
+}
