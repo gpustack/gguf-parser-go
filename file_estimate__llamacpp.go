@@ -266,7 +266,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 	}
 
 	// Using sliding window attention.
-	usingSWA := a.AttentionSlidingWindowPattern != 1 && !o.LMCFullSizeSWACache
+	usingSWA := a.usesSlidingWindowAttention() && !o.LMCFullSizeSWACache
 
 	// Full offload: nLoadLayers == 0 && isOffloadOutputLayer
 	// Zero offload: nOffloadLayers == 0
@@ -317,7 +317,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			case i < nLoadLayers:
 				e.Devices[0].HandleLayers += 1
 				e.Devices[0].HandleLastLayer = int(i)
-				if usingSWA && (a.AttentionSlidingWindowPattern == 0 || i%uint64(a.AttentionSlidingWindowPattern) != 0) {
+				if usingSWA && a.isSWALayer(i) {
 					e.Devices[0].HandleSWALayers += 1
 				}
 			case i >= offloadStart:
@@ -328,7 +328,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 				}
 				e.Devices[j+1].HandleLayers += 1
 				e.Devices[j+1].HandleLastLayer = int(i)
-				if usingSWA && (a.AttentionSlidingWindowPattern == 0 || i%uint64(a.AttentionSlidingWindowPattern) != 0) {
+				if usingSWA && a.isSWALayer(i) {
 					e.Devices[j+1].HandleSWALayers += 1
 				}
 				if fullOffload && i == a.BlockCount-1 {
@@ -595,9 +595,25 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			return a.AttentionHeadCountKV
 		}
 
+		// The sliding window layers may size their heads separately (Gemma 4).
+		swaAkl, swaAvl := akl, avl
+		if a.AttentionKeyLengthSWA > 0 {
+			swaAkl = uint64(a.AttentionKeyLengthSWA)
+		}
+		if a.AttentionValueLengthSWA > 0 {
+			swaAvl = uint64(a.AttentionValueLengthSWA)
+		}
+
 		// Sliding window attention size,
 		// see https://github.com/ggml-org/llama.cpp/blob/3079e9ac8e04ef6eddeb0c164d72edb6b6fd2df5/src/llama-kv-cache.cpp#L1640-L1642.
 		swas := min(nKV, GGMLPadding(a.AttentionSlidingWindow*nSeq+uint64(*o.LMCLogicalBatchSize), paddingAlign))
+
+		// The NextN/MTP blocks of the hybrid family are filtered out of the main context cache,
+		// see https://github.com/ggml-org/llama.cpp/blob/16d222fc5f2c0fdc3d0180e0b772516ec6e2eddd/src/llama-model.cpp#L2290-L2296
+		// and https://github.com/ggml-org/llama.cpp/blob/16d222fc5f2c0fdc3d0180e0b772516ec6e2eddd/src/llama-model.cpp#L2360-L2368;
+		// GLM/DeepSeek-style NextN blocks stay in it.
+		nextNWithoutKV := a.NextNPredictLayers > 0 && (a.interleavesAttention() ||
+			slices.Contains([]string{"step35", "hy-v3", "glm-dsa", "mimo2", "deepseek32"}, a.Architecture))
 
 		charge := func(device int, key, value, parameter uint64) {
 			e.Devices[device].KVCache.Key += GGUFBytesScalar(key)
@@ -605,6 +621,14 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			e.Devices[device].Parameter.KVCache += GGUFParametersScalar(parameter)
 		}
 		for i := uint64(0); i < a.BlockCount; i++ {
+			if a.AttentionKVFromStartLayerCount > 0 && i >= uint64(a.AttentionKVFromStartLayerCount) {
+				// The layer reuses the cache of a leading layer (Gemma3n/Gemma4),
+				// see https://github.com/ggml-org/llama.cpp/blob/16d222fc5f2c0fdc3d0180e0b772516ec6e2eddd/src/llama-model.cpp#L2343-L2352.
+				continue
+			}
+			if nextNWithoutKV && i >= a.BlockCount-uint64(a.NextNPredictLayers) {
+				continue
+			}
 			device := 0
 			if i < uint64(len(layerDevices)) {
 				device = layerDevices[i]
@@ -621,13 +645,14 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 				continue
 			}
 			kGQA, vGQA := akl*headsKVOfLayer(i), avl*headsKVOfLayer(i)
+			n := nKV
+			if usingSWA && a.isSWALayer(i) {
+				kGQA, vGQA = swaAkl*headsKVOfLayer(i), swaAvl*headsKVOfLayer(i)
+				n = swas
+			}
 			if kGQA == 0 && vGQA == 0 {
 				// Attention-free layer, a Deci-style dummy block.
 				continue
-			}
-			n := nKV
-			if usingSWA && (a.AttentionSlidingWindowPattern == 0 || i%uint64(a.AttentionSlidingWindowPattern) != 0) {
-				n = swas
 			}
 			kps, vps := kGQA*n, vGQA*n
 			charge(device,
