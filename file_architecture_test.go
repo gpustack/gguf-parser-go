@@ -75,3 +75,26 @@ func BenchmarkGGUFFile_Architecture(b *testing.B) {
 		_ = f.Architecture()
 	}
 }
+
+func TestGGUFFile_Architecture_FullAttentionInterval(t *testing.T) {
+	ctx := context.Background()
+
+	f, err := ParseGGUFFileFromHuggingFace(
+		ctx,
+		"unsloth/Qwen3.6-27B-GGUF",
+		"Qwen3.6-27B-Q4_K_M.gguf",
+		SkipLargeMetadata())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := f.Architecture()
+	if a.FullAttentionInterval != 4 {
+		t.Errorf("FullAttentionInterval = %d, want 4", a.FullAttentionInterval)
+	}
+	if !a.AttentionHybrid {
+		t.Error("AttentionHybrid = false, want true")
+	}
+	if !a.AttentionRecurrent {
+		t.Error("AttentionRecurrent = false, want true")
+	}
+}

@@ -322,3 +322,28 @@ func TestGGUFFile_EstimateLLaMACppRun_ProjectorFlashAttention(t *testing.T) {
 		})
 	}
 }
+
+func TestHybridAttentionLayerSplit(t *testing.T) {
+	cases := []struct {
+		name      string
+		n         uint64
+		attnEvery uint64
+		attn      uint64
+		recurrent uint64
+	}{
+		{"not hybrid, every layer holds KV", 64, 1, 64, 64},
+		{"zero interval means not hybrid", 64, 0, 64, 64},
+		{"qwen35 shape, one attention layer in four", 64, 4, 16, 48},
+		{"non-divisible layer count floors the attention share", 10, 4, 2, 8},
+		{"fewer layers than the interval", 3, 4, 0, 3},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			attn, recurrent := hybridAttentionLayerSplit(c.n, c.attnEvery)
+			if attn != c.attn || recurrent != c.recurrent {
+				t.Errorf("hybridAttentionLayerSplit(%d, %d) = (%d, %d), want (%d, %d)",
+					c.n, c.attnEvery, attn, recurrent, c.attn, c.recurrent)
+			}
+		})
+	}
+}

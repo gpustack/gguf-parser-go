@@ -553,6 +553,18 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 
 	// KV cache.
 	if a.AttentionCausal {
+		attnEvery := uint64(1)
+		if a.AttentionHybrid && a.FullAttentionInterval > 1 {
+			attnEvery = uint64(a.FullAttentionInterval)
+		}
+		attnLayersOf := func(n uint64) uint64 {
+			attn, _ := hybridAttentionLayerSplit(n, attnEvery)
+			return attn
+		}
+		recurrentLayersOf := func(n uint64) uint64 {
+			_, recurrent := hybridAttentionLayerSplit(n, attnEvery)
+			return recurrent
+		}
 		switch {
 		// Recurrent,
 		// see https://github.com/ggml-org/llama.cpp/blob/704bb7a71c01dc07c1478b85f6322bf5dfde1eaf/src/llama-hparams.cpp#L68-L88.
@@ -569,18 +581,18 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			rps, sps := r*nSeq, s*nSeq
 			rrs, srs := GGMLTypeF32.RowSizeOf([]uint64{rps}), GGMLTypeF32.RowSizeOf([]uint64{sps})
 
-			e.Devices[0].KVCache.Key += GGUFBytesScalar(rrs * nLoadLayers)
-			e.Devices[0].KVCache.Value += GGUFBytesScalar(srs * nLoadLayers)
-			e.Devices[0].Parameter.KVCache += GGUFParametersScalar((rrs + srs) * nLoadLayers)
+			e.Devices[0].KVCache.Key += GGUFBytesScalar(rrs * recurrentLayersOf(nLoadLayers))
+			e.Devices[0].KVCache.Value += GGUFBytesScalar(srs * recurrentLayersOf(nLoadLayers))
+			e.Devices[0].Parameter.KVCache += GGUFParametersScalar((rrs + srs) * recurrentLayersOf(nLoadLayers))
 			if !*o.LMCOffloadKVCache {
-				e.Devices[0].KVCache.Key += GGUFBytesScalar(rrs * nOffloadLayers)
-				e.Devices[0].KVCache.Value += GGUFBytesScalar(srs * nOffloadLayers)
-				e.Devices[0].Parameter.KVCache += GGUFParametersScalar((rrs + srs) * nOffloadLayers)
+				e.Devices[0].KVCache.Key += GGUFBytesScalar(rrs * recurrentLayersOf(nOffloadLayers))
+				e.Devices[0].KVCache.Value += GGUFBytesScalar(srs * recurrentLayersOf(nOffloadLayers))
+				e.Devices[0].Parameter.KVCache += GGUFParametersScalar((rrs + srs) * recurrentLayersOf(nOffloadLayers))
 			} else if !zeroOffload {
 				for i, d := range e.Devices[1:] {
-					e.Devices[i+1].KVCache.Key += GGUFBytesScalar(rrs * d.HandleLayers)
-					e.Devices[i+1].KVCache.Value += GGUFBytesScalar(srs * d.HandleLayers)
-					e.Devices[i+1].Parameter.KVCache += GGUFParametersScalar((rrs + srs) * d.HandleLayers)
+					e.Devices[i+1].KVCache.Key += GGUFBytesScalar(rrs * recurrentLayersOf(d.HandleLayers))
+					e.Devices[i+1].KVCache.Value += GGUFBytesScalar(srs * recurrentLayersOf(d.HandleLayers))
+					e.Devices[i+1].Parameter.KVCache += GGUFParametersScalar((rrs + srs) * recurrentLayersOf(d.HandleLayers))
 				}
 			}
 
@@ -602,18 +614,18 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			krs, vrs := o.LMCCacheKeyType.RowSizeOf([]uint64{kps}), o.LMCCacheValueType.RowSizeOf([]uint64{vps})
 
 			if !usingSWA {
-				e.Devices[0].KVCache.Key += GGUFBytesScalar(krs * nLoadLayers)
-				e.Devices[0].KVCache.Value += GGUFBytesScalar(vrs * nLoadLayers)
-				e.Devices[0].Parameter.KVCache += GGUFParametersScalar((kps + vps) * nLoadLayers)
+				e.Devices[0].KVCache.Key += GGUFBytesScalar(krs * attnLayersOf(nLoadLayers))
+				e.Devices[0].KVCache.Value += GGUFBytesScalar(vrs * attnLayersOf(nLoadLayers))
+				e.Devices[0].Parameter.KVCache += GGUFParametersScalar((kps + vps) * attnLayersOf(nLoadLayers))
 				if !*o.LMCOffloadKVCache {
-					e.Devices[0].KVCache.Key += GGUFBytesScalar(krs * nOffloadLayers)
-					e.Devices[0].KVCache.Value += GGUFBytesScalar(vrs * nOffloadLayers)
-					e.Devices[0].Parameter.KVCache += GGUFParametersScalar((kps + vps) * nOffloadLayers)
+					e.Devices[0].KVCache.Key += GGUFBytesScalar(krs * attnLayersOf(nOffloadLayers))
+					e.Devices[0].KVCache.Value += GGUFBytesScalar(vrs * attnLayersOf(nOffloadLayers))
+					e.Devices[0].Parameter.KVCache += GGUFParametersScalar((kps + vps) * attnLayersOf(nOffloadLayers))
 				} else if !zeroOffload {
 					for i, d := range e.Devices[1:] {
-						e.Devices[i+1].KVCache.Key += GGUFBytesScalar(krs * d.HandleLayers)
-						e.Devices[i+1].KVCache.Value += GGUFBytesScalar(vrs * d.HandleLayers)
-						e.Devices[i+1].Parameter.KVCache += GGUFParametersScalar((kps + vps) * d.HandleLayers)
+						e.Devices[i+1].KVCache.Key += GGUFBytesScalar(krs * attnLayersOf(d.HandleLayers))
+						e.Devices[i+1].KVCache.Value += GGUFBytesScalar(vrs * attnLayersOf(d.HandleLayers))
+						e.Devices[i+1].Parameter.KVCache += GGUFParametersScalar((kps + vps) * attnLayersOf(d.HandleLayers))
 					}
 				}
 			} else {
@@ -1757,4 +1769,19 @@ func (u LLaMACppComputationMemoryUsage) Sum() GGUFBytesScalar {
 // see https://github.com/ggml-org/llama.cpp/blob/cdf94a18023c92f41808ec874ba577d914674717/tools/mtmd/clip-impl.h#L114-L115.
 func ClipAligning(x, n uint64) uint64 {
 	return ((x + n - 1) / n) * n
+}
+
+// hybridAttentionLayerSplit returns how many of n layers hold a growing
+// (causal) KV cache and how many hold recurrent state, for a hybrid
+// architecture whose full-attention layers repeat every attnEvery-th layer,
+// see https://github.com/ggml-org/llama.cpp/blob/master/src/llama-hparams.cpp (is_recurrent).
+// An attnEvery below 2 means the model is not hybrid: every layer holds
+// causal KV, and a pure-recurrent model keeps state on every layer, so both
+// counts are n and the caller's branch selection decides which applies.
+func hybridAttentionLayerSplit(n, attnEvery uint64) (attn, recurrent uint64) {
+	if attnEvery <= 1 {
+		return n, n
+	}
+	attn = n / attnEvery
+	return attn, n - attn
 }

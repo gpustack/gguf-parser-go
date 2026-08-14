@@ -129,6 +129,9 @@ type (
 		SSMTimeStepRank uint32 `json:"ssmTimeStepRank,omitempty"`
 		// SSMGroupCount is the number of groups in the SSM and similar architectures.
 		SSMGroupCount uint32 `json:"ssmGroupCount,omitempty"`
+		// FullAttentionInterval is the layer interval holding a full-attention KV cache
+		// in hybrid architectures, 0 (or 1) when every layer does.
+		FullAttentionInterval uint32 `json:"fullAttentionInterval,omitempty"`
 		// WKVHeadSize is the size of the head in RWKV and similar architectures.
 		RWKVHeadSize uint32 `json:"rwkvHeadSize,omitempty"`
 		// RWKVRescaleEveryNLayers is the number of layers after which the rescaling is applied in RWKV and similar architectures.
@@ -871,11 +874,12 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 
 		poolingTypeKey = arch + ".pooling_type"
 
-		ssmConvolutionKernelKey = arch + ".ssm.conv_kernel"
-		ssmInnerSizeKey         = arch + ".ssm.inner_size"
-		ssmStateSizeKey         = arch + ".ssm.state_size"
-		ssmTimeStepRankKey      = arch + ".ssm.time_step_rank"
-		ssmGroupCountKey        = arch + ".ssm.group_count"
+		ssmConvolutionKernelKey  = arch + ".ssm.conv_kernel"
+		ssmInnerSizeKey          = arch + ".ssm.inner_size"
+		ssmStateSizeKey          = arch + ".ssm.state_size"
+		ssmTimeStepRankKey       = arch + ".ssm.time_step_rank"
+		ssmGroupCountKey         = arch + ".ssm.group_count"
+		fullAttentionIntervalKey = arch + ".full_attention_interval"
 
 		rwkvHeadSizeKey                = arch + ".wkv.head_size"
 		rwkvRescaleEveryNLayersKey     = arch + ".rescale_every_n_layers"
@@ -930,6 +934,7 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 		ssmStateSizeKey,
 		ssmTimeStepRankKey,
 		ssmGroupCountKey,
+		fullAttentionIntervalKey,
 		rwkvHeadSizeKey,
 		rwkvRescaleEveryNLayersKey,
 		rwkvTimeMixExtraDimensionKey,
@@ -1062,6 +1067,9 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 	} else {
 		ga.AttentionCausal = true
 	}
+	if v, ok := m[fullAttentionIntervalKey]; ok {
+		ga.FullAttentionInterval = ValueNumeric[uint32](v)
+	}
 	// See https://github.com/ggml-org/llama.cpp/blob/6491d6e4f1caf0ad2221865b4249ae6938a6308c/src/llama-arch.cpp#L1913-L1924.
 	ga.AttentionRecurrent = slices.Contains([]string{ // TODO(thxCode): calculate this from the metadata.
 		"mamba",
@@ -1072,11 +1080,12 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 		"arwkv7",
 	}, ga.Architecture)
 	// See https://github.com/ggml-org/llama.cpp/blob/a57d1bcb3c0165ac87b1f0dbb429839b0da69689/src/llama-arch.cpp#L2029-L2038.
-	ga.AttentionHybrid = slices.Contains([]string{ // TODO(thxCode): calculate this from the metadata.
-		"jamba",
-		"falcon-h1",
-		"granitehybrid",
-	}, ga.Architecture)
+	ga.AttentionHybrid = ga.FullAttentionInterval > 1 ||
+		slices.Contains([]string{ // TODO(thxCode): calculate this from the metadata.
+			"jamba",
+			"falcon-h1",
+			"granitehybrid",
+		}, ga.Architecture)
 	ga.AttentionRecurrent = ga.AttentionHybrid || ga.AttentionRecurrent
 
 	if v, ok := m[ropeDimensionCountKey]; ok {
