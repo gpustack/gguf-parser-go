@@ -1121,7 +1121,11 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 	// TODO(thxCode): drop the remaining entries once their interleaving can be read as well.
 	// Falcon-H1 has none to read, it runs attention and recurrence in parallel on every layer.
 	// Jamba and Granite-Hybrid declare theirs per layer in `<architecture>.attention.head_count_kv`,
-	// which needs AttentionHeadCountKV above to become per layer as well.
+	// which needs AttentionHeadCountKV above to become per layer as well. LFM2 declares it the same
+	// way but is absent from this list entirely: its array reads `[0 0 8 0 0 8 ...]`, so
+	// AttentionHeadCountKV takes the 0 of the leading convolution layer and the estimate charges no
+	// KV cache on any layer, under-estimating instead of over-estimating,
+	// see https://github.com/ggml-org/llama.cpp/blob/272700b360944e40816a7ea13da8cd723119000a/src/models/lfm2.cpp#L9-L11.
 	ga.AttentionHybrid = ga.FullAttentionInterval > 1 || slices.Contains([]string{
 		"jamba",
 		"falcon-h1",
