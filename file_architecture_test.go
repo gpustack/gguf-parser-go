@@ -37,7 +37,7 @@ func TestGGUFFile_Architecture_ClipProjectorType(t *testing.T) {
 		{"vision only", "ggml-org/pixtral-12b-GGUF", "mmproj-pixtral-12b-f16.gguf", "pixtral"},
 		// Mixed-modality projectors declare "clip.vision.projector_type" instead,
 		// see https://github.com/gpustack/gguf-parser-go/issues/25.
-		{"vision and audio", "ggml-org/gemma-4-12B-it-GGUF", "mmproj-gemma-4-12B-it-bf16.gguf", "gemma4uv"},
+		{"vision and audio", "ggml-org/gemma-4-12B-it-GGUF", "mmproj-gemma-4-12B-it-BF16.gguf", "gemma4uv"},
 		// Audio-only projectors of the same generation declare "clip.audio.projector_type" only.
 		{"audio only", "elizaos/eliza-1", "voice/asr/eliza-1-asr-mmproj.gguf", "qwen3a"},
 	}
