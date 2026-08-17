@@ -301,7 +301,7 @@ func TestGGUFFile_EstimateLLaMACppRun_ProjectorFlashAttention(t *testing.T) {
 		{"audio", "ggml-org/ultravox-v0_5-llama-3_2-1b-GGUF", "mmproj-ultravox-v0_5-llama-3_2-1b-f16.gguf"},
 		// Declares no attention head count, so the encoder's attention is not modeled at all;
 		// enabling flash attention must not conjure a buffer the estimate did not charge before.
-		{"without attention head count", "ggml-org/gemma-4-12B-it-GGUF", "mmproj-gemma-4-12B-it-bf16.gguf"},
+		{"without attention head count", "ggml-org/gemma-4-12B-it-GGUF", "mmproj-gemma-4-12B-it-BF16.gguf"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
