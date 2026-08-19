@@ -66,7 +66,7 @@ lint:
 test:
 	@echo "+++ $@ +++"
 
-	go test -v -failfast -race -cover -timeout=30m $(SRCDIR)/...
+	go test -v -race -cover -timeout=30m $(SRCDIR)/...
 
 	@echo "--- $@ ---"
 
