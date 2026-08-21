@@ -478,7 +478,11 @@ func parseGGUFFile(fs []_GGUFFileReadSeeker, o _GGUFReadOptions) (_ *GGUFFile, e
 			if v, ok := gf.Header.MetadataKV.Get("general.alignment"); ok {
 				ag = v.ValueUint32()
 			}
-			padding = int64(ag) - (pds % int64(ag))
+			// A header that already ends on the alignment boundary needs no
+			// padding. Without the outer modulo this adds a whole alignment
+			// block, putting TensorDataStartOffset past where the data starts
+			// and understating ModelSize by the same amount.
+			padding = (int64(ag) - pds%int64(ag)) % int64(ag)
 		}
 		if len(fs) == 1 {
 			gf.Padding = padding
