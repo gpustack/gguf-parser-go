@@ -507,6 +507,25 @@ func parseGGUFFile(fs []_GGUFFileReadSeeker, o _GGUFReadOptions) (_ *GGUFFile, e
 		gf.SplitModelSizes = append(gf.SplitModelSizes, modelSize)
 	}
 
+	// tensor data consistency
+	//
+	// A tensor type identifies a block layout. A file written with a different
+	// layout under the same type id declares tensors whose bytes the file cannot
+	// hold, and llama.cpp refuses it with "failed to read tensor data". Reporting
+	// such a file as parsed tells a caller it can load something it cannot.
+	// Checked only for a single file, where every tensor is accounted for by one
+	// offset and one size.
+	if len(fs) == 1 && gf.TensorDataStartOffset >= 0 &&
+		uint64(gf.TensorDataStartOffset) <= uint64(gf.Size) {
+		held := uint64(gf.Size) - uint64(gf.TensorDataStartOffset)
+		if want := gf.TensorInfos.Bytes(); want > held {
+			return nil, fmt.Errorf(
+				"tensor data needs %d bytes but only %d follow the header: "+
+					"a tensor type's block layout does not match how the file was written",
+				want, held)
+		}
+	}
+
 	// model parameters
 	gf.ModelParameters = GGUFParametersScalar(gf.TensorInfos.Elements())
 
