@@ -278,6 +278,10 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		idxOutputDevice      int
 
 		fullOffload, zeroOffload bool
+		// Whether the output layer sits on an offload device. llama.cpp counts it
+		// inside n_gpu_layers and fills from the end, so it is offloaded before
+		// any block is, not after all of them.
+		isOffloadOutputLayer bool
 
 		// The device that holds each layer, as e.Devices is indexed:
 		// 0 for the host, 1+N for the N-th offload device.
@@ -286,19 +290,19 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		layerDevices = make([]int, min(a.BlockCount, maxSaneBlockCount))
 	)
 	{
-		var isOffloadOutputLayer bool
-
 		switch v := o.LMCOffloadLayers; {
 		case v == nil:
-			o.LMCOffloadLayers = ptr.To(a.BlockCount)
+			o.LMCOffloadLayers = ptr.To(a.BlockCount + 1)
 			nOffloadLayers = a.BlockCount
 			isOffloadOutputLayer = true
 		case *v != 0:
-			nOffloadLayers = *v
-			if nOffloadLayers > a.BlockCount {
-				isOffloadOutputLayer = true
-				nOffloadLayers = a.BlockCount
-			}
+			// i_gpu_start = max(n_layer_all + 1 - n_gpu_layers, 0), so the count
+			// spans the blocks plus the output layer and the output is the first
+			// thing to land on the card. --gpu-layers 28 on a 28 block model puts
+			// blocks 1..27 and the output on the device and leaves block 0 on the
+			// host, which llama.cpp reports as "offloaded 28/29 layers".
+			isOffloadOutputLayer = true
+			nOffloadLayers = min(*v-1, a.BlockCount)
 		}
 		nActualOffloadLayers = nOffloadLayers
 		if isOffloadOutputLayer {
@@ -331,12 +335,17 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 				if usingSWA && a.isSWALayer(i) {
 					e.Devices[j+1].HandleSWALayers += 1
 				}
-				if fullOffload && i == a.BlockCount-1 {
+				if isOffloadOutputLayer && i == a.BlockCount-1 {
 					idxOutputDevice = j + 1
 				}
 			}
 		}
 
+		// An offload that reaches the output layer but no block leaves the loop
+		// above with nothing to key off, so name the first offload device here.
+		if isOffloadOutputLayer && idxOutputDevice == 0 && len(e.Devices) > 1 {
+			idxOutputDevice = 1
+		}
 		e.Devices[idxOutputDevice].HandleOutputLayer = true
 	}
 
@@ -554,7 +563,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			ps = GGUFParametersScalar(opLs.Elements() + ipLs.Elements())
 		}
 		e.Devices[0].Weight.Output = wg
-		if fullOffload {
+		if idxOutputDevice != 0 {
 			e.Devices[idxOutputDevice].Weight.Output = wg
 			e.Devices[idxOutputDevice].Parameter.Output = ps
 		} else {

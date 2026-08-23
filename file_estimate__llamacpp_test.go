@@ -655,3 +655,51 @@ func TestGGUFFile_EstimateLLaMACppRun_OutputBufferStaysOnHost(t *testing.T) {
 		})
 	}
 }
+
+func TestGGUFFile_EstimateLLaMACppRun_OutputLayerCountsWithinOffloadLayers(t *testing.T) {
+	// llama.cpp fills the card from the end and counts the output layer inside
+	// n_gpu_layers: i_gpu_start = max(n_layer_all + 1 - n_gpu_layers, 0). The
+	// output layer is therefore the first thing offloaded, not the last. At
+	// --gpu-layers 1 it assigns layer n_layer_all, the output, to the device and
+	// leaves every block on the host.
+	ctx := context.Background()
+
+	f, err := ParseGGUFFileFromHuggingFace(
+		ctx,
+		"NousResearch/Hermes-2-Pro-Mistral-7B-GGUF",
+		"Hermes-2-Pro-Mistral-7B.Q5_K_M.gguf",
+		SkipLargeMetadata())
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+	blocks := f.Architecture().BlockCount
+
+	cases := []struct {
+		name        string
+		layers      uint64
+		wantBlocks  uint64
+		wantOutputs bool
+	}{
+		{"zero offloads nothing", 0, 0, false},
+		{"one offloads the output layer alone", 1, 0, true},
+		{"two offloads the output layer and one block", 2, 1, true},
+		{"block count leaves one block on the host", blocks, blocks - 1, true},
+		{"one past the block count offloads everything", blocks + 1, blocks, true},
+		{"beyond that is clamped", blocks + 10, blocks, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			e := f.EstimateLLaMACppRun(WithLLaMACppOffloadLayers(tc.layers))
+			if e.OffloadLayers != tc.wantBlocks {
+				t.Errorf("offloaded blocks = %d, want %d", e.OffloadLayers, tc.wantBlocks)
+			}
+			// Devices[0] is the host; the output layer is on a device only when
+			// the offload reaches it.
+			onHost := e.Devices[0].HandleOutputLayer
+			if onHost == tc.wantOutputs {
+				t.Errorf("output layer on host = %v, want it on a device = %v", onHost, tc.wantOutputs)
+			}
+		})
+	}
+}
