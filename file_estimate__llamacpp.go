@@ -447,15 +447,20 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 
 		// Output buffer,
 		// see https://github.com/ggerganov/llama.cpp/blob/7672adeec7a79ea271058c63106c142ba84f951a/llama.cpp#L11940-L12003.
+		//
+		// This is host memory whatever the offload. llama_context::output_reserve
+		// allocates it from ggml_backend_cpu_buffer_type, or from the output
+		// device's *host* buffer type when it has one, which is pinned system
+		// memory chosen "for faster transfer to system memory" rather than VRAM:
+		// https://github.com/ggml-org/llama.cpp/blob/master/src/llama-context.cpp
+		// (llama_context::output_reserve, the buf_output allocation).
+		// Charging it to the output device instead reported ~700 MiB of VRAM that
+		// no card ever holds, which is enough to reject a model that fits.
 		ob := a.EmbeddingLength * nOutputs * 4 /* float32 size */
 		if a.AttentionCausal {
 			ob += a.VocabularyLength * nOutputs * 4 /* float32 size */
 		}
-		if fullOffload {
-			e.Devices[idxOutputDevice].Footprint += GGUFBytesScalar(ob)
-		} else {
-			e.Devices[0].Footprint += GGUFBytesScalar(ob)
-		}
+		e.Devices[0].Footprint += GGUFBytesScalar(ob)
 	}
 
 	// Weight & Parameter.

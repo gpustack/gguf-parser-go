@@ -593,3 +593,53 @@ func TestGGUFFile_EstimateLLaMACppRun_LFM2SlidingWindowKVCache(t *testing.T) {
 			GGUFBytesScalar(after), GGUFBytesScalar(before))
 	}
 }
+
+func TestGGUFFile_EstimateLLaMACppRun_OutputBufferStaysOnHost(t *testing.T) {
+	// llama_context::output_reserve allocates the logits buffer from
+	// ggml_backend_cpu_buffer_type, or from the output device's host buffer type,
+	// which is pinned system memory rather than VRAM. Offloading every layer must
+	// therefore not move that buffer onto the card. Charging it to the device
+	// reported roughly 700 MiB of VRAM that no card holds, which is enough to
+	// reject a model that fits.
+	ctx := context.Background()
+
+	f, err := ParseGGUFFileFromHuggingFace(
+		ctx,
+		"NousResearch/Hermes-2-Pro-Mistral-7B-GGUF",
+		"Hermes-2-Pro-Mistral-7B.Q5_K_M.gguf",
+		SkipLargeMetadata())
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	const ctxSize, batchSize = 4096, 512
+	a := f.Architecture()
+	// nOutputs is min(context, physical batch); the buffer is float32.
+	nOutputs := uint64(batchSize)
+	wantAtLeast := (a.EmbeddingLength + a.VocabularyLength) * nOutputs * 4
+
+	base := []GGUFRunEstimateOption{
+		WithLLaMACppContextSize(ctxSize),
+		WithLLaMACppLogicalBatchSize(batchSize),
+		WithLLaMACppPhysicalBatchSize(batchSize),
+	}
+
+	cases := []struct {
+		name   string
+		layers uint64
+	}{
+		{"at the block count", a.BlockCount},
+		{"past the block count", a.BlockCount + 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			e := f.EstimateLLaMACppRun(append(append([]GGUFRunEstimateOption{}, base...),
+				WithLLaMACppOffloadLayers(tc.layers))...)
+			if got := uint64(e.Devices[0].Footprint); got < wantAtLeast {
+				t.Errorf("host footprint %d is below the output buffer alone (%d): the buffer was charged to a device",
+					got, wantAtLeast)
+			}
+		})
+	}
+}
