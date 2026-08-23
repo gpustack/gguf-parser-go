@@ -640,6 +640,18 @@ func TestGGUFFile_EstimateLLaMACppRun_OutputBufferStaysOnHost(t *testing.T) {
 				t.Errorf("host footprint %d is below the output buffer alone (%d): the buffer was charged to a device",
 					got, wantAtLeast)
 			}
+			// The same bytes are also reached through Computation.Output. Both
+			// belong to the host, and charging either to a device counts the
+			// logits twice.
+			if got := uint64(e.Devices[0].Computation.Output); got < wantAtLeast {
+				t.Errorf("host Computation.Output %d is below the output buffer alone (%d): the projection was charged to a device",
+					got, wantAtLeast)
+			}
+			for i, d := range e.Devices[1:] {
+				if got := uint64(d.Computation.Output); got != 0 {
+					t.Errorf("device %d carries Computation.Output %d, but logits live on the host", i+1, got)
+				}
+			}
 		})
 	}
 }

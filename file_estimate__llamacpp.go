@@ -902,7 +902,12 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 				rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
 				outInc += rs
 			}
-			e.Devices[idxOutputDevice].Computation.Output += GGUFBytesScalar(outInc)
+			// Host, for the same reason as the output buffer above: what the output
+			// projection produces is logits, and llama_context::output_reserve keeps
+			// them in system memory whatever the offload. Charging them to the output
+			// device counted the same bytes a second time, on a card that never holds
+			// them.
+			e.Devices[0].Computation.Output += GGUFBytesScalar(outInc)
 		}
 	}
 
