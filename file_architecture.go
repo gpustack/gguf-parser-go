@@ -1423,6 +1423,6 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 // row and it lives on the host. A speculator or draft head scores every position
 // it proposes, so the output projection is a full vocabulary by batch tensor on
 // the device that holds the head.
-func (a GGUFArchitecture) emitsLogitsAtEveryPosition() bool {
-	return slices.Contains([]string{"eagle3"}, a.Architecture)
+func (ga GGUFArchitecture) emitsLogitsAtEveryPosition() bool {
+	return slices.Contains([]string{"eagle3"}, ga.Architecture)
 }
