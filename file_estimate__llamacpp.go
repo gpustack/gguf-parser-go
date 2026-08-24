@@ -765,7 +765,22 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 				for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.time_mix_(lerp_x|receptance|decay_w2|key|value|gate|w2|output)\.weight`)) { // nolint: lll
 					switch {
 					case strings.HasSuffix(l.Name, ".time_mix_w2.weight"):
-						rs := GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingLength, 1, nTokens, l.Dimensions[l.NDimensions-1]})
+						// RWKV6 reshapes time_mix_w2 to [ne0, ne1, 1, 5] and multiplies the
+						// five-way lerp stack, so the node is 4-D and its last dimension is
+						// that fan-out, see
+						// https://github.com/ggml-org/llama.cpp/blob/b3c3b96a139d4ef1bdec926ac17aa040981cfc5d/src/models/rwkv6-base.cpp#L59-L65.
+						// RWKV7 gives the same tensor name to a plain decay projection whose
+						// node is [n_embd, n_tokens], see
+						// https://github.com/ggml-org/llama.cpp/blob/b3c3b96a139d4ef1bdec926ac17aa040981cfc5d/src/models/rwkv7-base.cpp#L67-L70.
+						// Its last dimension is the embedding length, so the 4-D shape charges
+						// the node n_embd times over.
+						var rs uint64
+						switch a.Architecture {
+						case "rwkv7", "arwkv7":
+							rs = GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingLength, nTokens})
+						default:
+							rs = GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingLength, 1, nTokens, l.Dimensions[l.NDimensions-1]})
+						}
 						ffnInc += rs
 					case strings.HasSuffix(l.Name, ".time_mix_output.weight"):
 						rs := GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingLength, nBatch + uint64(a.RWKVHeadSize)*nSeq})
