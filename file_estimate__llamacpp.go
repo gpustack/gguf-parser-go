@@ -1194,6 +1194,13 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 			nPerSide := uint64(a.ClipVisionImageSize) / uint64(a.ClipVisionPatchSize)
 			nPerSide2DPool := nPerSide / uint64(a.ClipVisionProjectorScaleFactor)
 			nPatches = nPerSide2DPool * nPerSide2DPool
+			// The average pooling runs after the vision transformer, so nPatches counts
+			// the projector's output tokens while the encoder still attends over the
+			// whole patch grid, see
+			// https://github.com/ggml-org/llama.cpp/blob/b3c3b96a139d4ef1bdec926ac17aa040981cfc5d/tools/mtmd/clip.cpp#L936-L943.
+			if sf := uint64(a.ClipVisionProjectorScaleFactor); sf > 1 {
+				nPatchesMerged = sf * sf
+			}
 			if ti, ok := gf.TensorInfos.Get("mm.input_projection.weight"); ok {
 				projectionDim = ti.Dimensions[0]
 			}

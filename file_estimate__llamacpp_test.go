@@ -651,51 +651,10 @@ func TestGGUFFile_EstimateLLaMACppRun_OutputBufferStaysOnHost(t *testing.T) {
 				if got := uint64(d.Computation.Output); got != 0 {
 					t.Errorf("device %d carries Computation.Output %d, but logits live on the host", i+1, got)
 				}
-
-func TestGGUFFile_EstimateLLaMACppRun_RecurrentTimeMixDecay(t *testing.T) {
-	ctx := context.Background()
-
-	// RWKV6 and RWKV7 both name a tensor "time_mix_w2", and the node built from it
-	// has a different rank in each, so the estimate has to tell the two apart.
-	//
-	// Measured on an A40 with llama-server, context 2304, one sequence, flash
-	// attention, q8_0 key and value cache. "want" is the device's own total from
-	// llama.cpp's memory breakdown: model plus context plus compute, in MiB.
-	cases := []struct {
-		name string
-		repo string
-		file string
-		want float64
-	}{
-		{"rwkv7", "shoumenchougou/RWKV7-G1c-1.5B-GGUF", "rwkv7-g1c-1.5b-Q8_0.gguf", 1562},
-		{"arwkv7", "mradermacher/ARWKV-7B-Preview-0.1-GGUF", "ARWKV-7B-Preview-0.1.Q8_0.gguf", 8089},
-		// Control: RWKV6 keeps the four-dimensional node and its estimate must not move.
-		{"rwkv6", "latestissue/rwkv-6-world-1b6-gguf", "rwkv-6-world-1.6b-Q8_0.gguf", 1600},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			f, err := ParseGGUFFileFromHuggingFace(ctx, tc.repo, tc.file, SkipLargeMetadata())
-			if err != nil {
-				t.Fatal(err)
-				return
-			}
-
-			e := f.EstimateLLaMACppRun(
-				WithLLaMACppContextSize(2304),
-				WithParallelSize(1),
-				WithFlashAttention(),
-				WithLLaMACppCacheKeyType(GGMLTypeQ8_0),
-				WithLLaMACppCacheValueType(GGMLTypeQ8_0),
-			).SummarizeItem(false, 0, 0)
-
-			got := float64(e.VRAMs[0].NonUMA) / (1024 * 1024)
-			if got < tc.want*0.9 || got > tc.want*1.1 {
-				t.Errorf("NonUMA VRAM: got %.2f MiB, want within 10%% of the measured %.0f MiB", got, tc.want)
 			}
 		})
 	}
 }
-<<<<<<< HEAD
 
 func TestGGUFFile_EstimateLLaMACppRun_OutputLayerCountsWithinOffloadLayers(t *testing.T) {
 	// llama.cpp fills the card from the end and counts the output layer inside
@@ -789,5 +748,85 @@ func TestGGUFFile_EstimateLLaMACppRun_SpeculatorLogitsStayOnDevice(t *testing.T)
 			onDevice, wantAtLeast)
 	}
 }
-=======
->>>>>>> ab44527 (Charge RWKV7's decay projection as the two-dimensional node it is)
+
+func TestGGUFFile_EstimateLLaMACppRun_RecurrentTimeMixDecay(t *testing.T) {
+	ctx := context.Background()
+
+	// RWKV6 and RWKV7 both name a tensor "time_mix_w2", and the node built from it
+	// has a different rank in each, so the estimate has to tell the two apart.
+	//
+	// Measured on an A40 with llama-server, context 2304, one sequence, flash
+	// attention, q8_0 key and value cache. "want" is the device's own total from
+	// llama.cpp's memory breakdown: model plus context plus compute, in MiB.
+	cases := []struct {
+		name string
+		repo string
+		file string
+		want float64
+	}{
+		{"rwkv7", "shoumenchougou/RWKV7-G1c-1.5B-GGUF", "rwkv7-g1c-1.5b-Q8_0.gguf", 1562},
+		{"arwkv7", "mradermacher/ARWKV-7B-Preview-0.1-GGUF", "ARWKV-7B-Preview-0.1.Q8_0.gguf", 8089},
+		// Control: RWKV6 keeps the four-dimensional node and its estimate must not move.
+		{"rwkv6", "latestissue/rwkv-6-world-1b6-gguf", "rwkv-6-world-1.6b-Q8_0.gguf", 1600},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, err := ParseGGUFFileFromHuggingFace(ctx, tc.repo, tc.file, SkipLargeMetadata())
+			if err != nil {
+				t.Fatal(err)
+				return
+			}
+
+			e := f.EstimateLLaMACppRun(
+				WithLLaMACppContextSize(2304),
+				WithParallelSize(1),
+				WithFlashAttention(),
+				WithLLaMACppCacheKeyType(GGMLTypeQ8_0),
+				WithLLaMACppCacheValueType(GGMLTypeQ8_0),
+			).SummarizeItem(false, 0, 0)
+
+			got := float64(e.VRAMs[0].NonUMA) / (1024 * 1024)
+			if got < tc.want*0.9 || got > tc.want*1.1 {
+				t.Errorf("NonUMA VRAM: got %.2f MiB, want within 10%% of the measured %.0f MiB", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestGGUFFile_EstimateLLaMACppRun_ProjectorPooledPositions(t *testing.T) {
+	ctx := context.Background()
+
+	// gemma3 pools its patch grid 4x4 into one token per pooled cell, and the
+	// pooling runs after the vision transformer, so the encoder's attention is
+	// quadratic in the whole grid rather than in the projector's output tokens.
+	//
+	// Measured on an A40 with llama-server, context 4096, one sequence: the
+	// projector's own device total is its weights plus its compute buffer, in MiB.
+	f, err := ParseGGUFFileFromHuggingFace(ctx, "ggml-org/gemma-3-4b-it-GGUF", "mmproj-model-f16.gguf", SkipLargeMetadata())
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	cases := []struct {
+		name string
+		fa   bool
+		want float64
+	}{
+		{"without flash attention", false, 1943.79},
+		{"with flash attention", true, 933.04},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := []GGUFRunEstimateOption{WithLLaMACppContextSize(4096), WithParallelSize(1)}
+			if tc.fa {
+				opts = append(opts, WithFlashAttention())
+			}
+
+			got := float64(f.EstimateLLaMACppRun(opts...).SummarizeItem(false, 0, 0).VRAMs[0].NonUMA) / (1024 * 1024)
+			if got < tc.want*0.9 || got > tc.want*1.1 {
+				t.Errorf("NonUMA VRAM: got %.2f MiB, want within 10%% of the measured %.2f MiB", got, tc.want)
+			}
+		})
+	}
+}
