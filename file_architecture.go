@@ -696,6 +696,29 @@ var _GGUFClipProjectorTypeKeys = []string{
 	"clip.gen.audio.projector_type",
 }
 
+// _GGUFClipWarmupImage is how llama.cpp sizes the one square image it reserves a
+// dynamic-resolution projector's graph for. TokensPerSide is the square root of
+// the warm-up token count llama.cpp carries for the projector type, and
+// MergeDefault is the patch merge it assumes when the file declares none.
+type _GGUFClipWarmupImage struct {
+	TokensPerSide uint64
+	MergeDefault  uint64
+}
+
+// _GGUFClipWarmupImages carries llama.cpp's own warm-up token counts, which no
+// metadata key holds, see
+// https://github.com/ggml-org/llama.cpp/blob/b3c3b96a139d4ef1bdec926ac17aa040981cfc5d/tools/mtmd/clip.cpp#L1513-L1523
+// for pixtral and
+// https://github.com/ggml-org/llama.cpp/blob/b3c3b96a139d4ef1bdec926ac17aa040981cfc5d/tools/mtmd/clip.cpp#L1623-L1641
+// for the Qwen vision family. Every other projector type reserves for the image
+// size it declares, which is already the default.
+var _GGUFClipWarmupImages = map[string]_GGUFClipWarmupImage{
+	"qwen2vl_merger":   {TokensPerSide: 46, MergeDefault: 2},
+	"qwen2.5vl_merger": {TokensPerSide: 46, MergeDefault: 2},
+	"qwen3vl_merger":   {TokensPerSide: 46, MergeDefault: 2},
+	"pixtral":          {TokensPerSide: 16, MergeDefault: 1},
+}
+
 func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 	const (
 		hasLLaVAProjectorKey = "clip.has_llava_projector"

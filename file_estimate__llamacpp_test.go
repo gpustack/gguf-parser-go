@@ -830,3 +830,48 @@ func TestGGUFFile_EstimateLLaMACppRun_ProjectorPooledPositions(t *testing.T) {
 		})
 	}
 }
+
+func TestGGUFFile_EstimateLLaMACppRun_ProjectorWarmupImage(t *testing.T) {
+	ctx := context.Background()
+
+	// A dynamic-resolution projector reserves its graph for one square warm-up
+	// image sized from a token count llama.cpp carries itself, not from the
+	// largest image a caller might send.
+	//
+	// Measured on an A40 with llama-server, context 4096, one sequence: the
+	// projector's own device total is its weights plus its compute buffer, in MiB.
+	cases := []struct {
+		name string
+		repo string
+		file string
+		fa   bool
+		want float64
+	}{
+		{"qwen2vl", "ggml-org/Qwen2-VL-2B-Instruct-GGUF", "mmproj-Qwen2-VL-2B-Instruct-f16.gguf", false, 5868.21},
+		{"qwen2.5vl", "ggml-org/Qwen2.5-VL-3B-Instruct-GGUF", "mmproj-Qwen2.5-VL-3B-Instruct-f16.gguf", false, 6147.96},
+		{"qwen3vl", "unsloth/Qwen3-VL-4B-Instruct-GGUF", "mmproj-F16.gguf", false, 5525.50},
+		{"pixtral", "ggml-org/pixtral-12b-GGUF", "mmproj-pixtral-12b-f16.gguf", false, 845.81},
+		// Fixed-resolution control: reserves for the image size it declares, and
+		// must not move.
+		{"gemma3", "ggml-org/gemma-3-4b-it-GGUF", "mmproj-model-f16.gguf", false, 1943.79},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, err := ParseGGUFFileFromHuggingFace(ctx, tc.repo, tc.file, SkipLargeMetadata())
+			if err != nil {
+				t.Fatal(err)
+				return
+			}
+
+			opts := []GGUFRunEstimateOption{WithLLaMACppContextSize(4096), WithParallelSize(1)}
+			if tc.fa {
+				opts = append(opts, WithFlashAttention())
+			}
+
+			got := float64(f.EstimateLLaMACppRun(opts...).SummarizeItem(false, 0, 0).VRAMs[0].NonUMA) / (1024 * 1024)
+			if got < tc.want*0.9 || got > tc.want*1.1 {
+				t.Errorf("NonUMA VRAM: got %.2f MiB, want within 10%% of the measured %.2f MiB", got, tc.want)
+			}
+		})
+	}
+}

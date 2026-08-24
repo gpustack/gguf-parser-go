@@ -1119,6 +1119,23 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 			widthMaxSize = heightMaxSize
 		}
 		nPatchSize := uint64(a.ClipVisionPatchSize)
+		// A dynamic-resolution projector reserves its graph for one square warm-up
+		// image whose side llama.cpp derives from a token count it carries itself,
+		// not from anything the file declares: sqrt(tokens) * patch_size * n_merge,
+		// see https://github.com/ggml-org/llama.cpp/blob/b3c3b96a139d4ef1bdec926ac17aa040981cfc5d/tools/mtmd/clip-model.h#L204-L209.
+		// That one image is what the graph is reserved from, see
+		// https://github.com/ggml-org/llama.cpp/blob/b3c3b96a139d4ef1bdec926ac17aa040981cfc5d/tools/mtmd/clip.cpp#L3618-L3639.
+		// A caller's own maximum still wins, the way "--image-max-tokens" does.
+		warmupSized := false
+		if w, ok := _GGUFClipWarmupImages[a.ClipProjectorType]; ok && o.LMCVisualMaxImageSize == nil && nPatchSize > 0 {
+			merge := w.MergeDefault
+			if a.ClipVisionSpatialMergeSize > 0 {
+				merge = uint64(a.ClipVisionSpatialMergeSize)
+			}
+			heightMaxSize = w.TokensPerSide * nPatchSize * merge
+			widthMaxSize = heightMaxSize
+			warmupSized = true
+		}
 		nPatchesHeight := heightMaxSize / nPatchSize
 		nPatchesWidth := widthMaxSize / nPatchSize
 		nPatches = nPatchesHeight * nPatchesWidth
@@ -1247,12 +1264,14 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 				// A projector declaring no image size at all is dynamic resolution
 				// (dots_ocr does this); assume the default cap rather than zero-pixel images,
 				// which would charge nothing for the encoder.
-				ms := uint64(ptr.Deref(o.LMCVisualMaxImageSize, 1024))
-				if o.LMCVisualMaxImageSize == nil && heightMaxSize > 0 && heightMaxSize < ms {
-					ms = heightMaxSize
+				if !warmupSized {
+					ms := uint64(ptr.Deref(o.LMCVisualMaxImageSize, 1024))
+					if o.LMCVisualMaxImageSize == nil && heightMaxSize > 0 && heightMaxSize < ms {
+						ms = heightMaxSize
+					}
+					heightMaxSize = ms
+					widthMaxSize = ms
 				}
-				heightMaxSize = ms
-				widthMaxSize = ms
 				heightPatchSize := (heightMaxSize + nPatchSize - 1) / nPatchSize
 				widthPatchSize := (widthMaxSize + nPatchSize - 1) / nPatchSize
 				// Honor the patch reduction the metadata declares,
