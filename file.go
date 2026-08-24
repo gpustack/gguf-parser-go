@@ -1029,6 +1029,17 @@ func (ti GGUFTensorInfo) Bytes(filter ...GGUFTensorInfoFilter) uint64 {
 		return 0
 	}
 
+	// An empty tensor holds no bytes. ggml_nbytes returns 0 before it computes
+	// the strides below, see
+	// https://github.com/ggml-org/llama.cpp/blob/b3c3b96a139d4ef1bdec926ac17aa040981cfc5d/ggml/src/ggml.c#L1297-L1302.
+	// The stride arithmetic subtracts 1 from each dimension, so an unsigned zero
+	// wraps to 2^64-1 and the overflow guard then refuses the multiplication.
+	for i := uint32(0); i < ti.NDimensions; i++ {
+		if ti.Dimensions[i] == 0 {
+			return 0
+		}
+	}
+
 	tt, ok := ti.Type.Trait()
 	if !ok {
 		panic(fmt.Errorf("invalid type: %v", ti.Type))
