@@ -469,7 +469,15 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		if a.AttentionCausal {
 			ob += a.VocabularyLength * nOutputs * 4 /* float32 size */
 		}
-		e.Devices[0].Footprint += GGUFBytesScalar(ob)
+		// A speculator head scores every position it proposes, so llama.cpp reserves
+		// the full vocabulary by batch tensor on the device that holds the head. The
+		// host placement above is correct only for a decoder reserved with
+		// n_outputs = 1, which is every other architecture.
+		if fullOffload && a.emitsLogitsAtEveryPosition() {
+			e.Devices[idxOutputDevice].Footprint += GGUFBytesScalar(ob)
+		} else {
+			e.Devices[0].Footprint += GGUFBytesScalar(ob)
+		}
 	}
 
 	// Weight & Parameter.
@@ -916,7 +924,16 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			// them in system memory whatever the offload. Charging them to the output
 			// device counted the same bytes a second time, on a card that never holds
 			// them.
-			e.Devices[0].Computation.Output += GGUFBytesScalar(outInc)
+			//
+			// A speculator head is the exception. llama.cpp reserves the graph with
+			// n_outputs = 1 for a normal decoder, so the logits never reach the card,
+			// but a draft head emits logits at every position and the projection runs
+			// on the device that holds it.
+			outDev := 0
+			if a.emitsLogitsAtEveryPosition() {
+				outDev = idxOutputDevice
+			}
+			e.Devices[outDev].Computation.Output += GGUFBytesScalar(outInc)
 		}
 	}
 
