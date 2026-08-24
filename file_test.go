@@ -523,3 +523,27 @@ func TestParseGGUFFileFromHuggingFace_ZeroLengthTensorDimension(t *testing.T) {
 		t.Fatal("ModelSize: got 0, want a positive size")
 	}
 }
+
+func TestParseGGUFFileFromHuggingFace_Refuses(t *testing.T) {
+	ctx := context.Background()
+
+	cases := []struct {
+		name string
+		repo string
+		file string
+	}{
+		// "general.file_type" is written as a string rather than a number.
+		{"non-numeric file type", "Serveurperso/ACE-Step-1.5-GGUF", "acestep-v15-base-Q4_K_M.gguf"},
+		// The mmproj format that predates "clip.projector_type" names no type at all.
+		{"projector with no type", "mys/ggml_llava-v1.5-7b", "mmproj-model-f16.gguf"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := ParseGGUFFileFromHuggingFace(ctx, c.repo, c.file, SkipLargeMetadata())
+			if err == nil {
+				t.Fatal("expected an error, got none")
+			}
+			t.Logf("got expected error: %v", err)
+		})
+	}
+}

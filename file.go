@@ -526,6 +526,10 @@ func parseGGUFFile(fs []_GGUFFileReadSeeker, o _GGUFReadOptions) (_ *GGUFFile, e
 		}
 	}
 
+	if err := gf.validateMetadata(); err != nil {
+		return nil, err
+	}
+
 	// model parameters
 	gf.ModelParameters = GGUFParametersScalar(gf.TensorInfos.Elements())
 
@@ -535,6 +539,40 @@ func parseGGUFFile(fs []_GGUFFileReadSeeker, o _GGUFReadOptions) (_ *GGUFFile, e
 	}
 
 	return &gf, nil
+}
+
+// validateMetadata refuses a file whose metadata llama.cpp refuses to load,
+// so that a caller gets an error instead of a confident answer about a file
+// that cannot run.
+func (gf *GGUFFile) validateMetadata() error {
+	// A file type of the wrong value type.
+	//
+	// llama.cpp reads "general.file_type" as a uint32 and throws
+	// "key general.file_type has wrong type" when the file declares another one, see
+	// https://github.com/ggml-org/llama.cpp/blob/b3c3b96a139d4ef1bdec926ac17aa040981cfc5d/src/llama-model-loader.cpp#L164-L171.
+	// Reading it here panics instead, which a caller cannot catch.
+	const fileTypeKey = "general.file_type"
+	if v, ok := gf.Header.MetadataKV.Get(fileTypeKey); ok && !v.ValueType.IsNumeric() {
+		return fmt.Errorf("metadata key %q holds a %v, but it must hold a number", fileTypeKey, v.ValueType)
+	}
+
+	// A projector that names no type.
+	//
+	// llama.cpp resolves the projector type from "clip.projector_type", then from
+	// the key of the modality it is loading, and refuses the load with
+	// "unknown projector type" when neither names one, see
+	// https://github.com/ggml-org/llama.cpp/blob/b3c3b96a139d4ef1bdec926ac17aa040981cfc5d/tools/mtmd/clip.cpp#L1255-L1278.
+	// The mmproj format that predates "clip.projector_type" carries no such key at all.
+	const architectureKey = "general.architecture"
+	if v, ok := gf.Header.MetadataKV.Get(architectureKey); ok &&
+		v.ValueType == GGUFMetadataValueTypeString && v.ValueString() == "clip" {
+		if _, found := gf.Header.MetadataKV.Index(_GGUFClipProjectorTypeKeys); found == 0 {
+			return fmt.Errorf("the projector declares no type under any of %v, and llama.cpp cannot load it",
+				_GGUFClipProjectorTypeKeys)
+		}
+	}
+
+	return nil
 }
 
 // Types for GGUF hierarchical tensors.
@@ -709,21 +747,28 @@ func (kv GGUFMetadataKV) ValueFloat64() float64 {
 // Compare to the GGUFMetadataKV's Value* functions,
 // ValueNumeric will cast the original value to the target type.
 func ValueNumeric[T constraints.Integer | constraints.Float](kv GGUFMetadataKV) T {
-	switch kv.ValueType {
-	case GGUFMetadataValueTypeUint8:
-	case GGUFMetadataValueTypeInt8:
-	case GGUFMetadataValueTypeUint16:
-	case GGUFMetadataValueTypeInt16:
-	case GGUFMetadataValueTypeUint32:
-	case GGUFMetadataValueTypeInt32:
-	case GGUFMetadataValueTypeFloat32:
-	case GGUFMetadataValueTypeUint64:
-	case GGUFMetadataValueTypeInt64:
-	case GGUFMetadataValueTypeFloat64:
-	default:
+	if !kv.ValueType.IsNumeric() {
 		panic(fmt.Errorf("key %q try to get type Numeric but got type %v", kv.Key, kv.ValueType))
 	}
 	return anyx.Number[T](kv.Value)
+}
+
+// IsNumeric returns true if the GGUFMetadataValueType holds a number.
+func (t GGUFMetadataValueType) IsNumeric() bool {
+	switch t {
+	case GGUFMetadataValueTypeUint8,
+		GGUFMetadataValueTypeInt8,
+		GGUFMetadataValueTypeUint16,
+		GGUFMetadataValueTypeInt16,
+		GGUFMetadataValueTypeUint32,
+		GGUFMetadataValueTypeInt32,
+		GGUFMetadataValueTypeFloat32,
+		GGUFMetadataValueTypeUint64,
+		GGUFMetadataValueTypeInt64,
+		GGUFMetadataValueTypeFloat64:
+		return true
+	}
+	return false
 }
 
 func (av GGUFMetadataKVArrayValue) ValuesUint8() []uint8 {
