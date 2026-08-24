@@ -655,3 +655,47 @@ func TestGGUFFile_EstimateLLaMACppRun_OutputBufferStaysOnHost(t *testing.T) {
 		})
 	}
 }
+func TestGGUFFile_EstimateLLaMACppRun_SpeculatorLogitsStayOnDevice(t *testing.T) {
+	// A speculator head scores every position it proposes, so llama.cpp reserves
+	// the full vocabulary by batch tensor on the device that holds the head. The
+	// host placement that TestGGUFFile_EstimateLLaMACppRun_OutputBufferStaysOnHost
+	// asserts is correct only for a decoder reserved with n_outputs = 1.
+	//
+	// Measured on an MI300X at ctx 4096, every layer offloaded: this model really
+	// allocates 1068.71 MiB. Charging the output buffer to the host reports 378.2,
+	// which is 64% low, in the direction that accepts a model the card cannot hold.
+	ctx := context.Background()
+
+	f, err := ParseGGUFFileFromHuggingFace(
+		ctx,
+		"ggml-org/gpt-oss-20b-GGUF",
+		"eagle3-gpt-oss-20b-BF16.gguf",
+		SkipLargeMetadata())
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	a := f.Architecture()
+	if !a.emitsLogitsAtEveryPosition() {
+		t.Fatalf("architecture %q is not recognised as a speculator head", a.Architecture)
+	}
+
+	const ctxSize, batchSize = 4096, 512
+	wantAtLeast := (a.EmbeddingLength + a.VocabularyLength) * uint64(batchSize) * 4
+
+	e := f.EstimateLLaMACppRun(
+		WithLLaMACppContextSize(ctxSize),
+		WithLLaMACppLogicalBatchSize(batchSize),
+		WithLLaMACppPhysicalBatchSize(batchSize),
+		WithLLaMACppOffloadLayers(a.BlockCount+1))
+
+	var onDevice uint64
+	for _, d := range e.Devices[1:] {
+		onDevice += uint64(d.Footprint) + uint64(d.Computation.Output)
+	}
+	if onDevice < wantAtLeast {
+		t.Errorf("device carries %d for the output, below the logits buffer alone (%d): the carve-out did not apply",
+			onDevice, wantAtLeast)
+	}
+}

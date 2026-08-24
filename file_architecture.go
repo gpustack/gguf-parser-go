@@ -1415,3 +1415,14 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 
 	return ga
 }
+
+// emitsLogitsAtEveryPosition reports whether this architecture produces logits
+// for every position in the batch rather than for the last one only.
+//
+// A normal decoder is reserved with n_outputs = 1, so its logits buffer is one
+// row and it lives on the host. A speculator or draft head scores every position
+// it proposes, so the output projection is a full vocabulary by batch tensor on
+// the device that holds the head.
+func (a GGUFArchitecture) emitsLogitsAtEveryPosition() bool {
+	return slices.Contains([]string{"eagle3"}, a.Architecture)
+}
