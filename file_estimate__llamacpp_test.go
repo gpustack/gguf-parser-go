@@ -655,6 +655,7 @@ func TestGGUFFile_EstimateLLaMACppRun_OutputBufferStaysOnHost(t *testing.T) {
 		})
 	}
 }
+
 func TestGGUFFile_EstimateLLaMACppRun_SpeculatorLogitsStayOnDevice(t *testing.T) {
 	// A speculator head scores every position it proposes, so llama.cpp reserves
 	// the full vocabulary by batch tensor on the device that holds the head. The
@@ -678,7 +679,7 @@ func TestGGUFFile_EstimateLLaMACppRun_SpeculatorLogitsStayOnDevice(t *testing.T)
 
 	a := f.Architecture()
 	if !a.emitsLogitsAtEveryPosition() {
-		t.Fatalf("architecture %q is not recognised as a speculator head", a.Architecture)
+		t.Fatalf("architecture %q is not recognized as a speculator head", a.Architecture)
 	}
 
 	const ctxSize, batchSize = 4096, 512
