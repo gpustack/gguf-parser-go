@@ -278,6 +278,10 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		idxOutputDevice      int
 
 		fullOffload, zeroOffload bool
+		// Whether the output layer sits on an offload device. llama.cpp counts it
+		// inside n_gpu_layers and fills from the end, so it is offloaded before
+		// any block is, not after all of them.
+		isOffloadOutputLayer bool
 
 		// The device that holds each layer, as e.Devices is indexed:
 		// 0 for the host, 1+N for the N-th offload device.
@@ -286,19 +290,19 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		layerDevices = make([]int, min(a.BlockCount, maxSaneBlockCount))
 	)
 	{
-		var isOffloadOutputLayer bool
-
 		switch v := o.LMCOffloadLayers; {
 		case v == nil:
-			o.LMCOffloadLayers = ptr.To(a.BlockCount)
+			o.LMCOffloadLayers = ptr.To(a.BlockCount + 1)
 			nOffloadLayers = a.BlockCount
 			isOffloadOutputLayer = true
 		case *v != 0:
-			nOffloadLayers = *v
-			if nOffloadLayers > a.BlockCount {
-				isOffloadOutputLayer = true
-				nOffloadLayers = a.BlockCount
-			}
+			// i_gpu_start = max(n_layer_all + 1 - n_gpu_layers, 0), so the count
+			// spans the blocks plus the output layer and the output is the first
+			// thing to land on the card. --gpu-layers 28 on a 28 block model puts
+			// blocks 1..27 and the output on the device and leaves block 0 on the
+			// host, which llama.cpp reports as "offloaded 28/29 layers".
+			isOffloadOutputLayer = true
+			nOffloadLayers = min(*v-1, a.BlockCount)
 		}
 		nActualOffloadLayers = nOffloadLayers
 		if isOffloadOutputLayer {
@@ -331,12 +335,17 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 				if usingSWA && a.isSWALayer(i) {
 					e.Devices[j+1].HandleSWALayers += 1
 				}
-				if fullOffload && i == a.BlockCount-1 {
+				if isOffloadOutputLayer && i == a.BlockCount-1 {
 					idxOutputDevice = j + 1
 				}
 			}
 		}
 
+		// An offload that reaches the output layer but no block leaves the loop
+		// above with nothing to key off, so name the first offload device here.
+		if isOffloadOutputLayer && idxOutputDevice == 0 && len(e.Devices) > 1 {
+			idxOutputDevice = 1
+		}
 		e.Devices[idxOutputDevice].HandleOutputLayer = true
 	}
 
@@ -447,11 +456,24 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 
 		// Output buffer,
 		// see https://github.com/ggerganov/llama.cpp/blob/7672adeec7a79ea271058c63106c142ba84f951a/llama.cpp#L11940-L12003.
+		//
+		// This is host memory whatever the offload. llama_context::output_reserve
+		// allocates it from ggml_backend_cpu_buffer_type, or from the output
+		// device's *host* buffer type when it has one, which is pinned system
+		// memory chosen "for faster transfer to system memory" rather than VRAM:
+		// https://github.com/ggml-org/llama.cpp/blob/master/src/llama-context.cpp
+		// (llama_context::output_reserve, the buf_output allocation).
+		// Charging it to the output device instead reported ~700 MiB of VRAM that
+		// no card ever holds, which is enough to reject a model that fits.
 		ob := a.EmbeddingLength * nOutputs * 4 /* float32 size */
 		if a.AttentionCausal {
 			ob += a.VocabularyLength * nOutputs * 4 /* float32 size */
 		}
-		if fullOffload {
+		// A speculator head scores every position it proposes, so llama.cpp reserves
+		// the full vocabulary by batch tensor on the device that holds the head. The
+		// host placement above is correct only for a decoder reserved with
+		// n_outputs = 1, which is every other architecture.
+		if fullOffload && a.emitsLogitsAtEveryPosition() {
 			e.Devices[idxOutputDevice].Footprint += GGUFBytesScalar(ob)
 		} else {
 			e.Devices[0].Footprint += GGUFBytesScalar(ob)
@@ -549,7 +571,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			ps = GGUFParametersScalar(opLs.Elements() + ipLs.Elements())
 		}
 		e.Devices[0].Weight.Output = wg
-		if fullOffload {
+		if idxOutputDevice != 0 {
 			e.Devices[idxOutputDevice].Weight.Output = wg
 			e.Devices[idxOutputDevice].Parameter.Output = ps
 		} else {
@@ -897,7 +919,21 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 				rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
 				outInc += rs
 			}
-			e.Devices[idxOutputDevice].Computation.Output += GGUFBytesScalar(outInc)
+			// Host, for the same reason as the output buffer above: what the output
+			// projection produces is logits, and llama_context::output_reserve keeps
+			// them in system memory whatever the offload. Charging them to the output
+			// device counted the same bytes a second time, on a card that never holds
+			// them.
+			//
+			// A speculator head is the exception. llama.cpp reserves the graph with
+			// n_outputs = 1 for a normal decoder, so the logits never reach the card,
+			// but a draft head emits logits at every position and the projection runs
+			// on the device that holds it.
+			outDev := 0
+			if a.emitsLogitsAtEveryPosition() {
+				outDev = idxOutputDevice
+			}
+			e.Devices[outDev].Computation.Output += GGUFBytesScalar(outInc)
 		}
 	}
 
