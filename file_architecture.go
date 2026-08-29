@@ -685,19 +685,48 @@ func (gf *GGUFFile) diffuserArchitecture() (ga GGUFArchitecture) {
 	return ga
 }
 
+// _GGUFClipProjectorTypeKeys are the metadata keys that can name a projector's type,
+// in the order llama.cpp reads them: the default key first, then the key of the
+// modality it is loading, see
+// https://github.com/ggml-org/llama.cpp/blob/b3c3b96a139d4ef1bdec926ac17aa040981cfc5d/tools/mtmd/clip.cpp#L1255-L1272.
+var _GGUFClipProjectorTypeKeys = []string{
+	"clip.projector_type",
+	"clip.vision.projector_type",
+	"clip.audio.projector_type",
+	"clip.gen.audio.projector_type",
+}
+
+// _GGUFClipWarmupImage is how llama.cpp sizes the one square image it reserves a
+// dynamic-resolution projector's graph for. TokensPerSide is the square root of
+// the warm-up token count llama.cpp carries for the projector type, and
+// MergeDefault is the patch merge it assumes when the file declares none.
+type _GGUFClipWarmupImage struct {
+	TokensPerSide uint64
+	MergeDefault  uint64
+}
+
+// _GGUFClipWarmupImages carries llama.cpp's own warm-up token counts, which no
+// metadata key holds, see
+// https://github.com/ggml-org/llama.cpp/blob/b3c3b96a139d4ef1bdec926ac17aa040981cfc5d/tools/mtmd/clip.cpp#L1513-L1523
+// for pixtral and
+// https://github.com/ggml-org/llama.cpp/blob/b3c3b96a139d4ef1bdec926ac17aa040981cfc5d/tools/mtmd/clip.cpp#L1623-L1641
+// for the Qwen vision family. Every other projector type reserves for the image
+// size it declares, which is already the default.
+var _GGUFClipWarmupImages = map[string]_GGUFClipWarmupImage{
+	"qwen2vl_merger":   {TokensPerSide: 46, MergeDefault: 2},
+	"qwen2.5vl_merger": {TokensPerSide: 46, MergeDefault: 2},
+	"qwen3vl_merger":   {TokensPerSide: 46, MergeDefault: 2},
+	"pixtral":          {TokensPerSide: 16, MergeDefault: 1},
+}
+
 func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 	const (
-		projectorTypeKey = "clip.projector_type"
-		// Mixed-modality projectors declare their type per modality instead,
-		// see https://github.com/ggml-org/llama.cpp/blob/e3546c7948e3af463d0b401e6421d5a4c2faf565/tools/mtmd/clip-impl.h#L48-L76.
-		visionProjectorTypeKey = "clip.vision.projector_type"
-		audioProjectorTypeKey  = "clip.audio.projector_type"
-		hasLLaVAProjectorKey   = "clip.has_llava_projector"
-		hasMiniCPMVProjector   = "clip.has_minicpmv_projector"
-		miniCPMVVersionKey     = "clip.minicpmv_version"
-		miniCPMVQueryNumKey    = "clip.minicpmv_query_num"
-		hasGLMProjectorKey     = "clip.has_glm_projector"
-		hasQwen2VLMergerKey    = "clip.has_qwen2vl_merger"
+		hasLLaVAProjectorKey = "clip.has_llava_projector"
+		hasMiniCPMVProjector = "clip.has_minicpmv_projector"
+		miniCPMVVersionKey   = "clip.minicpmv_version"
+		miniCPMVQueryNumKey  = "clip.minicpmv_query_num"
+		hasGLMProjectorKey   = "clip.has_glm_projector"
+		hasQwen2VLMergerKey  = "clip.has_qwen2vl_merger"
 
 		hasVisionEncoderKey                   = "clip.has_vision_encoder"
 		visionEmbeddingLengthKey              = "clip.vision.embedding_length"
@@ -727,10 +756,7 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 	ga.Type = "projector"
 	ga.Architecture = "clip"
 
-	m, _ := gf.Header.MetadataKV.Index([]string{
-		projectorTypeKey,
-		visionProjectorTypeKey,
-		audioProjectorTypeKey,
+	m, _ := gf.Header.MetadataKV.Index(append([]string{
 		hasLLaVAProjectorKey,
 		hasMiniCPMVProjector,
 		miniCPMVVersionKey,
@@ -761,16 +787,15 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 		audioProjectionDimKey,
 		audioProjectorStackFactorKey,
 		audioNumMelBinsKey,
-	})
+	}, _GGUFClipProjectorTypeKeys...))
 
-	if v, ok := m[projectorTypeKey]; ok {
-		ga.ClipProjectorType = v.ValueString()
-	} else if v, ok := m[visionProjectorTypeKey]; ok {
-		ga.ClipProjectorType = v.ValueString()
-	} else if v, ok := m[audioProjectorTypeKey]; ok {
-		ga.ClipProjectorType = v.ValueString()
-	} else {
-		ga.ClipProjectorType = "mlp"
+	// A projector that names no type is refused while the file is parsed, so no
+	// type is invented here.
+	for _, k := range _GGUFClipProjectorTypeKeys {
+		if v, ok := m[k]; ok {
+			ga.ClipProjectorType = v.ValueString()
+			break
+		}
 	}
 	if v, ok := m[hasLLaVAProjectorKey]; ok {
 		ga.ClipHasLLaVAProjector = v.ValueBool()

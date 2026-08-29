@@ -478,3 +478,72 @@ func TestTensorInfoReaderRejectsBadNDimensions(t *testing.T) {
 		})
 	}
 }
+
+func TestBytesZeroDimension(t *testing.T) {
+	// A tensor with an empty dimension holds no bytes. The stride arithmetic
+	// subtracts 1 from each dimension, so an unsigned zero wraps to 2^64-1 and
+	// the overflow guard refuses the multiplication.
+	cases := []struct {
+		name       string
+		dimensions []uint64
+		typ        GGMLType
+	}{
+		{"unblocked", []uint64{0}, GGMLTypeF32},
+		{"blocked", []uint64{32, 0}, GGMLTypeQ4_0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ti := GGUFTensorInfo{
+				Name:        "empty",
+				NDimensions: uint32(len(c.dimensions)),
+				Dimensions:  c.dimensions,
+				Type:        c.typ,
+			}
+			if got := ti.Bytes(); got != 0 {
+				t.Fatalf("Bytes: got %d, want 0", got)
+			}
+		})
+	}
+}
+
+func TestParseGGUFFileFromHuggingFace_ZeroLengthTensorDimension(t *testing.T) {
+	// One tensor of 748 declares dimensions [0].
+	ctx := context.Background()
+
+	f, err := ParseGGUFFileFromHuggingFace(
+		ctx,
+		"mudler/face-detect-gguf",
+		"antelopev2.gguf",
+		SkipLargeMetadata())
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+	if f.ModelSize == 0 {
+		t.Fatal("ModelSize: got 0, want a positive size")
+	}
+}
+
+func TestParseGGUFFileFromHuggingFace_Refuses(t *testing.T) {
+	ctx := context.Background()
+
+	cases := []struct {
+		name string
+		repo string
+		file string
+	}{
+		// "general.file_type" is written as a string rather than a number.
+		{"non-numeric file type", "Serveurperso/ACE-Step-1.5-GGUF", "acestep-v15-base-Q4_K_M.gguf"},
+		// The mmproj format that predates "clip.projector_type" names no type at all.
+		{"projector with no type", "mys/ggml_llava-v1.5-7b", "mmproj-model-f16.gguf"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := ParseGGUFFileFromHuggingFace(ctx, c.repo, c.file, SkipLargeMetadata())
+			if err == nil {
+				t.Fatal("expected an error, got none")
+			}
+			t.Logf("got expected error: %v", err)
+		})
+	}
+}

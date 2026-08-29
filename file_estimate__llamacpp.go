@@ -765,7 +765,22 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 				for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.time_mix_(lerp_x|receptance|decay_w2|key|value|gate|w2|output)\.weight`)) { // nolint: lll
 					switch {
 					case strings.HasSuffix(l.Name, ".time_mix_w2.weight"):
-						rs := GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingLength, 1, nTokens, l.Dimensions[l.NDimensions-1]})
+						// RWKV6 reshapes time_mix_w2 to [ne0, ne1, 1, 5] and multiplies the
+						// five-way lerp stack, so the node is 4-D and its last dimension is
+						// that fan-out, see
+						// https://github.com/ggml-org/llama.cpp/blob/b3c3b96a139d4ef1bdec926ac17aa040981cfc5d/src/models/rwkv6-base.cpp#L59-L65.
+						// RWKV7 gives the same tensor name to a plain decay projection whose
+						// node is [n_embd, n_tokens], see
+						// https://github.com/ggml-org/llama.cpp/blob/b3c3b96a139d4ef1bdec926ac17aa040981cfc5d/src/models/rwkv7-base.cpp#L67-L70.
+						// Its last dimension is the embedding length, so the 4-D shape charges
+						// the node n_embd times over.
+						var rs uint64
+						switch a.Architecture {
+						case "rwkv7", "arwkv7":
+							rs = GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingLength, nTokens})
+						default:
+							rs = GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingLength, 1, nTokens, l.Dimensions[l.NDimensions-1]})
+						}
 						ffnInc += rs
 					case strings.HasSuffix(l.Name, ".time_mix_output.weight"):
 						rs := GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingLength, nBatch + uint64(a.RWKVHeadSize)*nSeq})
@@ -1104,6 +1119,23 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 			widthMaxSize = heightMaxSize
 		}
 		nPatchSize := uint64(a.ClipVisionPatchSize)
+		// A dynamic-resolution projector reserves its graph for one square warm-up
+		// image whose side llama.cpp derives from a token count it carries itself,
+		// not from anything the file declares: sqrt(tokens) * patch_size * n_merge,
+		// see https://github.com/ggml-org/llama.cpp/blob/b3c3b96a139d4ef1bdec926ac17aa040981cfc5d/tools/mtmd/clip-model.h#L204-L209.
+		// That one image is what the graph is reserved from, see
+		// https://github.com/ggml-org/llama.cpp/blob/b3c3b96a139d4ef1bdec926ac17aa040981cfc5d/tools/mtmd/clip.cpp#L3618-L3639.
+		// A caller's own maximum still wins, the way "--image-max-tokens" does.
+		warmupSized := false
+		if w, ok := _GGUFClipWarmupImages[a.ClipProjectorType]; ok && o.LMCVisualMaxImageSize == nil && nPatchSize > 0 {
+			merge := w.MergeDefault
+			if a.ClipVisionSpatialMergeSize > 0 {
+				merge = uint64(a.ClipVisionSpatialMergeSize)
+			}
+			heightMaxSize = w.TokensPerSide * nPatchSize * merge
+			widthMaxSize = heightMaxSize
+			warmupSized = true
+		}
 		nPatchesHeight := heightMaxSize / nPatchSize
 		nPatchesWidth := widthMaxSize / nPatchSize
 		nPatches = nPatchesHeight * nPatchesWidth
@@ -1179,6 +1211,13 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 			nPerSide := uint64(a.ClipVisionImageSize) / uint64(a.ClipVisionPatchSize)
 			nPerSide2DPool := nPerSide / uint64(a.ClipVisionProjectorScaleFactor)
 			nPatches = nPerSide2DPool * nPerSide2DPool
+			// The average pooling runs after the vision transformer, so nPatches counts
+			// the projector's output tokens while the encoder still attends over the
+			// whole patch grid, see
+			// https://github.com/ggml-org/llama.cpp/blob/b3c3b96a139d4ef1bdec926ac17aa040981cfc5d/tools/mtmd/clip.cpp#L936-L943.
+			if sf := uint64(a.ClipVisionProjectorScaleFactor); sf > 1 {
+				nPatchesMerged = sf * sf
+			}
 			if ti, ok := gf.TensorInfos.Get("mm.input_projection.weight"); ok {
 				projectionDim = ti.Dimensions[0]
 			}
@@ -1225,12 +1264,14 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 				// A projector declaring no image size at all is dynamic resolution
 				// (dots_ocr does this); assume the default cap rather than zero-pixel images,
 				// which would charge nothing for the encoder.
-				ms := uint64(ptr.Deref(o.LMCVisualMaxImageSize, 1024))
-				if o.LMCVisualMaxImageSize == nil && heightMaxSize > 0 && heightMaxSize < ms {
-					ms = heightMaxSize
+				if !warmupSized {
+					ms := uint64(ptr.Deref(o.LMCVisualMaxImageSize, 1024))
+					if o.LMCVisualMaxImageSize == nil && heightMaxSize > 0 && heightMaxSize < ms {
+						ms = heightMaxSize
+					}
+					heightMaxSize = ms
+					widthMaxSize = ms
 				}
-				heightMaxSize = ms
-				widthMaxSize = ms
 				heightPatchSize := (heightMaxSize + nPatchSize - 1) / nPatchSize
 				widthPatchSize := (widthMaxSize + nPatchSize - 1) / nPatchSize
 				// Honor the patch reduction the metadata declares,
