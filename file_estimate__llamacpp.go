@@ -307,6 +307,14 @@ func estimateLLaMACppRecurrentComputeFloor(
 	return cp
 }
 
+// _LMCBackendUnholdableArchitectures lists the architectures the CUDA backend
+// has no kernels for. llama.cpp assigns every layer of these to the CPU
+// whatever the offload asks, then the batch offload path copies each layer's
+// weights into the device compute buffer, and the graph allocator holds close
+// to the whole model at once. Checked against llama.cpp c841aeeb8; refresh
+// this set as llama.cpp gains kernels.
+var _LMCBackendUnholdableArchitectures = []string{"nanbeige"}
+
 // estimateLLaMACppFlashComputeMoments sizes the device compute buffer of a
 // flash attention graph. The buffer peaks at one of a few moments of a single
 // layer: its FLASH_ATTN_EXT node, its FFN block, or, on a hybrid, its
@@ -1249,6 +1257,22 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 				if o.FlashAttention {
 					// The flash path stages the boundary copies inside its own moments.
 					cp = GGUFBytesScalar(max(offloadAttnInc, offloadFfnInc))
+				}
+				if slices.Contains(_LMCBackendUnholdableArchitectures, a.Architecture) &&
+					nTokens >= _LMCOffloadOpMinBatchSize {
+					// Every layer stays on the CPU, and the batch offload path
+					// streams each layer's weights through the device compute
+					// buffer. The allocator holds close to the whole model, so
+					// the buffer floors at the summed layer weights beside the
+					// moments above. Measured on Nanbeige4.2-3B-Q4_K_M: the
+					// buffer is 1854.23 MiB at every offload depth.
+					var ws uint64
+					for _, tl := range tfLs {
+						for _, l := range tl.Search(_LMCLayerWeightRegex) {
+							ws += l.Bytes()
+						}
+					}
+					cp += GGUFBytesScalar(ws)
 				}
 				for i := range e.Devices[1:] {
 					e.Devices[i+1].Computation.Compute = cp

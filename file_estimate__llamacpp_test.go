@@ -961,3 +961,42 @@ func TestGGUFFile_EstimateLLaMACppRun_PartialOffloadComputeBuffer(t *testing.T) 
 		})
 	}
 }
+
+func TestGGUFFile_EstimateLLaMACppRun_BackendUnholdableComputeBuffer(t *testing.T) {
+	ctx := context.Background()
+
+	// llama.cpp (c841aeeb8) has no CUDA kernels for nanbeige: it assigns every
+	// layer to the CPU whatever the offload asks, and the batch offload path
+	// streams each layer's weights through the device compute buffer. The real
+	// "CUDA0 compute buffer size" on a GTX 1070 Ti is 1854.23 MiB at every
+	// offload depth, read from sched_reserve with
+	// `llama-server -c 4096 -fa on -ctk q8_0 -ctv q8_0 -b 2048 -ub 512 -np 1 -v`.
+	// The estimate must not fall below that measurement, and stays within
+	// less than half above it.
+	f, err := ParseGGUFFileFromHuggingFace(ctx,
+		"owao/Nanbeige4.2-3B-GGUF", "Nanbeige4.2-3B-Q4_K_M.gguf", SkipLargeMetadata())
+	if err != nil {
+		t.Fatal(err)
+	}
+	estimate := func(layers uint64) float64 {
+		e := f.EstimateLLaMACppRun(
+			WithLLaMACppContextSize(4096),
+			WithFlashAttention(),
+			WithLLaMACppCacheKeyType(GGMLTypeQ8_0),
+			WithLLaMACppCacheValueType(GGMLTypeQ8_0),
+			WithLLaMACppPhysicalBatchSize(512),
+			WithLLaMACppLogicalBatchSize(2048),
+			WithLLaMACppOffloadLayers(layers),
+		)
+		return float64(e.Devices[1].Computation.Compute)
+	}
+	const measuredMiB, mib = 1854.23, float64(1 << 20)
+	full := f.Architecture().BlockCount + 1
+	for name, layers := range map[string]uint64{"4-layer offload": 4, "full offload": full} {
+		got := estimate(layers)
+		if lo, hi := measuredMiB*mib, measuredMiB*1.4*mib; got < lo || got > hi {
+			t.Errorf("%s compute: got %s, want within [%s, %s]",
+				name, GGUFBytesScalar(got), GGUFBytesScalar(lo), GGUFBytesScalar(hi))
+		}
+	}
+}
