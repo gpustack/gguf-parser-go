@@ -1454,3 +1454,18 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 func (ga GGUFArchitecture) emitsLogitsAtEveryPosition() bool {
 	return slices.Contains([]string{"eagle3"}, ga.Architecture)
 }
+
+// buildsMemorylessGraph reports whether llama.cpp serves this architecture
+// without a memory module, so its graph attends over the ubatch only.
+//
+// llama_model::create_memory returns no memory for these architectures, see
+// https://github.com/ggml-org/llama.cpp/blob/c841aeeb8/src/llama-model.cpp#L2206-L2228.
+// t5encoder builds its whole graph from the same no-cache attention input.
+func (ga GGUFArchitecture) buildsMemorylessGraph() bool {
+	return slices.Contains([]string{
+		"bert", "jina-bert-v2", "jina-bert-v3", "nomic-bert", "nomic-bert-moe",
+		"neo-bert", "eurobert", "modern-bert", "gemma-embedding",
+		"dream", "llada", "llada-moe", "rnd1",
+		"t5encoder", "wavtokenizer-dec",
+	}, ga.Architecture)
+}

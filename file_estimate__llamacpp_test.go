@@ -1000,3 +1000,60 @@ func TestGGUFFile_EstimateLLaMACppRun_BackendUnholdableComputeBuffer(t *testing.
 		}
 	}
 }
+
+func TestGGUFFile_EstimateLLaMACppRun_EncoderComputeBuffer(t *testing.T) {
+	ctx := context.Background()
+
+	// The figures below are the real device compute buffer that llama.cpp (c841aeeb8)
+	// reserves on an A40 for a non-causal model, read from sched_reserve with
+	// `llama-server -c <ctx> -fa on -ctk q8_0 -ctv q8_0 -b 2048 -ub 512 -np 1 -v`.
+	// llama.cpp encodes in n_ubatch slices whatever the context is, so the reserve
+	// graph is priced over min(n_ctx, n_ubatch) tokens, not the window. t5encoder
+	// also declines the flash path: build_attn_mha requires kq_b == nullptr, so the
+	// relative-bias graph holds the quadratic kq and its bias rows.
+	cases := []struct {
+		name       string
+		repo, file string
+		ctx        int32
+		full       uint64  // layers for a full offload
+		partialMiB float64 // measured at a 4-layer offload
+		fullMiB    float64 // measured at full offload
+	}{
+		{"nomic-bert", "nomic-ai/nomic-embed-text-v1.5-GGUF", "nomic-embed-text-v1.5.Q4_K_M.gguf", 2048, 13, 23.00, 21.51},
+		{"jina-bert-v3", "second-state/jina-embeddings-v3-GGUF", "jina-embeddings-v3-Q4_K_M.gguf", 4096, 25, 16.04, 13.51},
+		{"t5encoder", "city96/umt5-xxl-encoder-gguf", "umt5-xxl-encoder-Q4_K_M.gguf", 512, 25, 233.50, 248.50},
+	}
+	const mib = float64(1 << 20)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, err := ParseGGUFFileFromHuggingFace(ctx, tc.repo, tc.file, SkipLargeMetadata())
+			if err != nil {
+				t.Fatal(err)
+			}
+			estimate := func(layers uint64) float64 {
+				e := f.EstimateLLaMACppRun(
+					WithLLaMACppContextSize(tc.ctx),
+					WithFlashAttention(),
+					WithLLaMACppCacheKeyType(GGMLTypeQ8_0),
+					WithLLaMACppCacheValueType(GGMLTypeQ8_0),
+					WithLLaMACppPhysicalBatchSize(512),
+					WithLLaMACppLogicalBatchSize(2048),
+					WithLLaMACppOffloadLayers(layers),
+				)
+				return float64(e.Devices[1].Computation.Compute)
+			}
+
+			partial := estimate(4)
+			if lo, hi := tc.partialMiB*0.99*mib, tc.partialMiB*2.0*mib; partial < lo || partial > hi {
+				t.Errorf("partial offload compute: got %s, want within [%s, %s]",
+					GGUFBytesScalar(partial), GGUFBytesScalar(lo), GGUFBytesScalar(hi))
+			}
+
+			full := estimate(tc.full)
+			if lo, hi := tc.fullMiB*0.99*mib, tc.fullMiB*2.0*mib; full < lo || full > hi {
+				t.Errorf("full offload compute: got %s, want within [%s, %s]",
+					GGUFBytesScalar(full), GGUFBytesScalar(lo), GGUFBytesScalar(hi))
+			}
+		})
+	}
+}
