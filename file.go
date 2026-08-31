@@ -388,7 +388,7 @@ func parseGGUFFile(fs []_GGUFFileReadSeeker, o _GGUFReadOptions) (_ *GGUFFile, e
 		}
 		gf.Header.Version = version
 
-		rd := _GGUFReader{v: version, o: o, f: f, bo: bo}
+		rd := _GGUFReader{v: version, o: o, f: f, bo: bo, size: f.Size}
 
 		// tensor count
 		var tensorCount uint64
@@ -1575,10 +1575,11 @@ func (ltis GGUFLayerTensorInfos) Cut(names []string) (before, after GGUFLayerTen
 }
 
 type _GGUFReader struct {
-	v  GGUFVersion
-	o  _GGUFReadOptions
-	f  io.ReadSeeker
-	bo binary.ByteOrder
+	v    GGUFVersion
+	o    _GGUFReadOptions
+	f    io.ReadSeeker
+	bo   binary.ByteOrder
+	size int64 // total file size, 0 when unknown; bounds untrusted string lengths
 }
 
 func (rd _GGUFReader) ReadUint8() (v uint8, err error) {
@@ -1659,6 +1660,23 @@ func (rd _GGUFReader) ReadString() (v string, err error) {
 	}
 	if err != nil {
 		return "", fmt.Errorf("read string length: %w", err)
+	}
+
+	// Bound the untrusted length before allocating. Mirrors the SkipReadingString
+	// guard on the read path: an int64 cast of l > MaxInt64 would wrap negative
+	// (bytex.GetBytes truncates to int and panics on a negative slice bound), and
+	// a valid string can never exceed the bytes remaining in the file.
+	if l > math.MaxInt64 {
+		return "", fmt.Errorf("read string: length %d exceeds maximum %d", l, int64(math.MaxInt64))
+	}
+	if rd.size > 0 {
+		pos, err := rd.f.Seek(0, io.SeekCurrent)
+		if err != nil {
+			return "", fmt.Errorf("seek string start: %w", err)
+		}
+		if remaining := rd.size - pos; l > uint64(remaining) {
+			return "", fmt.Errorf("read string: length %d exceeds %d remaining bytes", l, remaining)
+		}
 	}
 
 	b := bytex.GetBytes(l)

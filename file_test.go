@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"math"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -423,6 +424,40 @@ func TestSkipReadingStringRejectsHugeLength(t *testing.T) {
 	}
 	if err := rd.SkipReadingString(); err == nil {
 		t.Fatal("expected error skipping a string with length > MaxInt64")
+	}
+}
+
+func TestReadStringRejectsOversizedLength(t *testing.T) {
+	// A metadata key that declares a length far larger than the file must be
+	// refused before allocation — not crash the parser via OOM or a slice
+	// bounds panic in bytex.GetBytes. Reachable in the default configuration
+	// because every metadata key is read through ReadString.
+	var buf bytes.Buffer
+	buf.WriteString("GGUF")
+	_ = binary.Write(&buf, binary.LittleEndian, uint32(GGUFVersionV3)) // version
+	_ = binary.Write(&buf, binary.LittleEndian, uint64(0))             // tensor count
+	_ = binary.Write(&buf, binary.LittleEndian, uint64(1))             // metadata kv count
+	_ = binary.Write(&buf, binary.LittleEndian, uint64(1_000_000))     // key length >> file size
+	buf.WriteByte('A')                                                 // 1 byte of key
+	_ = binary.Write(&buf, binary.LittleEndian, uint32(GGUFMetadataValueTypeString))
+	_ = binary.Write(&buf, binary.LittleEndian, uint64(0)) // value length
+
+	tmp, err := os.CreateTemp("", "oversized_string_*.gguf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(buf.Bytes()); err != nil {
+		t.Fatal(err)
+	}
+	tmp.Close()
+
+	_, err = ParseGGUFFile(tmp.Name())
+	if err == nil {
+		t.Fatal("expected error for oversized string length, got nil")
+	}
+	if !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("expected a length-bound error, got: %v", err)
 	}
 }
 
