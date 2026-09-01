@@ -1,0 +1,44 @@
+{
+  "include": [
+    "**/*_test.go",
+    "**/*.md"
+  ],
+  "exclude": [
+    "**/zz_generated*",
+    "**/gen.*.go"
+  ],
+  "rules": [
+    {
+      "path": "**/*_test.go",
+      "rule": "This repository's test conventions: use testify for assertions; table-driven cases where the shape fits; tests must be deterministic and -race-clean (`make test` runs -race -failfast) — flag any dependence on time, ordering, randomness, or network availability; tests that need a real model file must skip cleanly via t.Skip when TEST_MODEL_PATH is unset, never fail; fail fast on setup errors instead of letting them corrupt later assertions; assert observable state, not implementation details. A bug fix must ship its regression test in the same PR — flag a fix with no accompanying test. A boundary/security fix must add a crafted-input regression test (e.g. a GGUF declaring an absurd length or count) — flag a security fix without one."
+    },
+    {
+      "path": "file_estimate__*.go",
+      "rule": "Memory/TPS estimators that must track their backend's real allocation behavior: file_estimate__llamacpp.go mirrors llama.cpp, file_estimate__stablediffusioncpp.go mirrors stable-diffusion.cpp. Flag: estimation changes without a cited upstream reference or test coverage; per-device RAM/VRAM projections that ignore the offload-layer, context-size, flash-attention, mmap, adapter, or RPC/tensor-split options from file_estimate_option.go; UMA (Apple) and non-UMA cases conflated; input/transformer/output layer accounting drift (the output layer counts within n_gpu_layers, as llama.cpp does). Estimates should stay within roughly 100MiB of actual usage. Layer ownership: estimation math belongs here, not in the CLI or util/."
+    },
+    {
+      "path": "util/**/*.go",
+      "rule": "Shared generic helper packages (anyx, bytex, funcx, httpx, json, osx, ptr, signalx, slicex, stringx). Flag: GGUF-, estimation-, or CLI-domain logic landing here — these packages must stay domain-agnostic; a helper growing beyond a single clear purpose; new exported API without doc comments."
+    },
+    {
+      "path": "cmd/gguf-parser/**/*.go",
+      "rule": "CLI presentation layer (urfave/cli/v2, dot-imports the root library). Flag: parsing or estimation logic added here instead of the root package; changes to flags, defaults, or output tables that drift from the usage examples in README.md and cmd/gguf-parser/README.md — docs and CLI change together; user-supplied values (paths, URLs, device metrics) used without validation."
+    },
+    {
+      "path": "*.go",
+      "rule": "GGUF parsing core (file*.go, ggml.go, scalar.go, cache.go, ollama_*.go, filename.go). Every input byte is untrusted — boundary checking is the top review priority: any length, count, or offset declared by the file is attacker-controlled, so it must be validated against the remaining file size before allocating, seeking, or slicing (see the ReadString/ReadArray fixes bounding declared lengths by remaining bytes). A crafted GGUF must produce an error — never a panic, an OOM-scale allocation, or an out-of-bounds read; flag any new trust in untrusted file data, and any panic used for control flow. mmap and chunked/ring-buffer reads must not introduce shared mutable state that races. Remote readers fetch through ranged HTTP backed by cache.go — flag full-file downloads and missing context propagation. Registry readers (Ollama/HuggingFace/ModelScope) fail with explicit errors, never partial state. Exported APIs carry doc comments describing behavior, expectations, and constraints; multi-word file names are snake_case."
+    },
+    {
+      "path": "**/go.mod",
+      "rule": "Two Go modules live here: the root library and cmd/gguf-parser. Flag: a dependency change applied to one module that the other also needs; a new dependency without justification; drift from `make deps` (both modules tidy)."
+    },
+    {
+      "path": ".github/workflows/*.{yaml,yml}",
+      "rule": "GitHub Actions workflows. code-review.yml is a caller of the org reusable workflow gpustack/.github — flag drift in its triggers, comment gating, concurrency group, with: inputs, or secret names from that reference configuration. ci.yml path-ignore filters must keep skipping Markdown-only changes. Workflow display names stay capitalized (CI, CMD, Sync, Prune, Code Review)."
+    },
+    {
+      "path": "**/*.md",
+      "rule": "Markdown documentation. README.md usage examples and option tables must stay in sync with the CLI flags in cmd/gguf-parser/main.go — flag a drift in either direction; its Notes section records behavior-affecting version changes. CLAUDE.md must stay in sync with the repo's real structure, Makefile targets, .golangci.yaml, and gen.go — flag stale commands or conventions. AGENTS.md must remain exactly `@CLAUDE.md`. State a fact once and link to it; flag duplicated facts across pages."
+    }
+  ]
+}
