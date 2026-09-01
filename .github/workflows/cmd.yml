@@ -1,4 +1,4 @@
-name: cmd
+name: CMD
 
 permissions:
   contents: write
