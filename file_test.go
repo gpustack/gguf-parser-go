@@ -582,3 +582,46 @@ func TestParseGGUFFileFromHuggingFace_Refuses(t *testing.T) {
 		})
 	}
 }
+
+// Regression test: a crafted metadata array must not allocate based on an
+// untrusted length before the items are read. A GGUF file declaring an array
+// with a huge Len previously ran make([]any, Len) in ReadArray, which either
+// panics ("makeslice: len out of range") or allocates gigabytes and OOMs the
+// host. Every array item occupies at least one byte on disk, so the declared
+// length is bounded by the bytes remaining in the file.
+func TestParseGGUFArrayLengthDoS(t *testing.T) {
+	bo := binary.LittleEndian
+	var b []byte
+	u32 := func(v uint32) { t := make([]byte, 4); bo.PutUint32(t, v); b = append(b, t...) }
+	u64 := func(v uint64) { t := make([]byte, 8); bo.PutUint64(t, v); b = append(b, t...) }
+
+	u32(0x46554747) // magic "GGUF"
+	u32(3)          // version 3
+	u64(0)          // tensorCount = 0
+	u64(1)          // metadataKVCount = 1
+	key := "x"
+	u64(uint64(len(key)))
+	b = append(b, key...)
+	u32(uint32(GGUFMetadataValueTypeArray))  // value type = Array
+	u32(uint32(GGUFMetadataValueTypeUint32)) // array item type = Uint32
+	u64(0xFFFFFFFFFFFF)                      // array Len ~ 281 trillion, far past EOF
+
+	tmp, err := os.CreateTemp("", "gguf_arraydos_*.gguf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(b); err != nil {
+		t.Fatal(err)
+	}
+	tmp.Close()
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("ParseGGUFFile panicked on crafted array length: %v", r)
+		}
+	}()
+	if _, err := ParseGGUFFile(tmp.Name()); err == nil {
+		t.Fatal("expected an error for an out-of-range array length, got nil")
+	}
+}
