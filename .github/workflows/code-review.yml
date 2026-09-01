@@ -90,6 +90,9 @@ jobs:
       llm-url: "https://open.bigmodel.cn/api/paas/v4"
       llm-model: "glm-5.3-flash"
       llm-thinking: "enabled"
+      # Opt in to the Serena MCP server (symbol navigation over the PR code);
+      # Go is auto-detected from go.mod, so gopls is set up for the review.
+      enable-serena: "true"
     secrets:
       llm-auth-token: ${{ secrets.CI_GPUSTACK_CODEREVIEW_Z_AI_APIKEY }}
       app-id: ${{ secrets.CI_GPUSTACK_CODEREVIEW_APP_ID }}
