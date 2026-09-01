@@ -1735,6 +1735,18 @@ func (rd _GGUFReader) ReadArray(key string) (v GGUFMetadataKVArrayValue, err err
 		return v, fmt.Errorf("seek array item start: %w", err)
 	}
 
+	// Bound the untrusted array length before allocating. Every array item
+	// occupies at least one byte on disk, so a valid array can never declare
+	// more items than the bytes remaining in the file. Without this guard a
+	// crafted length makes `make([]any, v.Len)` below either panic
+	// ("makeslice: len out of range") or allocate gigabytes and OOM the host
+	// before any item is read. Mirrors the remaining-bytes guard in ReadString.
+	if rd.size > 0 {
+		if remaining := rd.size - itemStart; v.Len > uint64(remaining) {
+			return v, fmt.Errorf("read array: length %d exceeds %d remaining bytes", v.Len, remaining)
+		}
+	}
+
 	if !rd.o.SkipLargeMetadata ||
 		stringx.HasSuffixes(key,
 			".feed_forward_length", ".attention.head_count", ".attention.head_count_kv", ".attention.sliding_window_pattern") {
