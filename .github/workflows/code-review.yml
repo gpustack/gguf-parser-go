@@ -2,7 +2,7 @@
 # gpustack/.github. The review mechanics — GitHub App token and comment posting — live
 # there; this file owns the triggers, the trigger gating, the concurrency group, and this
 # repository's review configuration: the secrets mapping and the LLM inputs below
-# (Zhipu's OpenAI-compatible endpoint, glm-5.3, thinking disabled).
+# (endpoint/model from org variables, thinking disabled).
 #
 # Aligned with upstream:
 # https://github.com/alibaba/open-code-review/blob/main/examples/github_actions/ocr-review.yml
@@ -85,12 +85,12 @@ jobs:
       )
     uses: gpustack/.github/.github/workflows/code-review.yml@main
     with:
-      # This repository's review backing: Zhipu's OpenAI-compatible GLM endpoint
-      # (OCR appends /chat/completions), full glm-5.3 with thinking disabled.
-      llm-url: "https://open.bigmodel.cn/api/paas/v4"
-      llm-model: "glm-5.3"
+      # This repository's review backing: the org-level LLM endpoint/model
+      # (OCR appends /chat/completions to the base URL), thinking disabled.
+      llm-url: "${{ vars.CI_GPUSTACK_CODEREVIEW_LLM_URL }}"
+      llm-model: "${{ vars.CI_GPUSTACK_CODEREVIEW_LLM_MODEL }}"
       llm-thinking: "disabled"
     secrets:
-      llm-auth-token: ${{ secrets.CI_GPUSTACK_CODEREVIEW_Z_AI_APIKEY }}
+      llm-auth-token: ${{ secrets.CI_GPUSTACK_CODEREVIEW_LLM_AUTH_TOKEN }}
       app-id: ${{ secrets.CI_GPUSTACK_CODEREVIEW_APP_ID }}
       app-private-key: ${{ secrets.CI_GPUSTACK_CODEREVIEW_APP_PRIVATE_KEY }}
