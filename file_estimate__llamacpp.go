@@ -244,6 +244,310 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...GGUFRunEstimateOption) (e LLaMAC
 	return e
 }
 
+// llama.cpp runs a host layer's heavy nodes on a device once the physical batch
+// reaches this size, see ggml_backend_cuda_device_offload_op.
+const _LMCOffloadOpMinBatchSize = 32
+
+var (
+	// One transformer layer's attention weights, as llama.cpp names them.
+	_LMCAttentionWeightRegex = regexp.MustCompile(`.*\.\d+\.attn_(q|k|v|output|qkv|q_a|q_b|kv_a_mqa|kv_b)\.weight`)
+	// One transformer layer's feed-forward weights, dense or expert.
+	_LMCFeedForwardWeightRegex = regexp.MustCompile(`.*\.\d+\.ffn_(gate|up|down)(_exps|_shexp)?\.weight`)
+	// The expert up projection, shaped [n_embd, n_ff_exp, n_expert].
+	_LMCExpertUpWeightRegex = regexp.MustCompile(`.*\.\d+\.ffn_up_exps\.weight`)
+	// The dense gate projection; its absence marks a gateless MLP.
+	_LMCGateWeightRegex = regexp.MustCompile(`.*\.\d+\.ffn_gate\.weight`)
+	// The dense up projection; its output width is the activation row.
+	_LMCUpWeightRegex = regexp.MustCompile(`.*\.\d+\.ffn_up\.weight`)
+	// The compressed KV projection that marks a latent-attention graph.
+	_LMCLatentAttentionRegex = regexp.MustCompile(`.*\.\d+\.attn_kv_a_mqa\.weight`)
+	// Any transformer-layer weight tensor.
+	_LMCLayerWeightRegex = regexp.MustCompile(`.*\.\d+\..*\.weight`)
+	// The gemma3n altup prediction coefficients; their first dimension is n_altup.
+	_LMCAltupPredictCoefRegex = regexp.MustCompile(`.*\.\d+\.altup_predict_coef\.weight`)
+)
+
+// estimateLLaMACppRecurrentComputeFloor floors a recurrent graph's device
+// compute buffer at the rows the allocator holds at once, read from
+// GGML_ALLOCATOR_DEBUG replays: rwkv7 keeps a dozen embedding-wide rows and
+// its six-way fused projection, rwkv6 a similar but narrower set, and mamba2
+// the fused zx projection with two convolution-width rows. Every recurrent
+// graph strands two residual rows, and a host boundary stages one layer's
+// largest weight.
+func estimateLLaMACppRecurrentComputeFloor(
+	a *GGUFArchitecture, tfLs GGUFLayerTensorInfos, nTokens, cp uint64, boundary bool,
+) uint64 {
+	embdRow := GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingLength, nTokens})
+	floor := uint64(0)
+	switch a.Architecture {
+	case "rwkv7":
+		floor = 19 * embdRow
+	case "arwkv7":
+		// Measured on arwkv-qwen-r1-1b5: the qwen FFN rides beside the rwkv rows.
+		floor = 24 * embdRow
+	case "rwkv6":
+		floor = 15 * embdRow
+	case "rwkv6qwen2":
+		// Measured on RWKV6QwQ-32B.
+		floor = 20 * embdRow
+	}
+	if a.SSMInnerSize > 0 {
+		zx := GGMLTypeF32.RowSizeOf([]uint64{2*uint64(a.SSMInnerSize) + 2*uint64(a.SSMGroupCount)*uint64(a.SSMStateSize), nTokens})
+		conv := GGMLTypeF32.RowSizeOf([]uint64{uint64(a.SSMInnerSize) + 2*uint64(a.SSMGroupCount)*uint64(a.SSMStateSize), nTokens})
+		floor = max(floor, zx+2*conv+2*embdRow+zx/2)
+	}
+	cp = max(cp, floor) + 2*embdRow
+	if boundary {
+		var w uint64
+		for _, l := range tfLs[0].Search(_LMCLayerWeightRegex) {
+			w = max(w, l.Bytes())
+		}
+		cp += w
+	}
+	return cp
+}
+
+// estimateLLaMACppFlashComputeMoments sizes the device compute buffer of a
+// flash attention graph. The buffer peaks at one of a few moments of a single
+// layer: its FLASH_ATTN_EXT node, its FFN block, or, on a hybrid, its
+// recurrent block. With boundary set, the device also stages the host layer's
+// K and V cache and its largest weights, one layer at a time, so the buffer is
+// the same at every partial depth.
+// _LMCFlashStagedSlots holds what a host boundary stages on the device for
+// one layer: its K and V cache rows, its K and V rows staged a second time,
+// and its largest attention and FFN weights. Without a boundary the weight
+// slots stay zero.
+type _LMCFlashStagedSlots struct {
+	boundary            bool
+	loadAttnInc         uint64
+	stagedKV            uint64
+	wAttnSlot           uint64
+	wFfnSlot, wFfnSlot2 uint64
+}
+
+// estimateLLaMACppFlashFFNActivations sizes the widest run of FFN activations
+// in one flash attention layer, beside the slots a host boundary stages. It
+// also returns the dense hole a mixture strands under its peak, and one
+// activation row for the hybrid moment.
+func estimateLLaMACppFlashFFNActivations(
+	a *GGUFArchitecture, hostLayers, allLayers []IGGUFTensorInfos,
+	nTokens, embdRow uint64, slots _LMCFlashStagedSlots, gated bool,
+) (acts, strand, lastAct uint64) {
+	if a.ExpertCount > 0 || a.ExpertUsedCount > 0 {
+		acts += GGMLTypeF32.RowSizeOf([]uint64{uint64(a.ExpertCount), a.EmbeddingLength}) // ffn_gate_input
+		acts += GGMLTypeF32.RowSizeOf([]uint64{uint64(a.ExpertCount), nTokens})           // ffn_moe_logits
+		nFFExp := a.ExpertFeedForwardLength
+		if nFFExp == 0 {
+			// Some files do not declare <arch>.expert_feed_forward_length.
+			// Every layer counts: an interleaved mixture's block zero can be
+			// dense, and a full offload references only that block here.
+			for _, hl := range allLayers {
+				for _, l := range hl.Search(_LMCExpertUpWeightRegex) {
+					if l.NDimensions > 1 {
+						nFFExp = l.Dimensions[1]
+						break
+					}
+				}
+			}
+		}
+		act := GGMLTypeF32.RowSizeOf([]uint64{nFFExp, uint64(a.ExpertUsedCount), nTokens})
+		down := GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingLength, uint64(a.ExpertUsedCount), nTokens}) // ffn_moe_down
+		lastAct = act
+		stack := 3 * act
+		if a.ExpertSharedFeedForwardLength > 0 {
+			// The shared expert runs beside the routed ones.
+			stack += 3 * GGMLTypeF32.RowSizeOf([]uint64{a.ExpertSharedFeedForwardLength, nTokens})
+		}
+		if down > 2*act {
+			// The down projection cannot reuse the hole the gate and up
+			// activations free, so all four stages hold slots at once.
+			stack += down
+		}
+		if slots.boundary {
+			actsPhase := stack
+			for _, slot := range []uint64{slots.loadAttnInc, slots.wAttnSlot, slots.wFfnSlot, slots.wFfnSlot} {
+				actsPhase += min(slot, act)
+			}
+			acts += max(actsPhase, act /* swiglu */ +slots.wFfnSlot+slots.wAttnSlot+down+slots.stagedKV)
+		} else {
+			acts += stack
+		}
+		// A mixture whose graph also holds dense blocks frees a dense-sized
+		// hole between layers. When that hole is smaller than the mixture's
+		// own activations, the live residual fragments it and the peak keeps
+		// it as dead space.
+		denseFF := uint64(0)
+		if len(a.FeedForwardLength) > 0 {
+			denseFF = a.FeedForwardLength[0]
+		}
+		if denseFF > 0 && denseFF != nFFExp {
+			for _, hl := range hostLayers {
+				if len(hl.Search(_LMCExpertUpWeightRegex)) == 0 {
+					strand = 3 * GGMLTypeF32.RowSizeOf([]uint64{denseFF, nTokens})
+					break
+				}
+			}
+		}
+	} else {
+		var nFFMeta uint64
+		for _, v := range a.FeedForwardLength {
+			nFFMeta = max(nFFMeta, v)
+		}
+		nFF := nFFMeta
+		for _, tl := range allLayers {
+			for _, l := range tl.Search(_LMCUpWeightRegex) {
+				nFF = max(nFF, l.Dimensions[l.NDimensions-1])
+			}
+		}
+		act := GGMLTypeF32.RowSizeOf([]uint64{nFF, nTokens})
+		actStack := act + embdRow // a gateless MLP: the activation reuses the up slot, the down output rides beside it
+		switch {
+		case gated:
+			actStack = 3 * act // gate, up and the GLU product hold rows at once
+		case nFFMeta > 0 && nFF >= 2*nFFMeta:
+			actStack = act + act/2 + embdRow // fused GLU: the product holds half a row beside the up row
+		}
+		lastAct = act
+		if slots.boundary {
+			actsPhase := actStack
+			for _, slot := range []uint64{slots.loadAttnInc, slots.wAttnSlot, slots.wFfnSlot, slots.wFfnSlot} {
+				actsPhase += min(slot, act)
+			}
+			downMoment := act + slots.wFfnSlot + slots.wAttnSlot + embdRow /* ffn_out */ + slots.stagedKV
+			if !gated {
+				// Only the small down output follows, so the freed up-weight
+				// hole strands under the peak.
+				downMoment += slots.wFfnSlot2
+			}
+			acts += max(actsPhase, downMoment)
+		} else {
+			acts += actStack
+		}
+	}
+	return acts, strand, lastAct
+}
+
+func estimateLLaMACppFlashComputeMoments(
+	o *_GGUFRunEstimateOptions, a *GGUFArchitecture,
+	hostLayers, allLayers []IGGUFTensorInfos,
+	nKV, nTokens, loadAttnInc, archRows uint64,
+	boundary, gated bool,
+) (attnInc, ffnInc uint64) {
+	// One layer's working set around the attention node.
+	embdRow := GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingLength, nTokens})
+	attnQ := GGMLTypeF32.RowSizeOf([]uint64{uint64(a.AttentionKeyLength) * a.AttentionHeadCount, nTokens})
+	attnK := GGMLTypeF32.RowSizeOf([]uint64{uint64(a.AttentionKeyLength) * a.AttentionHeadCountKV, nTokens})
+	attnV := GGMLTypeF32.RowSizeOf([]uint64{uint64(a.AttentionValueLength) * a.AttentionHeadCountKV, nTokens})
+	kqMask := GGMLTypeF16.RowSizeOf([]uint64{nKV, nTokens})
+	if a.AttentionSlidingWindow > 0 {
+		// A sliding-window graph builds a windowed mask next to the full one.
+		kqMask *= 2
+	}
+
+	// A latent-attention graph decompresses K and V through low-rank rows that
+	// ride beside every moment.
+	for _, tl := range allLayers {
+		if len(tl.Search(_LMCLatentAttentionRegex)) != 0 {
+			archRows += 2 * embdRow
+			break
+		}
+	}
+
+	// The largest weights of any host layer, staged on the device as split
+	// inputs, one layer at a time. Every host layer counts: a mixture with
+	// leading dense blocks keeps its expert tensors past block zero.
+	slots := _LMCFlashStagedSlots{boundary: boundary, loadAttnInc: loadAttnInc, stagedKV: attnK + attnV}
+	if boundary {
+		for _, hl := range hostLayers {
+			for _, l := range hl.Search(_LMCAttentionWeightRegex) {
+				slots.wAttnSlot = max(slots.wAttnSlot, l.Bytes())
+			}
+			for _, l := range hl.Search(_LMCFeedForwardWeightRegex) {
+				if b := l.Bytes(); b > slots.wFfnSlot {
+					slots.wFfnSlot, slots.wFfnSlot2 = b, slots.wFfnSlot
+				} else {
+					slots.wFfnSlot2 = max(slots.wFfnSlot2, b)
+				}
+			}
+		}
+	}
+
+	// The FLASH_ATTN_EXT allocation. On CUDA and ROCm it is the f32 output plus
+	// room to convert one layer's K and V to f16 when the cache is quantized,
+	// see ggml_cuda_flash_attn_ext_get_alloc_size.
+	faAlloc := GGMLTypeF32.RowSizeOf([]uint64{uint64(a.AttentionValueLength) * a.AttentionHeadCount, nTokens})
+	if *o.LMCCacheKeyType != GGMLTypeF16 {
+		faAlloc += GGMLTypeF16.RowSizeOf([]uint64{uint64(a.AttentionKeyLength), nKV, a.AttentionHeadCountKV})
+	}
+	if *o.LMCCacheValueType != GGMLTypeF16 {
+		faAlloc += GGMLTypeF16.RowSizeOf([]uint64{uint64(a.AttentionValueLength), nKV, a.AttentionHeadCountKV})
+	}
+
+	// Attention moment.
+	attnInc = archRows + embdRow /* l_out */ + embdRow /* norm */ + embdRow /* attn_out */ + attnQ + attnK + attnV + kqMask + faAlloc
+	if boundary {
+		// The host layer's K and V cache, staged a second time to cross the boundary.
+		attnInc += loadAttnInc + slots.wAttnSlot + slots.stagedKV
+	}
+
+	// FFN moment: the stranded residual and Q slots, the mask, the FFN input,
+	// and the widest run of FFN activations.
+	ffnInc = archRows + embdRow /* l_out */ + attnQ /* Qcur slot */ +
+		embdRow /* ffn_inp */ + embdRow /* norm slot */ + embdRow /* attn_out slot */ + kqMask
+	acts, strand, lastAct := estimateLLaMACppFlashFFNActivations(
+		a, hostLayers, allLayers, nTokens, embdRow, slots, gated)
+	ffnInc += acts
+	strand = min(strand, faAlloc)
+	attnInc += strand
+	if boundary {
+		ffnInc += strand
+	}
+	switch a.Architecture {
+	case "graniteswitch":
+		// Measured on granite-switch-4.1-3b: the switch router keeps three
+		// extra rows at the full-offload peak.
+		ffnInc += 3 * embdRow
+	case "mistral4":
+		// Measured on Mistral-Small-4: two staged expert tensors overlap at
+		// a host boundary.
+		if boundary {
+			ffnInc += slots.wFfnSlot2
+		}
+	case "nemotron_h_moe":
+		// Measured on Nemotron-H MoE: the copies of two host layers' expert
+		// tensors overlap at a host boundary.
+		if boundary {
+			ffnInc += slots.wFfnSlot + slots.wFfnSlot2
+		}
+	case "phi2":
+		// Measured on phi-2: the parallel residual holds one more row.
+		ffnInc += embdRow
+		attnInc += embdRow
+	}
+	if a.AttentionSlidingWindow > 0 {
+		// An interleaved graph keeps the global layer's FLASH_ATTN_EXT scratch
+		// alive under the windowed layer's FFN peak.
+		ffnInc += faAlloc
+	}
+	// A hybrid's recurrent blocks hold their own moment: the fused zx
+	// projection, two convolution-width rows, the residuals and a
+	// fragmentation share, sized from the mamba2 graph.
+	if a.SSMInnerSize > 0 {
+		zx := GGMLTypeF32.RowSizeOf([]uint64{2*uint64(a.SSMInnerSize) + 2*uint64(a.SSMGroupCount)*uint64(a.SSMStateSize), nTokens})
+		conv := GGMLTypeF32.RowSizeOf([]uint64{uint64(a.SSMInnerSize) + 2*uint64(a.SSMGroupCount)*uint64(a.SSMStateSize), nTokens})
+		ssm := zx + 2*conv + 4*embdRow + zx/2 + kqMask
+		if a.Architecture == "plamo2" || a.Architecture == "nemotron_h" {
+			// These blocks hold the ssm and FFN working sets together.
+			ssm += lastAct + embdRow
+		}
+		if boundary {
+			ssm += loadAttnInc + slots.wAttnSlot
+		}
+		ffnInc = max(ffnInc, ssm)
+	}
+	return attnInc, ffnInc
+}
+
 // estimateLLaMACppRunInModel estimates the usages of the GGUF file for model,
 // including the usages of footprint, weight, KV cache, and computation.
 func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GGUFArchitecture, t *GGUFTokenizer, e *LLaMACppRunEstimate) {
@@ -791,6 +1095,8 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 					}
 				}
 				cp := GGUFBytesScalar(attnInc + ffnInc)
+				cp = GGUFBytesScalar(estimateLLaMACppRecurrentComputeFloor(
+					a, tfLs, nTokens, uint64(cp), !fullOffload && nTokens >= _LMCOffloadOpMinBatchSize))
 				for i := range e.Devices[1:] {
 					e.Devices[i+1].Computation.Compute = cp
 				}
@@ -819,6 +1125,8 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 					ssmInc += rs
 				}
 				cp := GGUFBytesScalar(convInc + ssmInc)
+				cp = GGUFBytesScalar(estimateLLaMACppRecurrentComputeFloor(
+					a, tfLs, nTokens, uint64(cp), !fullOffload && nTokens >= _LMCOffloadOpMinBatchSize))
 				for i := range e.Devices[1:] {
 					e.Devices[i+1].Computation.Compute = cp
 				}
@@ -831,24 +1139,59 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 				rs = o.LMCCacheValueType.RowSizeOf([]uint64{uint64(a.AttentionValueLength), nKV, a.AttentionHeadCountKV})
 				loadAttnInc += rs // v-?
 			}
+			// The non-flash path keeps sizing the offload device from ffnInc below.
+			offloadFfnInc := uint64(0)
 			if o.FlashAttention {
-				// https://github.com/ggerganov/llama.cpp/blob/172c8256840ffd882ab9992ecedbb587d9b21f15/llama.cpp#L7387.
-				offloadAttnInc = GGMLTypeF16.RowSizeOf([]uint64{nKV, nTokens})
-				for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.attn_(norm|q|qkv|q_b)\.weight`)) {
-					if strings.HasSuffix(l.Name, ".attn_norm.weight") {
-						rs := GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
-						offloadAttnInc += rs
-						continue
-					}
-					rs := l.Bytes()
-					offloadAttnInc += rs
+				boundary := !fullOffload && nTokens >= _LMCOffloadOpMinBatchSize
+				hostLayers := tfLs[:min(nLoadLayers, uint64(len(tfLs)))]
+				if len(hostLayers) == 0 {
+					// Every block is on the device, so block zero stands in for
+					// the shapes; only the output layer can still hold a boundary.
+					hostLayers = tfLs[:1]
 				}
-				// https://github.com/ggerganov/llama.cpp/blob/172c8256840ffd882ab9992ecedbb587d9b21f15/llama.cpp#L6986-L6992.
-				rs := o.LMCCacheKeyType.RowSizeOf([]uint64{uint64(a.AttentionKeyLength), nKV, a.AttentionHeadCountKV})
-				offloadAttnInc += rs
-				// https://github.com/ggerganov/llama.cpp/blob/172c8256840ffd882ab9992ecedbb587d9b21f15/llama.cpp#L7000-L7007.
-				rs = o.LMCCacheValueType.RowSizeOf([]uint64{uint64(a.AttentionValueLength), nKV, a.AttentionHeadCountKV})
-				offloadAttnInc += rs
+				// Gating is a property of the architecture's FFN; a hybrid's
+				// first block can be a recurrent one with no FFN at all.
+				gated := false
+				for _, tl := range tfLs {
+					if len(tl.Search(_LMCGateWeightRegex)) != 0 {
+						gated = true
+						break
+					}
+				}
+				archRows := uint64(0)
+				if a.Architecture == "qwen3vl" || a.Architecture == "qwen3vlmoe" {
+					// The deepstack embedding rides beside the residual through
+					// the whole graph, three extra embedding rows wide.
+					archRows = 3 * GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingLength, nTokens})
+				}
+				offloadAttnInc, offloadFfnInc = estimateLLaMACppFlashComputeMoments(
+					o, a, hostLayers, tfLs, nKV, nTokens, loadAttnInc, archRows, boundary, gated)
+				if a.Architecture == "gemma3n" {
+					// The altup block holds the selected per-layer inputs and one
+					// [n_embd, n_altup] row per altup projection, all before the
+					// attention node.
+					am := 9 * GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingLength, nTokens})
+					if l, ok := ipLs.Get("per_layer_model_proj.weight"); ok {
+						am += 2 * GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
+					}
+					var nAltup uint64
+					for _, l := range tfLs[0].Search(_LMCAltupPredictCoefRegex) {
+						nAltup = l.Dimensions[0]
+					}
+					if nAltup == 0 {
+						nAltup = 4
+					}
+					am += 4 * nAltup * GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingLength, nTokens})
+					am += GGMLTypeF16.RowSizeOf([]uint64{nKV, nTokens}) * 2
+					if boundary {
+						var wFfn uint64
+						for _, l := range tfLs[0].Search(_LMCFeedForwardWeightRegex) {
+							wFfn = max(wFfn, l.Bytes())
+						}
+						am += loadAttnInc + wFfn
+					}
+					offloadAttnInc = max(offloadAttnInc, am)
+				}
 			} else {
 				offloadAttnInc = uint64(0)
 				for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.attn_(norm|q|qkv|q_b)\.weight`)) {
@@ -903,10 +1246,14 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			}
 			{
 				cp := GGUFBytesScalar(max(offloadAttnInc, ffnInc))
+				if o.FlashAttention {
+					// The flash path stages the boundary copies inside its own moments.
+					cp = GGUFBytesScalar(max(offloadAttnInc, offloadFfnInc))
+				}
 				for i := range e.Devices[1:] {
 					e.Devices[i+1].Computation.Compute = cp
 				}
-				if nLoadLayers > 1 {
+				if !o.FlashAttention && nLoadLayers > 1 {
 					for i := range e.Devices[1:] {
 						if e.Devices[i+1].Remote {
 							continue

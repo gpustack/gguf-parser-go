@@ -875,3 +875,89 @@ func TestGGUFFile_EstimateLLaMACppRun_ProjectorWarmupImage(t *testing.T) {
 		})
 	}
 }
+
+func TestGGUFFile_EstimateLLaMACppRun_PartialOffloadComputeBuffer(t *testing.T) {
+	ctx := context.Background()
+
+	// The figures below are the real "CUDA0 compute buffer size" that llama.cpp (c841aeeb8)
+	// reserves on a GTX 1070 Ti, read from sched_reserve with
+	// `llama-server -c <ctx> -fa on -ctk <cache> -ctv <cache> -b 2048 -ub 512 -np 1 -v`.
+	// The estimate is a bound over the graph's peak moments: it must not fall below the
+	// measurement, and stays within about half above it. The upper slack is the price of
+	// staying above the measurement on every one of the hundred-family sweep in the PR;
+	// the lower bound is the one that protects a fit decision. The real buffer is flat
+	// across partial depths and steps down only at full offload.
+	cases := []struct {
+		name       string
+		repo, file string
+		ctx        int32
+		cache      GGMLType
+		full       uint64  // layers for a full offload
+		partialMiB float64 // measured at a 4-layer offload
+		fullMiB    float64 // measured at full offload
+		deepMiB    float64 // measured one layer short of full; 0 means equal to partialMiB
+	}{
+		{"qwen3 q8_0 cache", "Qwen/Qwen3-0.6B-GGUF", "Qwen3-0.6B-Q8_0.gguf", 4096, GGMLTypeQ8_0, 29, 41.64, 32.09, 0},
+		{"qwen3 f16 cache", "Qwen/Qwen3-0.6B-GGUF", "Qwen3-0.6B-Q8_0.gguf", 4096, GGMLTypeF16, 29, 34.13, 30.01, 0},
+		{"qwen3 q8_0 cache 8k ctx", "Qwen/Qwen3-0.6B-GGUF", "Qwen3-0.6B-Q8_0.gguf", 8192, GGMLTypeQ8_0, 29, 78.64, 52.09, 0},
+		{"olmoe q8_0 cache", "bartowski/OLMoE-1B-7B-0924-Instruct-GGUF", "OLMoE-1B-7B-0924-Instruct-Q4_K_M.gguf", 4096, GGMLTypeQ8_0, 17, 172.37, 64.09, 0},
+		{"olmoe f16 cache", "bartowski/OLMoE-1B-7B-0924-Instruct-GGUF", "OLMoE-1B-7B-0924-Instruct-Q4_K_M.gguf", 4096, GGMLTypeF16, 17, 171.26, 64.01, 0},
+		// granitemoe: the down projection outsizes the freed gate and up hole,
+		// so the full-offload peak stacks all four FFN stages.
+		{"granitemoe q8_0 cache", "bartowski/granite-3.1-3b-a800m-instruct-GGUF", "granite-3.1-3b-a800m-instruct-Q4_K_M.gguf", 4096, GGMLTypeQ8_0, 33, 73.02, 61.04, 0},
+		// dots1: leading dense blocks. The expert weights live past block zero,
+		// the dense hole strands under the mixture's attention peak, and the
+		// buffer is not flat across depths: with only the dense block on the
+		// host, no expert tensor is staged.
+		{"dots1 q8_0 cache", "KBlueLeaf/TIPOv2-1B-A200M", "TIPOv2-1B-A200M-f16.gguf", 4096, GGMLTypeQ8_0, 17, 70.03, 34.42, 40.03},
+	}
+	const mib = float64(1 << 20)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, err := ParseGGUFFileFromHuggingFace(ctx, tc.repo, tc.file, SkipLargeMetadata())
+			if err != nil {
+				t.Fatal(err)
+			}
+			estimate := func(layers uint64) float64 {
+				e := f.EstimateLLaMACppRun(
+					WithLLaMACppContextSize(tc.ctx),
+					WithFlashAttention(),
+					WithLLaMACppCacheKeyType(tc.cache),
+					WithLLaMACppCacheValueType(tc.cache),
+					WithLLaMACppPhysicalBatchSize(512),
+					WithLLaMACppLogicalBatchSize(2048),
+					WithLLaMACppOffloadLayers(layers),
+				)
+				return float64(e.Devices[1].Computation.Compute)
+			}
+
+			// A uniform model holds one figure at every partial depth. A model
+			// with leading dense blocks steps down once its expert blocks are
+			// all on the device.
+			partial := estimate(4)
+			if got := estimate(1); got != partial {
+				t.Errorf("partial offload at 1 layer: got %s, want %s as at 4 layers",
+					GGUFBytesScalar(got), GGUFBytesScalar(partial))
+			}
+			deep := estimate(tc.full - 1)
+			deepMiB := tc.partialMiB
+			if tc.deepMiB != 0 {
+				deepMiB = tc.deepMiB
+			}
+			if lo, hi := deepMiB*0.99*mib, deepMiB*1.55*mib; float64(deep) < lo || float64(deep) > hi {
+				t.Errorf("offload one short of full: got %s, want within [%s, %s]",
+					GGUFBytesScalar(deep), GGUFBytesScalar(lo), GGUFBytesScalar(hi))
+			}
+			if lo, hi := tc.partialMiB*0.99*mib, tc.partialMiB*1.55*mib; partial < lo || partial > hi {
+				t.Errorf("partial offload compute: got %s, want within [%s, %s]",
+					GGUFBytesScalar(partial), GGUFBytesScalar(lo), GGUFBytesScalar(hi))
+			}
+
+			full := estimate(tc.full)
+			if lo, hi := tc.fullMiB*0.99*mib, tc.fullMiB*1.55*mib; full < lo || full > hi {
+				t.Errorf("full offload compute: got %s, want within [%s, %s]",
+					GGUFBytesScalar(full), GGUFBytesScalar(lo), GGUFBytesScalar(hi))
+			}
+		})
+	}
+}

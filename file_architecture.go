@@ -1303,7 +1303,10 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 	if v, ok := m[attentionCausalKey]; ok {
 		ga.AttentionCausal = v.ValueBool()
 	} else {
-		ga.AttentionCausal = true
+		// An encoder-only architecture attends bidirectionally even when the
+		// file does not declare attention.causal,
+		// see llama_context::encode in llama.cpp.
+		ga.AttentionCausal = ga.Architecture != "t5encoder"
 	}
 	// See https://github.com/ggml-org/llama.cpp/blob/6491d6e4f1caf0ad2221865b4249ae6938a6308c/src/llama-arch.cpp#L1913-L1924.
 	ga.AttentionRecurrent = slices.Contains([]string{ // TODO(thxCode): calculate this from the metadata.
