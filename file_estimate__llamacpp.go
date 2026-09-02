@@ -249,6 +249,14 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...GGUFRunEstimateOption) (e LLaMAC
 // reaches this size, see ggml_backend_cuda_device_offload_op.
 const _LMCOffloadOpMinBatchSize = 32
 
+// clampInt32 narrows a declared count to the int32 range the run options hold.
+// llama.cpp reads the same keys as uint32, so a file it loads declares at most
+// 2^32 - 1, and the clamp keeps the estimate at the largest context the options
+// can name rather than at a negative one.
+func clampInt32(v uint64) int32 {
+	return int32(min(v, math.MaxInt32))
+}
+
 var (
 	// One transformer layer's attention weights, as llama.cpp names them.
 	_LMCAttentionWeightRegex = regexp.MustCompile(`.*\.\d+\.attn_(q|k|v|output|qkv|q_a|q_b|kv_a_mqa|kv_b)\.weight`)
@@ -725,17 +733,17 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		ropeFrequencyBase := ptr.Deref(o.LMCRoPEFrequencyBase, a.RoPEFrequencyBase)
 		ropeFrequencyScale := ptr.Deref(o.LMCRoPEFrequencyScale, a.RoPEFrequencyScale)
 		ropeScalingType := ptr.Deref(o.LMCRoPEScalingType, a.RoPEScalingType)
-		ropeScalingOriginalContextSize := ptr.Deref(o.LMCRoPEScalingOriginalContextSize, int32(a.RoPEScalingOriginalContextLength))
+		ropeScalingOriginalContextSize := ptr.Deref(o.LMCRoPEScalingOriginalContextSize, clampInt32(a.RoPEScalingOriginalContextLength))
 		isRoPECustomized := ropeFrequencyBase != a.RoPEFrequencyBase ||
 			ropeFrequencyScale != a.RoPEFrequencyScale ||
 			ropeScalingType != a.RoPEScalingType ||
-			(ropeScalingType == "yarn" && ropeScalingOriginalContextSize != int32(a.RoPEScalingOriginalContextLength))
+			(ropeScalingType == "yarn" && ropeScalingOriginalContextSize != clampInt32(a.RoPEScalingOriginalContextLength))
 
 		e.EmbeddingOnly = true
-		o.LMCContextSize = ptr.To(ptr.Deref(o.LMCContextSize, int32(a.MaximumContextLength)))
+		o.LMCContextSize = ptr.To(ptr.Deref(o.LMCContextSize, clampInt32(a.MaximumContextLength)))
 		// Cap the context size to the training context size.
 		if !isRoPECustomized {
-			o.LMCContextSize = ptr.To(min(int32(a.MaximumContextLength), *o.LMCContextSize))
+			o.LMCContextSize = ptr.To(min(clampInt32(a.MaximumContextLength), *o.LMCContextSize))
 		}
 		// The batch sizes stay as configured: llama.cpp encodes in n_ubatch
 		// slices whatever the context is, and sched_reserve prices the worst
@@ -953,7 +961,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			r = uint64(a.RWKVTokenShiftCount) * a.EmbeddingLength
 			s = uint64(a.RWKVHeadSize) * a.EmbeddingLength
 		case a.ShortConvLCache > 0:
-			r = uint64(a.ShortConvLCache-1) * a.EmbeddingLength
+			r = (uint64(a.ShortConvLCache) - 1) * a.EmbeddingLength
 		case a.KDAHeadDim > 0:
 			dConv := uint64(3)
 			if a.SSMConvolutionKernel > 0 {
@@ -962,8 +970,8 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 			r = 3 * (dConv - 1) * a.AttentionHeadCount * uint64(a.KDAHeadDim)
 			s = uint64(a.KDAHeadDim) * uint64(a.KDAHeadDim) * a.AttentionHeadCount
 		default:
-			r = uint64((a.SSMConvolutionKernel - 1) * (a.SSMInnerSize + 2*a.SSMGroupCount*a.SSMStateSize))
-			s = uint64(a.SSMStateSize * a.SSMInnerSize)
+			r = a.ssmConvolutionStateSize()
+			s = uint64(a.SSMStateSize) * uint64(a.SSMInnerSize)
 		}
 		rps, sps := r*nSeq, s*nSeq
 		rrs, srs := GGMLTypeF32.RowSizeOf([]uint64{rps}), GGMLTypeF32.RowSizeOf([]uint64{sps})
@@ -1012,7 +1020,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 				// see https://github.com/ggml-org/llama.cpp/blob/16d222fc5f2c0fdc3d0180e0b772516ec6e2eddd/src/llama-model.cpp#L2343-L2352.
 				continue
 			}
-			if nextNWithoutKV && i >= a.BlockCount-uint64(a.NextNPredictLayers) {
+			if nextNWithoutKV && i+uint64(a.NextNPredictLayers) >= a.BlockCount {
 				continue
 			}
 			device := 0
@@ -1118,7 +1126,12 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		// the allocated memory can be reused for the next layer.
 		// So, we only consider the usage of the largest layer,
 		// which is the last layer by default.
-		if a.AttentionRecurrent && !a.AttentionHybrid {
+		switch {
+		case len(tfLs) == 0:
+			// A file with no transformer block holds nothing to size per layer.
+			// llama.cpp refuses to load it for its missing blk.0 tensors, so the
+			// device compute stays zero rather than reading past the layer list.
+		case a.AttentionRecurrent && !a.AttentionHybrid:
 			if a.RWKVHeadSize > 0 {
 				attnInc := uint64(0)
 				for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.(attn_norm|attn_norm_2)\.weight`)) {
@@ -1161,7 +1174,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 					e.Devices[i+1].Computation.Compute = cp
 				}
 			} else {
-				r := uint64((a.SSMConvolutionKernel - 1) * (a.SSMInnerSize + 2*a.SSMGroupCount*a.SSMStateSize))
+				r := a.ssmConvolutionStateSize()
 				convInc := GGMLTypeF32.RowSizeOf([]uint64{r, nSeq}) // F32 [n_embd_key_gqa, nSeq] reshape
 				for _, l := range tfLs[len(tfLs)-1].Search(regexp.MustCompile(`.*\.\d+\.(attn_norm|ssm_in|ssm_conv1d)\.weight`)) {
 					if !strings.HasSuffix(l.Name, ".ssm_conv1d.weight") {
@@ -1191,7 +1204,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 					e.Devices[i+1].Computation.Compute = cp
 				}
 			}
-		} else {
+		default:
 			loadAttnInc, offloadAttnInc := uint64(0), uint64(0)
 			// A memoryless graph has no KV cache rows to stage across a host
 			// boundary.
@@ -1638,7 +1651,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 				projectionDim = ti.Dimensions[1]
 			}
 		case "qwen2vl_merger", "qwen2.5vl_merger", "qwen2.5o":
-			nSizePatch := uint64(a.ClipVisionPatchSize * 2)
+			nSizePatch := 2 * uint64(a.ClipVisionPatchSize)
 			heightPatchSize := heightMaxSize / nSizePatch
 			if heightMaxSize%nSizePatch > 0 {
 				heightPatchSize++
@@ -1666,7 +1679,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 				projectionDim = ti.Dimensions[0]
 			}
 		case "idefics3", "llama4":
-			nPatches /= uint64(a.ClipVisionProjectorScaleFactor * a.ClipVisionProjectorScaleFactor)
+			nPatches /= uint64(a.ClipVisionProjectorScaleFactor) * uint64(a.ClipVisionProjectorScaleFactor)
 			if ti, ok := gf.TensorInfos.Get("mm.model.fc.weight"); ok {
 				projectionDim = ti.Dimensions[1]
 			}
@@ -1684,7 +1697,7 @@ func (gf *GGUFFile) estimateLLaMACppRunInProjector(o *_GGUFRunEstimateOptions, a
 				projectionDim = ti.Dimensions[0]
 			}
 		case "internvl":
-			nPatches /= uint64(a.ClipVisionProjectorScaleFactor * a.ClipVisionProjectorScaleFactor)
+			nPatches /= uint64(a.ClipVisionProjectorScaleFactor) * uint64(a.ClipVisionProjectorScaleFactor)
 			if ti, ok := gf.TensorInfos.Get("mm.model.mlp.3.weight"); ok {
 				projectionDim = ti.Dimensions[1]
 			}

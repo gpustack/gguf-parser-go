@@ -696,6 +696,14 @@ var _GGUFClipProjectorTypeKeys = []string{
 	"clip.gen.audio.projector_type",
 }
 
+// _GGUFClipVisionRequiredKeys are the sizes llama.cpp reads as required keys of a
+// vision projector, see
+// https://github.com/ggml-org/llama.cpp/blob/c841aeeb8/tools/mtmd/clip.cpp#L1308-L1309.
+var _GGUFClipVisionRequiredKeys = []string{
+	"clip.vision.image_size",
+	"clip.vision.patch_size",
+}
+
 // _GGUFClipWarmupImage is how llama.cpp sizes the one square image it reserves a
 // dynamic-resolution projector's graph for. TokensPerSide is the square root of
 // the warm-up token count llama.cpp carries for the projector type, and
@@ -855,6 +863,9 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 	if v, ok := m[visionProjectorScaleFactorKey]; ok {
 		ga.ClipVisionProjectorScaleFactor = ValueNumeric[uint32](v)
 	}
+	// llama.cpp requires the key for a vision projector, and validateMetadata
+	// refuses a file without it, so the default stands in only for a file built
+	// in memory.
 	ga.ClipVisionPatchSize = 1
 	if v, ok := m[visionPatchSizeKey]; ok {
 		ga.ClipVisionPatchSize = ValueNumeric[uint32](v)
@@ -1453,6 +1464,18 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 // the device that holds the head.
 func (ga GGUFArchitecture) emitsLogitsAtEveryPosition() bool {
 	return slices.Contains([]string{"eagle3"}, ga.Architecture)
+}
+
+// ssmConvolutionStateSize is the element count of one sequence's mamba
+// convolution state: the kernel width less one, times the inner and group state
+// widths, and zero for a zero kernel, see llama_hparams::n_embd_r at
+// https://github.com/ggml-org/llama.cpp/blob/c841aeeb8/src/llama-hparams.cpp#L203.
+// Every factor widens to uint64 before the product, as the fields are uint32.
+func (ga GGUFArchitecture) ssmConvolutionStateSize() uint64 {
+	if ga.SSMConvolutionKernel == 0 {
+		return 0
+	}
+	return (uint64(ga.SSMConvolutionKernel) - 1) * (uint64(ga.SSMInnerSize) + 2*uint64(ga.SSMGroupCount)*uint64(ga.SSMStateSize))
 }
 
 // buildsMemorylessGraph reports whether llama.cpp serves this architecture

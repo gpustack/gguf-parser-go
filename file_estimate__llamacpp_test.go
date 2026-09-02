@@ -1057,3 +1057,98 @@ func TestGGUFFile_EstimateLLaMACppRun_EncoderComputeBuffer(t *testing.T) {
 		})
 	}
 }
+
+func TestGGUFFile_EstimateLLaMACppRun_BoundedHyperparameters(t *testing.T) {
+	ctx := context.Background()
+
+	// Each case rewrites one metadata value in memory to a value the parser's
+	// validation does not see, and checks that the estimator's arithmetic
+	// widens, clamps or saturates rather than wrapping.
+	t.Run("scale factor squared in uint64", func(t *testing.T) {
+		// 65536 squared is 2^32, which a uint32 product wraps to zero.
+		f, err := ParseGGUFFileFromHuggingFace(ctx,
+			"ggml-org/SmolVLM-256M-Instruct-GGUF", "mmproj-SmolVLM-256M-Instruct-Q8_0.gguf", SkipLargeMetadata())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := range f.Header.MetadataKV {
+			if f.Header.MetadataKV[i].Key == "clip.vision.projector.scale_factor" {
+				f.Header.MetadataKV[i].Value = uint32(65536)
+			}
+		}
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("estimate panicked: %v", r)
+			}
+		}()
+		// The projector keeps no token past that merge, so only the absence of a
+		// panic is asserted.
+		f.EstimateLLaMACppRun()
+	})
+
+	t.Run("context above int32 clamps", func(t *testing.T) {
+		// The embedding-only path derives the context option, an int32, from the
+		// file's declared context, a uint64.
+		f, err := ParseGGUFFileFromHuggingFace(ctx, "unsloth/bge-small-en-v1.5-GGUF", "bge-small-en-v1.5-f16.gguf", SkipLargeMetadata())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := range f.Header.MetadataKV {
+			if f.Header.MetadataKV[i].Key == "bert.context_length" {
+				f.Header.MetadataKV[i].Value = uint32(1<<31 + 4096)
+			}
+		}
+		e := f.EstimateLLaMACppRun()
+		// The estimate covers at most the int32 range, padded to llama.cpp's cache
+		// alignment, rather than a wrapped negative context.
+		if e.ContextSize > 1<<31 || e.ContextSize < 1<<30 {
+			t.Errorf("context size %d is not the clamped declared context", e.ContextSize)
+		}
+	})
+
+	t.Run("no block tensors", func(t *testing.T) {
+		// A file whose block_count promises layers its tensor list does not hold
+		// leaves the layer list empty. llama.cpp refuses such a file; the
+		// estimator must not read past the list at a partial offload.
+		f, err := ParseGGUFFileFromHuggingFace(ctx, "Qwen/Qwen3-0.6B-GGUF", "Qwen3-0.6B-Q8_0.gguf", SkipLargeMetadata())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var kept GGUFTensorInfos
+		for _, ti := range f.TensorInfos {
+			if len(ti.Name) < 4 || ti.Name[:4] != "blk." {
+				kept = append(kept, ti)
+			}
+		}
+		f.TensorInfos = kept
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("estimate panicked: %v", r)
+			}
+		}()
+		f.EstimateLLaMACppRun(WithLLaMACppOffloadLayers(4), WithFlashAttention())
+		f.EstimateLLaMACppRun(WithLLaMACppOffloadLayers(4))
+	})
+
+	t.Run("nextn beyond the block count saturates", func(t *testing.T) {
+		f, err := ParseGGUFFileFromHuggingFace(ctx,
+			"sszymczyk/DeepSeek-V3.2-4Layers-GGUF", "DeepSeek-V3.2-4Layers-Q8_0.gguf", SkipLargeMetadata())
+		if err != nil {
+			t.Fatal(err)
+		}
+		a := f.Architecture()
+		for i := range f.Header.MetadataKV {
+			if f.Header.MetadataKV[i].Key == "deepseek32.nextn_predict_layers" {
+				f.Header.MetadataKV[i].Value = uint32(a.BlockCount + 1)
+			}
+		}
+		// Every block is a NextN block, and llama.cpp keeps none of them in the
+		// cache, so no KV cache remains to charge.
+		e := f.EstimateLLaMACppRun(WithLLaMACppContextSize(4096))
+		for i := range e.Devices {
+			if kv := e.Devices[i].KVCache.Sum(); kv != 0 {
+				t.Errorf("device %d charges %s of KV cache for a model with no cached block", i, kv)
+			}
+		}
+	})
+}
