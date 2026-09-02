@@ -1,6 +1,5 @@
 {
   "include": [
-    "**/*_test.go",
     "**/*.md"
   ],
   "exclude": [
@@ -8,11 +7,6 @@
     "**/gen.*.go"
   ],
   "rules": [
-    {
-      "path": "**/*_test.go",
-      "merge_system_rule": true,
-      "rule": "This repository's test conventions: use testify for assertions; table-driven cases where the shape fits; tests must be deterministic and -race-clean (`make test` runs -race -failfast) — flag any dependence on time, ordering, randomness, or network availability; tests that need a real model file must skip cleanly via t.Skip when TEST_MODEL_PATH is unset, never fail; fail fast on setup errors instead of letting them corrupt later assertions; assert observable state, not implementation details. A bug fix must ship its regression test in the same PR — flag a fix with no accompanying test. A boundary/security fix must add a crafted-input regression test (e.g. a GGUF declaring an absurd length or count) — flag a security fix without one."
-    },
     {
       "path": "file_estimate__*.go",
       "merge_system_rule": true,
@@ -31,7 +25,7 @@
     {
       "path": "*.go",
       "merge_system_rule": true,
-      "rule": "GGUF parsing core (file*.go, ggml.go, scalar.go, cache.go, ollama_*.go, filename.go). Every input byte is untrusted — boundary checking is the top review priority: any length, count, or offset declared by the file is attacker-controlled, so it must be validated against the remaining file size before allocating, seeking, or slicing (see the ReadString/ReadArray fixes bounding declared lengths by remaining bytes). A crafted GGUF must produce an error — never a panic, an OOM-scale allocation, or an out-of-bounds read; flag any new trust in untrusted file data, and any panic used for control flow. mmap and chunked/ring-buffer reads must not introduce shared mutable state that races. Remote readers fetch through ranged HTTP backed by cache.go — flag full-file downloads and missing context propagation. Registry readers (Ollama/HuggingFace/ModelScope) fail with explicit errors, never partial state. Exported APIs carry doc comments describing behavior, expectations, and constraints; multi-word file names are snake_case."
+      "rule": "GGUF parsing core (file*.go, ggml.go, scalar.go, cache.go, ollama_*.go, filename.go). Every input byte is untrusted — boundary checking is the top review priority: any length, count, or offset declared by the file is attacker-controlled, so it must be validated against the remaining file size before allocating, seeking, or slicing (see the ReadString/ReadArray fixes bounding declared lengths by remaining bytes). A crafted GGUF must produce an error — never a panic, an OOM-scale allocation, or an out-of-bounds read; flag any new trust in untrusted file data, and any panic used for control flow. mmap and chunked/ring-buffer reads must not introduce shared mutable state that races. Remote readers fetch through ranged HTTP backed by cache.go — flag full-file downloads and missing context propagation. Registry readers (Ollama/HuggingFace/ModelScope) fail with explicit errors, never partial state. Exported APIs carry doc comments describing behavior, expectations, and constraints; multi-word file names are snake_case. A bug fix must ship its regression test in the same PR — flag a fix with no accompanying test. A boundary/security fix must add a crafted-input regression test (e.g. a GGUF declaring an absurd length or count) — flag a security fix without one."
     },
     {
       "path": "**/go.mod",
