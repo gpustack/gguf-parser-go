@@ -696,6 +696,14 @@ var _GGUFClipProjectorTypeKeys = []string{
 	"clip.gen.audio.projector_type",
 }
 
+// _GGUFClipVisionRequiredKeys are the sizes llama.cpp reads as required keys of a
+// vision projector, see
+// https://github.com/ggml-org/llama.cpp/blob/c841aeeb8/tools/mtmd/clip.cpp#L1308-L1309.
+var _GGUFClipVisionRequiredKeys = []string{
+	"clip.vision.image_size",
+	"clip.vision.patch_size",
+}
+
 // _GGUFClipWarmupImage is how llama.cpp sizes the one square image it reserves a
 // dynamic-resolution projector's graph for. TokensPerSide is the square root of
 // the warm-up token count llama.cpp carries for the projector type, and
@@ -855,6 +863,9 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 	if v, ok := m[visionProjectorScaleFactorKey]; ok {
 		ga.ClipVisionProjectorScaleFactor = ValueNumeric[uint32](v)
 	}
+	// llama.cpp requires the key for a vision projector, and validateMetadata
+	// refuses a file without it, so the default stands in only for a file built
+	// in memory.
 	ga.ClipVisionPatchSize = 1
 	if v, ok := m[visionPatchSizeKey]; ok {
 		ga.ClipVisionPatchSize = ValueNumeric[uint32](v)
@@ -1303,7 +1314,10 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 	if v, ok := m[attentionCausalKey]; ok {
 		ga.AttentionCausal = v.ValueBool()
 	} else {
-		ga.AttentionCausal = true
+		// An encoder-only architecture attends bidirectionally even when the
+		// file does not declare attention.causal,
+		// see llama_context::encode in llama.cpp.
+		ga.AttentionCausal = ga.Architecture != "t5encoder"
 	}
 	// See https://github.com/ggml-org/llama.cpp/blob/6491d6e4f1caf0ad2221865b4249ae6938a6308c/src/llama-arch.cpp#L1913-L1924.
 	ga.AttentionRecurrent = slices.Contains([]string{ // TODO(thxCode): calculate this from the metadata.
@@ -1450,4 +1464,43 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 // the device that holds the head.
 func (ga GGUFArchitecture) emitsLogitsAtEveryPosition() bool {
 	return slices.Contains([]string{"eagle3"}, ga.Architecture)
+}
+
+// ssmProjectionRows are the rows a mamba2 block holds per token: the fused zx
+// projection, twice the inner width plus the group state, and one
+// convolution-width row, the inner width plus the group state, both f32, see
+// build_mamba2_layer in llama.cpp. Every factor widens to uint64 before the
+// product, as the fields are uint32.
+func (ga GGUFArchitecture) ssmProjectionRows(nTokens uint64) (zx, conv uint64) {
+	groupState := 2 * uint64(ga.SSMGroupCount) * uint64(ga.SSMStateSize)
+	zx = GGMLTypeF32.RowSizeOf([]uint64{2*uint64(ga.SSMInnerSize) + groupState, nTokens})
+	conv = GGMLTypeF32.RowSizeOf([]uint64{uint64(ga.SSMInnerSize) + groupState, nTokens})
+	return zx, conv
+}
+
+// ssmConvolutionStateSize is the element count of one sequence's mamba
+// convolution state: the kernel width less one, times the inner and group state
+// widths, and zero for a zero kernel, see llama_hparams::n_embd_r at
+// https://github.com/ggml-org/llama.cpp/blob/c841aeeb8/src/llama-hparams.cpp#L203.
+// Every factor widens to uint64 before the product, as the fields are uint32.
+func (ga GGUFArchitecture) ssmConvolutionStateSize() uint64 {
+	if ga.SSMConvolutionKernel == 0 {
+		return 0
+	}
+	return (uint64(ga.SSMConvolutionKernel) - 1) * (uint64(ga.SSMInnerSize) + 2*uint64(ga.SSMGroupCount)*uint64(ga.SSMStateSize))
+}
+
+// buildsMemorylessGraph reports whether llama.cpp serves this architecture
+// without a memory module, so its graph attends over the ubatch only.
+//
+// llama_model::create_memory returns no memory for these architectures, see
+// https://github.com/ggml-org/llama.cpp/blob/c841aeeb8/src/llama-model.cpp#L2206-L2228.
+// t5encoder builds its whole graph from the same no-cache attention input.
+func (ga GGUFArchitecture) buildsMemorylessGraph() bool {
+	return slices.Contains([]string{
+		"bert", "jina-bert-v2", "jina-bert-v3", "nomic-bert", "nomic-bert-moe",
+		"neo-bert", "eurobert", "modern-bert", "gemma-embedding",
+		"dream", "llada", "llada-moe", "rnd1",
+		"t5encoder", "wavtokenizer-dec",
+	}, ga.Architecture)
 }

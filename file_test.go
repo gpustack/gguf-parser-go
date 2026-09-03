@@ -625,3 +625,104 @@ func TestParseGGUFArrayLengthDoS(t *testing.T) {
 		t.Fatal("expected an error for an out-of-range array length, got nil")
 	}
 }
+
+// writeProjectorGGUF writes a projector file with no tensors and the given
+// vision metadata, in the order llama.cpp's loader reads it.
+func writeProjectorGGUF(t *testing.T, kvs []GGUFMetadataKV) string {
+	t.Helper()
+	bo := binary.LittleEndian
+	var b []byte
+	u32 := func(v uint32) { x := make([]byte, 4); bo.PutUint32(x, v); b = append(b, x...) }
+	u64 := func(v uint64) { x := make([]byte, 8); bo.PutUint64(x, v); b = append(b, x...) }
+	str := func(s string) { u64(uint64(len(s))); b = append(b, s...) }
+
+	u32(0x46554747) // magic "GGUF"
+	u32(3)          // version 3
+	u64(0)          // tensorCount
+	u64(uint64(len(kvs)))
+	for _, kv := range kvs {
+		str(kv.Key)
+		u32(uint32(kv.ValueType))
+		switch v := kv.Value.(type) {
+		case string:
+			str(v)
+		case bool:
+			if v {
+				b = append(b, 1)
+			} else {
+				b = append(b, 0)
+			}
+		case uint32:
+			u32(v)
+		default:
+			t.Fatalf("unsupported value %T", kv.Value)
+		}
+	}
+
+	tmp, err := os.CreateTemp("", "gguf_projector_*.gguf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Remove(tmp.Name()) })
+	if _, err := tmp.Write(b); err != nil {
+		t.Fatal(err)
+	}
+	_ = tmp.Close()
+	return tmp.Name()
+}
+
+func TestParseGGUFFile_ProjectorHyperparameters(t *testing.T) {
+	// llama.cpp requires clip.vision.image_size and clip.vision.patch_size for a
+	// vision projector, and refuses a scale factor of 0 or of 65536 and above,
+	// see tools/mtmd/clip.cpp at c841aeeb8: get_u32(KEY_PATCH_SIZE, ...) and the
+	// n_merge bound in clip_model_loader::load_hparams. A scale factor of 65536
+	// squares to 2^32, which wraps a uint32 product to zero.
+	base := func(patch, image, scale *uint32) []GGUFMetadataKV {
+		kvs := []GGUFMetadataKV{
+			{Key: "general.architecture", ValueType: GGUFMetadataValueTypeString, Value: "clip"},
+			{Key: "clip.projector_type", ValueType: GGUFMetadataValueTypeString, Value: "idefics3"},
+			{Key: "clip.has_vision_encoder", ValueType: GGUFMetadataValueTypeBool, Value: true},
+		}
+		if image != nil {
+			kvs = append(kvs, GGUFMetadataKV{Key: "clip.vision.image_size", ValueType: GGUFMetadataValueTypeUint32, Value: *image})
+		}
+		if patch != nil {
+			kvs = append(kvs, GGUFMetadataKV{Key: "clip.vision.patch_size", ValueType: GGUFMetadataValueTypeUint32, Value: *patch})
+		}
+		if scale != nil {
+			kvs = append(kvs, GGUFMetadataKV{Key: "clip.vision.projector.scale_factor", ValueType: GGUFMetadataValueTypeUint32, Value: *scale})
+		}
+		return kvs
+	}
+	u := func(v uint32) *uint32 { return &v }
+	cases := []struct {
+		name    string
+		kvs     []GGUFMetadataKV
+		refused bool
+	}{
+		{"complete", base(u(14), u(512), u(4)), false},
+		{"no scale factor", base(u(14), u(512), nil), false},
+		{"no patch size", base(nil, u(512), u(4)), true},
+		{"no image size", base(u(14), nil, u(4)), true},
+		{"scale factor 0", base(u(14), u(512), u(0)), true},
+		{"scale factor 65536", base(u(14), u(512), u(65536)), true},
+		{"scale factor 65535", base(u(14), u(512), u(65535)), false},
+		{"patch size as a string", append(base(nil, u(512), u(4)),
+			GGUFMetadataKV{Key: "clip.vision.patch_size", ValueType: GGUFMetadataValueTypeString, Value: "14"}), true},
+		{"vision flag as a number", append(base(u(14), u(512), u(4))[:2],
+			GGUFMetadataKV{Key: "clip.has_vision_encoder", ValueType: GGUFMetadataValueTypeUint32, Value: uint32(1)},
+			GGUFMetadataKV{Key: "clip.vision.image_size", ValueType: GGUFMetadataValueTypeUint32, Value: uint32(512)},
+			GGUFMetadataKV{Key: "clip.vision.patch_size", ValueType: GGUFMetadataValueTypeUint32, Value: uint32(14)}), true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := ParseGGUFFile(writeProjectorGGUF(t, c.kvs))
+			if c.refused && err == nil {
+				t.Fatal("expected an error, got none")
+			}
+			if !c.refused && err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+		})
+	}
+}

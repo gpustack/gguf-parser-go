@@ -1,0 +1,1127 @@
+[
+  {
+    "architecture": "afmoe",
+    "repository": "MaziyarPanahi/Trinity-Mini-GGUF",
+    "file": "Trinity-Mini.Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 33,
+    "measuredPartialMiB": 291.73,
+    "measuredFullMiB": 63.42
+  },
+  {
+    "architecture": "apertus",
+    "repository": "unsloth/Apertus-8B-Instruct-2509-GGUF",
+    "file": "Apertus-8B-Instruct-2509-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 33,
+    "measuredPartialMiB": 207.22,
+    "measuredFullMiB": 70.09
+  },
+  {
+    "architecture": "arcee",
+    "repository": "bartowski/arcee-ai_AFM-4.5B-GGUF",
+    "file": "arcee-ai_AFM-4.5B-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 37,
+    "measuredPartialMiB": 125.81,
+    "measuredFullMiB": 55.09
+  },
+  {
+    "architecture": "arwkv7",
+    "repository": "mradermacher/arwkv-qwen-r1-1b5-i1-GGUF",
+    "file": "arwkv-qwen-r1-1b5.i1-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 29,
+    "measuredPartialMiB": 80.01,
+    "measuredFullMiB": 71.89
+  },
+  {
+    "architecture": "baichuan",
+    "repository": "mzwing/NSFW_13B_sft-GGUF",
+    "file": "NSFW_13B_sft.Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 41,
+    "measuredPartialMiB": 176.63,
+    "measuredFullMiB": 134.09
+  },
+  {
+    "architecture": "bailingmoe",
+    "repository": "bartowski/inclusionAI_Ling-lite-GGUF",
+    "file": "inclusionAI_Ling-lite-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 29,
+    "measuredPartialMiB": 249.81,
+    "measuredFullMiB": 65.59
+  },
+  {
+    "architecture": "bailingmoe2",
+    "repository": "bartowski/inclusionAI_Ling-mini-2.0-GGUF",
+    "file": "inclusionAI_Ling-mini-2.0-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 21,
+    "measuredPartialMiB": 272.21,
+    "measuredFullMiB": 72.09
+  },
+  {
+    "architecture": "bailingmoe3",
+    "repository": "bloomer010/Ling-3.0-tiny-GGUF",
+    "file": "Ling-3.0-tiny-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 25,
+    "measuredPartialMiB": 129.22,
+    "measuredFullMiB": 62.01
+  },
+  {
+    "architecture": "bert",
+    "repository": "unsloth/bge-small-en-v1.5-GGUF",
+    "file": "bge-small-en-v1.5-f16.gguf",
+    "contextSize": 512,
+    "fullOffloadLayers": 13,
+    "measuredPartialMiB": 5.62,
+    "measuredFullMiB": 4.5
+  },
+  {
+    "architecture": "bitnet",
+    "repository": "gianni-cor/bitnet_b1_58-large-TQ2_0",
+    "file": "bitnet_b1_58-large-TQ2_0.gguf",
+    "contextSize": 2048,
+    "fullOffloadLayers": 25,
+    "measuredPartialMiB": 38.38,
+    "measuredFullMiB": 38.01
+  },
+  {
+    "architecture": "bloom",
+    "repository": "mradermacher/chinese_bloom_7b_chat-GGUF",
+    "file": "chinese_bloom_7b_chat.Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 31,
+    "measuredPartialMiB": 161.5,
+    "measuredFullMiB": 124.09
+  },
+  {
+    "architecture": "chameleon",
+    "repository": "mradermacher/AA-chameleon-7b-plus-i1-GGUF",
+    "file": "AA-chameleon-7b-plus.i1-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 33,
+    "measuredPartialMiB": 146.11,
+    "measuredFullMiB": 100.12
+  },
+  {
+    "architecture": "chatglm",
+    "repository": "legraphista/glm-4-9b-chat-IMat-GGUF",
+    "file": "glm-4-9b-chat.Q8_0.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 41,
+    "measuredPartialMiB": 214.41,
+    "measuredFullMiB": 100.34
+  },
+  {
+    "architecture": "clip",
+    "repository": "Jackrong/Qwopus3.6-35B-A3B-Coder-MTP-GGUF",
+    "file": "Qwopus3.6-35B-A3B-Coder-MTP-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 42,
+    "measuredPartialMiB": 270.27,
+    "measuredFullMiB": 72.28
+  },
+  {
+    "architecture": "codeshell",
+    "repository": "WisdomShell/CodeShell-7B-Chat-int4",
+    "file": "codeshell-chat-q4_0.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 43,
+    "measuredPartialMiB": 108.35,
+    "measuredFullMiB": 64.09
+  },
+  {
+    "architecture": "cohere2",
+    "repository": "CohereLabs/tiny-aya-global-GGUF",
+    "file": "tiny-aya-global-q4_k_m.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 37,
+    "measuredPartialMiB": 115.41,
+    "measuredFullMiB": 100.67
+  },
+  {
+    "architecture": "cohere2moe",
+    "repository": "unsloth/North-Mini-Code-1.0-GGUF",
+    "file": "North-Mini-Code-1.0-UD-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 50,
+    "measuredPartialMiB": 254.06,
+    "measuredFullMiB": 112.17
+  },
+  {
+    "architecture": "command-r",
+    "repository": "bartowski/c4ai-command-r-plus-08-2024-GGUF",
+    "file": "c4ai-command-r-plus-08-2024-IQ1_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 65,
+    "measuredPartialMiB": 378.74,
+    "measuredFullMiB": 314.09
+  },
+  {
+    "architecture": "dbrx",
+    "repository": "dranger003/dbrx-instruct-iMat.GGUF",
+    "file": "ggml-dbrx-instruct-16x12b-iq1_s.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 41,
+    "measuredPartialMiB": 520.71,
+    "measuredFullMiB": 280.15
+  },
+  {
+    "architecture": "deci",
+    "repository": "bartowski/Llama-3_1-Nemotron-51B-Instruct-GGUF",
+    "file": "Llama-3_1-Nemotron-51B-Instruct-IQ4_XS.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 81,
+    "measuredPartialMiB": 326.83,
+    "measuredFullMiB": 220.09
+  },
+  {
+    "architecture": "deepseek",
+    "repository": "aclava/deepseek-moe-16b-chat-Q4_K_M-GGUF",
+    "file": "deepseek-moe-16b-chat-q4_k_m.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 29,
+    "measuredPartialMiB": 248.06,
+    "measuredFullMiB": 80.21
+  },
+  {
+    "architecture": "deepseek2",
+    "repository": "unsloth/GLM-4.7-Flash-GGUF",
+    "file": "GLM-4.7-Flash-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 48,
+    "measuredPartialMiB": 213.49,
+    "measuredFullMiB": 99.38
+  },
+  {
+    "architecture": "deepseek2-ocr",
+    "repository": "ggml-org/DeepSeek-OCR-GGUF",
+    "file": "DeepSeek-OCR-Q8_0.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 13,
+    "measuredPartialMiB": 113.28,
+    "measuredFullMiB": 51.71
+  },
+  {
+    "architecture": "deepseek32",
+    "repository": "sszymczyk/DeepSeek-V3.2-4Layers-GGUF",
+    "file": "DeepSeek-V3.2-4Layers-Q8_0.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 5,
+    "measuredPartialMiB": 416.72,
+    "measuredFullMiB": 391.07
+  },
+  {
+    "architecture": "dots1",
+    "repository": "KBlueLeaf/TIPOv2-1B-A200M",
+    "file": "TIPOv2-1B-A200M-f16.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 17,
+    "measuredPartialMiB": 70.03,
+    "measuredFullMiB": 34.42
+  },
+  {
+    "architecture": "dream",
+    "repository": "bartowski/Dream-org_Dream-v0-Instruct-7B-GGUF",
+    "file": "Dream-org_Dream-v0-Instruct-7B-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 29,
+    "measuredPartialMiB": 176.44,
+    "measuredFullMiB": 132.5
+  },
+  {
+    "architecture": "eagle3",
+    "repository": "williamliao/gemma-4-26B-A4B-it-speculator.eagle3-F16-GGUF",
+    "file": "gemma-4-26B-A4B-it-speculator.eagle3-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 2,
+    "measuredPartialMiB": 590.02,
+    "measuredFullMiB": 590.02
+  },
+  {
+    "architecture": "ernie4_5",
+    "repository": "flyingfishinwater/good_and_small_models",
+    "file": "PaddleOCR-VL-1.6-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 19,
+    "measuredPartialMiB": 33.2,
+    "measuredFullMiB": 30.09
+  },
+  {
+    "architecture": "ernie4_5-moe",
+    "repository": "bartowski/baidu_ERNIE-4.5-21B-A3B-Thinking-GGUF",
+    "file": "baidu_ERNIE-4.5-21B-A3B-Thinking-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 29,
+    "measuredPartialMiB": 267.46,
+    "measuredFullMiB": 91.09
+  },
+  {
+    "architecture": "eurobert",
+    "repository": "jinaai/jina-embeddings-v5-text-nano-retrieval",
+    "file": "v5-nano-retrieval-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 13,
+    "measuredPartialMiB": 23.55,
+    "measuredFullMiB": 21.5
+  },
+  {
+    "architecture": "exaone",
+    "repository": "lmstudio-community/EXAONE-3.5-7.8B-Instruct-GGUF",
+    "file": "EXAONE-3.5-7.8B-Instruct-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 33,
+    "measuredPartialMiB": 131.56,
+    "measuredFullMiB": 112.09
+  },
+  {
+    "architecture": "exaone4",
+    "repository": "LGAI-EXAONE/EXAONE-4.0-1.2B-GGUF",
+    "file": "EXAONE-4.0-1.2B-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 31,
+    "measuredPartialMiB": 42.5,
+    "measuredFullMiB": 40.04
+  },
+  {
+    "architecture": "falcon",
+    "repository": "mradermacher/falcon-40b-instruct-i1-GGUF",
+    "file": "falcon-40b-instruct.i1-Q4_K_M.gguf",
+    "contextSize": 2048,
+    "fullOffloadLayers": 61,
+    "measuredPartialMiB": 519.53,
+    "measuredFullMiB": 118.04
+  },
+  {
+    "architecture": "falcon-h1",
+    "repository": "tiiuae/Falcon-H1-Tiny-90M-Instruct-GGUF",
+    "file": "Falcon-H1-Tiny-90M-Instruct-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 25,
+    "measuredPartialMiB": 16.21,
+    "measuredFullMiB": 16.09
+  },
+  {
+    "architecture": "gemma-embedding",
+    "repository": "ggml-org/embeddinggemma-300M-GGUF",
+    "file": "embeddinggemma-300M-Q8_0.gguf",
+    "contextSize": 2048,
+    "fullOffloadLayers": 25,
+    "measuredPartialMiB": 12.45,
+    "measuredFullMiB": 12.75
+  },
+  {
+    "architecture": "gemma2",
+    "repository": "MaziyarPanahi/gemma-2-2b-it-GGUF",
+    "file": "gemma-2-2b-it.Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 27,
+    "measuredPartialMiB": 93.42,
+    "measuredFullMiB": 75.55
+  },
+  {
+    "architecture": "gemma3",
+    "repository": "ggml-org/gemma-3-1b-it-GGUF",
+    "file": "gemma-3-1b-it-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 27,
+    "measuredPartialMiB": 59.29,
+    "measuredFullMiB": 52.55
+  },
+  {
+    "architecture": "gemma3n",
+    "repository": "unsloth/gemma-3n-E2B-it-GGUF",
+    "file": "gemma-3n-E2B-it-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 31,
+    "measuredPartialMiB": 112.02,
+    "measuredFullMiB": 104.55
+  },
+  {
+    "architecture": "gemma4",
+    "repository": "HauhauCS/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive",
+    "file": "Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 43,
+    "measuredPartialMiB": 120.36,
+    "measuredFullMiB": 107.3
+  },
+  {
+    "architecture": "glm4",
+    "repository": "MaziyarPanahi/GLM-4.6V-Flash-GGUF",
+    "file": "GLM-4.6V-Flash.Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 41,
+    "measuredPartialMiB": 152.91,
+    "measuredFullMiB": 108.34
+  },
+  {
+    "architecture": "gpt-oss",
+    "repository": "unsloth/gpt-oss-20b-GGUF",
+    "file": "gpt-oss-20b-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 25,
+    "measuredPartialMiB": 219.73,
+    "measuredFullMiB": 91.58
+  },
+  {
+    "architecture": "gpt2",
+    "repository": "togatogah/jinen-v1-small.gguf",
+    "file": "jinen-v1-small-Q5_K_M.gguf",
+    "contextSize": 1024,
+    "fullOffloadLayers": 13,
+    "measuredPartialMiB": 13.87,
+    "measuredFullMiB": 11.54
+  },
+  {
+    "architecture": "gptneox",
+    "repository": "Felladrin/gguf-pythia-1.4b-sft-full",
+    "file": "pythia-1.4b-sft-full.Q4_K_M.gguf",
+    "contextSize": 2048,
+    "fullOffloadLayers": 25,
+    "measuredPartialMiB": 75.73,
+    "measuredFullMiB": 46.09
+  },
+  {
+    "architecture": "granite",
+    "repository": "AnkitAI/Parable-Granite-4.1-3B-Claude-Fable-5-GGUF",
+    "file": "Parable-Granite-4.1-3B-Claude-Fable-5-GGUF-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 41,
+    "measuredPartialMiB": 86.78,
+    "measuredFullMiB": 67.04
+  },
+  {
+    "architecture": "granitehybrid",
+    "repository": "bartowski/ibm-granite_granite-4.0-h-micro-GGUF",
+    "file": "ibm-granite_granite-4.0-h-micro-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 41,
+    "measuredPartialMiB": 75.27,
+    "measuredFullMiB": 68.09
+  },
+  {
+    "architecture": "granitemoe",
+    "repository": "bartowski/granite-3.1-3b-a800m-instruct-GGUF",
+    "file": "granite-3.1-3b-a800m-instruct-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 33,
+    "measuredPartialMiB": 73.02,
+    "measuredFullMiB": 61.04
+  },
+  {
+    "architecture": "graniteswitch",
+    "repository": "barha/granite-switch-4.1-3b-preview-GGUF",
+    "file": "granite-switch-4.1-3b-preview-bf16.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 41,
+    "measuredPartialMiB": 88.92,
+    "measuredFullMiB": 88.92
+  },
+  {
+    "architecture": "grovemoe",
+    "repository": "mradermacher/GroveMoE-Inst-i1-GGUF",
+    "file": "GroveMoE-Inst.i1-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 49,
+    "measuredPartialMiB": 224.53,
+    "measuredFullMiB": 88.09
+  },
+  {
+    "architecture": "hunyuan-dense",
+    "repository": "tencent/Hy-MT2-1.8B-GGUF",
+    "file": "Hy-MT2-1.8B-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 33,
+    "measuredPartialMiB": 63.13,
+    "measuredFullMiB": 52.09
+  },
+  {
+    "architecture": "hunyuan-moe",
+    "repository": "unsloth/Hunyuan-A13B-Instruct-GGUF",
+    "file": "Hunyuan-A13B-Instruct-UD-TQ1_0.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 33,
+    "measuredPartialMiB": 554.13,
+    "measuredFullMiB": 172.09
+  },
+  {
+    "architecture": "hunyuan_vl",
+    "repository": "ggml-org/HunyuanOCR-GGUF",
+    "file": "HunyuanOCR-Q8_0.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 25,
+    "measuredPartialMiB": 42.63,
+    "measuredFullMiB": 33.09
+  },
+  {
+    "architecture": "internlm2",
+    "repository": "mradermacher/internlm2-base-7b-GGUF",
+    "file": "internlm2-base-7b.Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 33,
+    "measuredPartialMiB": 137.56,
+    "measuredFullMiB": 112.09
+  },
+  {
+    "architecture": "jais",
+    "repository": "mradermacher/jais-family-30b-16k-i1-GGUF",
+    "file": "jais-family-30b-16k.i1-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 49,
+    "measuredPartialMiB": 372.38,
+    "measuredFullMiB": 214.09
+  },
+  {
+    "architecture": "jais2",
+    "repository": "mradermacher/nova-jais-2-70b-v2-GGUF",
+    "file": "nova-jais-2-70b-v2.Q2_K.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 69,
+    "measuredPartialMiB": 479.17,
+    "measuredFullMiB": 172.09
+  },
+  {
+    "architecture": "jamba",
+    "repository": "bartowski/ai21labs_AI21-Jamba-Reasoning-3B-GGUF",
+    "file": "ai21labs_AI21-Jamba-Reasoning-3B-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 29,
+    "measuredPartialMiB": 72.83,
+    "measuredFullMiB": 66.52
+  },
+  {
+    "architecture": "jina-bert-v2",
+    "repository": "mradermacher/jina-reranker-v1-tiny-en-GGUF",
+    "file": "jina-reranker-v1-tiny-en.Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 5,
+    "measuredPartialMiB": 10.14,
+    "measuredFullMiB": 9.75
+  },
+  {
+    "architecture": "jina-bert-v3",
+    "repository": "second-state/jina-embeddings-v3-GGUF",
+    "file": "jina-embeddings-v3-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 25,
+    "measuredPartialMiB": 16.04,
+    "measuredFullMiB": 13.51
+  },
+  {
+    "architecture": "kimi-k3",
+    "repository": "murillo2000/Kimi-K3-0.40B-GGUF",
+    "file": "Kimi-K3-0.40B-F16.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 9,
+    "measuredPartialMiB": 20.02,
+    "measuredFullMiB": 17.56
+  },
+  {
+    "architecture": "kimi-linear",
+    "repository": "bartowski/moonshotai_Kimi-Linear-48B-A3B-Instruct-GGUF",
+    "file": "moonshotai_Kimi-Linear-48B-A3B-Instruct-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 28,
+    "measuredPartialMiB": 554.5,
+    "measuredFullMiB": 105.01
+  },
+  {
+    "architecture": "laguna",
+    "repository": "mudler/Laguna-XS-2.1-APEX-GGUF",
+    "file": "Laguna-XS-2.1-APEX-I-Mini.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 41,
+    "measuredPartialMiB": 189.71,
+    "measuredFullMiB": 70.67
+  },
+  {
+    "architecture": "lfm2",
+    "repository": "LiquidAI/LFM2.5-2.6B-GGUF",
+    "file": "LFM2.5-2.6B-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 31,
+    "measuredPartialMiB": 87.67,
+    "measuredFullMiB": 75.06
+  },
+  {
+    "architecture": "lfm2moe",
+    "repository": "LiquidAI/LFM2.5-8B-A1B-GGUF",
+    "file": "LFM2.5-8B-A1B-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 25,
+    "measuredPartialMiB": 140.6,
+    "measuredFullMiB": 54.23
+  },
+  {
+    "architecture": "llada",
+    "repository": "mradermacher/MMaDA-8B-MixCoT-i1-GGUF",
+    "file": "MMaDA-8B-MixCoT.i1-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 33,
+    "measuredPartialMiB": 104.38,
+    "measuredFullMiB": 88.5
+  },
+  {
+    "architecture": "llada-moe",
+    "repository": "mradermacher/LLaDA-MoE-7B-A1B-Instruct-i1-GGUF",
+    "file": "LLaDA-MoE-7B-A1B-Instruct.i1-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 17,
+    "measuredPartialMiB": 169.5,
+    "measuredFullMiB": 56.77
+  },
+  {
+    "architecture": "llama",
+    "repository": "rippertnt/HyperCLOVAX-SEED-Text-Instruct-1.5B-Q4_K_M-GGUF",
+    "file": "hyperclovax-seed-text-instruct-1.5b-q4_k_m.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 25,
+    "measuredPartialMiB": 72.44,
+    "measuredFullMiB": 58.09
+  },
+  {
+    "architecture": "llama-embed",
+    "repository": "mradermacher/llama-nemotron-embed-1b-v2-GGUF",
+    "file": "llama-nemotron-embed-1b-v2.Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 17,
+    "measuredPartialMiB": 75.0,
+    "measuredFullMiB": 60.5
+  },
+  {
+    "architecture": "llama4",
+    "repository": "bartowski/meta-llama_Llama-4-Scout-17B-16E-Instruct-old-GGUF",
+    "file": "meta-llama_Llama-4-Scout-17B-16E-Instruct-IQ1_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 49,
+    "measuredPartialMiB": 255.96,
+    "measuredFullMiB": 96.18
+  },
+  {
+    "architecture": "maincoder",
+    "repository": "mradermacher/Maincoder-1B-GGUF",
+    "file": "Maincoder-1B.Q4_K_M.gguf",
+    "contextSize": 2048,
+    "fullOffloadLayers": 33,
+    "measuredPartialMiB": 40.27,
+    "measuredFullMiB": 38.01
+  },
+  {
+    "architecture": "mamba",
+    "repository": "QuantFactory/mamba-130m-hf-GGUF",
+    "file": "mamba-130m-hf.Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 25,
+    "measuredPartialMiB": 19.3,
+    "measuredFullMiB": 18.13
+  },
+  {
+    "architecture": "mamba2",
+    "repository": "viniciusianni/Mamba-Codestral-7B-v0.1-Q8_0-GGUF",
+    "file": "mamba-codestral-7b-v0.1-q8_0.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 65,
+    "measuredPartialMiB": 155.28,
+    "measuredFullMiB": 112.6
+  },
+  {
+    "architecture": "mellum",
+    "repository": "JetBrains/Mellum2-12B-A2.5B-Instruct-GGUF-Q8_0",
+    "file": "Mellum2-12B-A2.5B-Instruct-Q8_0.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 29,
+    "measuredPartialMiB": 204.94,
+    "measuredFullMiB": 100.67
+  },
+  {
+    "architecture": "minicpm",
+    "repository": "openbmb/MiniCPM4.1-8B-GGUF",
+    "file": "MiniCPM4.1-8B-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 33,
+    "measuredPartialMiB": 140.03,
+    "measuredFullMiB": 124.09
+  },
+  {
+    "architecture": "minicpm3",
+    "repository": "openbmb/MiniCPM3-4B-GGUF",
+    "file": "minicpm3-4b-q4_k_m.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 63,
+    "measuredPartialMiB": 57.52,
+    "measuredFullMiB": 47.53
+  },
+  {
+    "architecture": "mistral3",
+    "repository": "Abiray/Nemotron-3-Embed-8B-GGUF",
+    "file": "Nemotron-3-Embed-8B-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 35,
+    "measuredPartialMiB": 137.57,
+    "measuredFullMiB": 112.09
+  },
+  {
+    "architecture": "mistral4",
+    "repository": "unsloth/Mistral-Small-4-119B-2603-GGUF",
+    "file": "Mistral-Small-4-119B-2603-UD-IQ1_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 37,
+    "measuredPartialMiB": 603.53,
+    "measuredFullMiB": 76.01
+  },
+  {
+    "architecture": "modern-bert",
+    "repository": "atfai/granite-embedding-97m-multilingual-r2-GGUF",
+    "file": "granite-embedding-97m-multilingual-r2-f16.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 13,
+    "measuredPartialMiB": 14.25,
+    "measuredFullMiB": 11.25
+  },
+  {
+    "architecture": "mpt",
+    "repository": "mradermacher/mpt-7b-storywriter-i1-GGUF",
+    "file": "mpt-7b-storywriter.i1-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 33,
+    "measuredPartialMiB": 169.58,
+    "measuredFullMiB": 124.09
+  },
+  {
+    "architecture": "muse-glimmer",
+    "repository": "unsloth/Muse-Glimmer-30B-GGUF",
+    "file": "Muse-Glimmer-30B-UD-Q5_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 53,
+    "measuredPartialMiB": 203.21,
+    "measuredFullMiB": 149.67
+  },
+  {
+    "architecture": "nanbeige",
+    "repository": "owao/Nanbeige4.2-3B-GGUF",
+    "file": "Nanbeige4.2-3B-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 23,
+    "measuredPartialMiB": 1854.23,
+    "measuredFullMiB": 1854.23
+  },
+  {
+    "architecture": "nemotron",
+    "repository": "bartowski/Nemotron-Mini-4B-Instruct-GGUF",
+    "file": "Nemotron-Mini-4B-Instruct-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 33,
+    "measuredPartialMiB": 89.53,
+    "measuredFullMiB": 44.09
+  },
+  {
+    "architecture": "nemotron_h",
+    "repository": "MaziyarPanahi/NVIDIA-Nemotron-Nano-12B-v2-GGUF",
+    "file": "NVIDIA-Nemotron-Nano-12B-v2.Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 63,
+    "measuredPartialMiB": 202.41,
+    "measuredFullMiB": 151.48
+  },
+  {
+    "architecture": "nemotron_h_moe",
+    "repository": "unsloth/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-GGUF",
+    "file": "NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 54,
+    "measuredPartialMiB": 1123.18,
+    "measuredFullMiB": 75.84
+  },
+  {
+    "architecture": "neo-bert",
+    "repository": "mradermacher/NeoBERT-GGUF",
+    "file": "NeoBERT.Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 29,
+    "measuredPartialMiB": 18.35,
+    "measuredFullMiB": 15.5
+  },
+  {
+    "architecture": "nomic-bert",
+    "repository": "nomic-ai/nomic-embed-text-v1.5-GGUF",
+    "file": "nomic-embed-text-v1.5.Q4_K_M.gguf",
+    "contextSize": 2048,
+    "fullOffloadLayers": 13,
+    "measuredPartialMiB": 23.0,
+    "measuredFullMiB": 21.51
+  },
+  {
+    "architecture": "nomic-bert-moe",
+    "repository": "nomic-ai/nomic-embed-text-v2-moe-GGUF",
+    "file": "nomic-embed-text-v2-moe.Q4_K_M.gguf",
+    "contextSize": 512,
+    "fullOffloadLayers": 13,
+    "measuredPartialMiB": 38.92,
+    "measuredFullMiB": 18.51
+  },
+  {
+    "architecture": "olmo",
+    "repository": "lmstudio-community/AMD-OLMo-1B-SFT-DPO-GGUF",
+    "file": "AMD-OLMo-1B-SFT-DPO-Q4_K_M.gguf",
+    "contextSize": 2048,
+    "fullOffloadLayers": 17,
+    "measuredPartialMiB": 73.56,
+    "measuredFullMiB": 62.09
+  },
+  {
+    "architecture": "olmo2",
+    "repository": "mradermacher/mox-small-1-i1-GGUF",
+    "file": "mox-small-1.i1-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 65,
+    "measuredPartialMiB": 242.06,
+    "measuredFullMiB": 200.17
+  },
+  {
+    "architecture": "olmoe",
+    "repository": "bartowski/OLMoE-1B-7B-0924-Instruct-GGUF",
+    "file": "OLMoE-1B-7B-0924-Instruct-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 17,
+    "measuredPartialMiB": 172.37,
+    "measuredFullMiB": 64.09
+  },
+  {
+    "architecture": "openelm",
+    "repository": "mradermacher/OpenELM-3B-Instruct-GGUF",
+    "file": "OpenELM-3B-Instruct.Q4_K_M.gguf",
+    "contextSize": 2048,
+    "fullOffloadLayers": 37,
+    "measuredPartialMiB": 109.92,
+    "measuredFullMiB": 84.59
+  },
+  {
+    "architecture": "orion",
+    "repository": "OrionStarAI/Orion-14B-Chat",
+    "file": "Orion-14B-Chat.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 41,
+    "measuredPartialMiB": 250.06,
+    "measuredFullMiB": 124.09
+  },
+  {
+    "architecture": "paddleocr",
+    "repository": "PaddlePaddle/PaddleOCR-VL-1.6-GGUF",
+    "file": "PaddleOCR-VL-1.6-GGUF.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 19,
+    "measuredPartialMiB": 34.07,
+    "measuredFullMiB": 30.09
+  },
+  {
+    "architecture": "pangu-embedded",
+    "repository": "mradermacher/openPangu-Embedded-7B-i1-GGUF",
+    "file": "openPangu-Embedded-7B.i1-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 35,
+    "measuredPartialMiB": 122.21,
+    "measuredFullMiB": 103.09
+  },
+  {
+    "architecture": "phi2",
+    "repository": "ggml-org/moondream2-20250414-GGUF",
+    "file": "moondream2-text-model-f16_ct-vicuna.gguf",
+    "contextSize": 2048,
+    "fullOffloadLayers": 25,
+    "measuredPartialMiB": 74.06,
+    "measuredFullMiB": 50.04
+  },
+  {
+    "architecture": "phi3",
+    "repository": "MaziyarPanahi/Phi-3.5-mini-instruct-GGUF",
+    "file": "Phi-3.5-mini-instruct.Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 33,
+    "measuredPartialMiB": 108.25,
+    "measuredFullMiB": 70.01
+  },
+  {
+    "architecture": "phimoe",
+    "repository": "bartowski/Phi-3.5-MoE-instruct-GGUF",
+    "file": "Phi-3.5-MoE-instruct-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 33,
+    "measuredPartialMiB": 405.19,
+    "measuredFullMiB": 103.09
+  },
+  {
+    "architecture": "plamo",
+    "repository": "mradermacher/plamo-13b-i1-GGUF",
+    "file": "plamo-13b.i1-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 41,
+    "measuredPartialMiB": 184.83,
+    "measuredFullMiB": 151.59
+  },
+  {
+    "architecture": "plamo2",
+    "repository": "mitmul/plamo-2-translate-GGUF",
+    "file": "plamo-2-translate_Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 33,
+    "measuredPartialMiB": 160.1,
+    "measuredFullMiB": 142.09
+  },
+  {
+    "architecture": "plamo3",
+    "repository": "mmnga-o/plamo-3-nict-2b-base-gguf",
+    "file": "plamo-3-nict-2b-base-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 25,
+    "measuredPartialMiB": 101.55,
+    "measuredFullMiB": 76.67
+  },
+  {
+    "architecture": "qwen",
+    "repository": "mmnga/pfnet-nekomata-14b-pfn-qfin-gguf",
+    "file": "pfnet-nekomata-14b-pfn-qfin-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 41,
+    "measuredPartialMiB": 166.64,
+    "measuredFullMiB": 154.09
+  },
+  {
+    "architecture": "qwen2",
+    "repository": "Qwen/Qwen2.5-3B-Instruct-GGUF",
+    "file": "qwen2.5-3b-instruct-q4_k_m.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 37,
+    "measuredPartialMiB": 96.68,
+    "measuredFullMiB": 80.59
+  },
+  {
+    "architecture": "qwen2moe",
+    "repository": "DavidAU/Qwen2.5-MOE-2X1.5B-DeepSeek-Uncensored-Censored-4B-gguf",
+    "file": "Qwen2.5-MOE-2X1.5B-DeepSeek-Uncensored-Censored-4B-D_AU-Q4_k_m.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 29,
+    "measuredPartialMiB": 135.85,
+    "measuredFullMiB": 118.09
+  },
+  {
+    "architecture": "qwen2vl",
+    "repository": "unsloth/Qwen2.5-VL-7B-Instruct-GGUF",
+    "file": "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 29,
+    "measuredPartialMiB": 179.52,
+    "measuredFullMiB": 136.09
+  },
+  {
+    "architecture": "qwen3",
+    "repository": "AnkitAI/Parable-Qwen3-4B-Claude-Fable-5-GGUF",
+    "file": "Parable-Qwen3-4B-Claude-Fable-5-GGUF-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 37,
+    "measuredPartialMiB": 98.74,
+    "measuredFullMiB": 79.09
+  },
+  {
+    "architecture": "qwen35",
+    "repository": "unsloth/Qwen3.8-27B-GGUF",
+    "file": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 66,
+    "measuredPartialMiB": 194.77,
+    "measuredFullMiB": 126.28
+  },
+  {
+    "architecture": "qwen35moe",
+    "repository": "ornith-ai/Ornith-1.0-35B-GGUF",
+    "file": "ornith-1.0-35b-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 41,
+    "measuredPartialMiB": 270.27,
+    "measuredFullMiB": 72.28
+  },
+  {
+    "architecture": "qwen3moe",
+    "repository": "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF",
+    "file": "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 49,
+    "measuredPartialMiB": 224.53,
+    "measuredFullMiB": 88.09
+  },
+  {
+    "architecture": "qwen3next",
+    "repository": "bartowski/Qwen_Qwen3-Next-80B-A3B-Thinking-GGUF",
+    "file": "Qwen_Qwen3-Next-80B-A3B-Thinking-Q3_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 49,
+    "measuredPartialMiB": 358.0,
+    "measuredFullMiB": 86.28
+  },
+  {
+    "architecture": "qwen3tts",
+    "repository": "ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF",
+    "file": "Qwen3-TTS-12Hz-1.7B-Base-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 29,
+    "measuredPartialMiB": 62.73,
+    "measuredFullMiB": 52.09
+  },
+  {
+    "architecture": "qwen3vl",
+    "repository": "mradermacher/Qwen3-VL-8B-Instruct-abliterated-GGUF",
+    "file": "Qwen3-VL-8B-Instruct-abliterated.Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 37,
+    "measuredPartialMiB": 152.07,
+    "measuredFullMiB": 124.09
+  },
+  {
+    "architecture": "qwen3vlmoe",
+    "repository": "unsloth/Qwen3-VL-30B-A3B-Instruct-GGUF",
+    "file": "Qwen3-VL-30B-A3B-Instruct-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 49,
+    "measuredPartialMiB": 236.53,
+    "measuredFullMiB": 96.59
+  },
+  {
+    "architecture": "refact",
+    "repository": "mradermacher/Refact-1_6B-fim-i1-GGUF",
+    "file": "Refact-1_6B-fim.i1-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 33,
+    "measuredPartialMiB": 55.27,
+    "measuredFullMiB": 45.04
+  },
+  {
+    "architecture": "rnd1",
+    "repository": "vikramkr/RND1-Base-0910-Q8_0-GGUF",
+    "file": "rnd1-base-0910-q8_0.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 49,
+    "measuredPartialMiB": 278.57,
+    "measuredFullMiB": 85.5
+  },
+  {
+    "architecture": "rwkv6",
+    "repository": "bartowski/v6-Finch-7B-HF-GGUF",
+    "file": "v6-Finch-7B-HF-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 33,
+    "measuredPartialMiB": 116.5,
+    "measuredFullMiB": 114.03
+  },
+  {
+    "architecture": "rwkv6qwen2",
+    "repository": "mradermacher/RWKV6QwQ-32B-final-250307-i1-GGUF",
+    "file": "RWKV6QwQ-32B-final-250307.i1-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 65,
+    "measuredPartialMiB": 231.26,
+    "measuredFullMiB": 184.52
+  },
+  {
+    "architecture": "rwkv7",
+    "repository": "NaomiBTW/rwkv7-g1c-13.3b-gguf",
+    "file": "rwkv7-g1c-13.3b-20251231-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 62,
+    "measuredPartialMiB": 149.41,
+    "measuredFullMiB": 146.41
+  },
+  {
+    "architecture": "seed_oss",
+    "repository": "NousResearch/Hermes-4.3-36B-GGUF",
+    "file": "hermes-4_3_36b-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 65,
+    "measuredPartialMiB": 208.04,
+    "measuredFullMiB": 206.09
+  },
+  {
+    "architecture": "smallthinker",
+    "repository": "mradermacher/SmallThinker-4BA0.6B-Instruct-i1-GGUF",
+    "file": "SmallThinker-4BA0.6B-Instruct.i1-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 33,
+    "measuredPartialMiB": 64.86,
+    "measuredFullMiB": 31.21
+  },
+  {
+    "architecture": "smollm3",
+    "repository": "webAI-Official/TwIL-LM3",
+    "file": "TwIL-LM3-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 37,
+    "measuredPartialMiB": 98.91,
+    "measuredFullMiB": 80.59
+  },
+  {
+    "architecture": "stablelm",
+    "repository": "stabilityai/stablelm-2-zephyr-1_6b",
+    "file": "stablelm-2-zephyr-1_6b-Q4_0.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 25,
+    "measuredPartialMiB": 69.04,
+    "measuredFullMiB": 52.04
+  },
+  {
+    "architecture": "starcoder",
+    "repository": "bartowski/granite-20b-code-instruct-GGUF",
+    "file": "granite-20b-code-instruct-Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 53,
+    "measuredPartialMiB": 308.54,
+    "measuredFullMiB": 88.09
+  },
+  {
+    "architecture": "starcoder2",
+    "repository": "DevQuasar-9/bigcode.starcoder2-7b-GGUF",
+    "file": "bigcode.starcoder2-7b.Q4_K_M.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 33,
+    "measuredPartialMiB": 194.73,
+    "measuredFullMiB": 67.09
+  },
+  {
+    "architecture": "t5encoder",
+    "repository": "city96/umt5-xxl-encoder-gguf",
+    "file": "umt5-xxl-encoder-Q4_K_M.gguf",
+    "contextSize": 512,
+    "fullOffloadLayers": 25,
+    "measuredPartialMiB": 233.5,
+    "measuredFullMiB": 248.5
+  },
+  {
+    "architecture": "talkie",
+    "repository": "niklassheth/talkie-1930-13b-it-GGUF",
+    "file": "talkie-Q4_K_M.gguf",
+    "contextSize": 2048,
+    "fullOffloadLayers": 41,
+    "measuredPartialMiB": 162.38,
+    "measuredFullMiB": 122.34
+  },
+  {
+    "architecture": "wavtokenizer-dec",
+    "repository": "ggml-org/WavTokenizer",
+    "file": "WavTokenizer-Large-75-F16.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 13,
+    "measuredPartialMiB": 16.0,
+    "measuredFullMiB": 9.75
+  },
+  {
+    "architecture": "xverse",
+    "repository": "xverse/XVERSE-7B-Chat-GGUF",
+    "file": "xverse-7b-chat-q4_k_m.gguf",
+    "contextSize": 4096,
+    "fullOffloadLayers": 33,
+    "measuredPartialMiB": 147.07,
+    "measuredFullMiB": 100.09
+  }
+]

@@ -2,6 +2,8 @@ package gguf_parser
 
 import (
 	"context"
+	"encoding/json"
+	"os"
 	"testing"
 
 	"github.com/davecgh/go-spew/spew"
@@ -871,6 +873,356 @@ func TestGGUFFile_EstimateLLaMACppRun_ProjectorWarmupImage(t *testing.T) {
 			got := float64(f.EstimateLLaMACppRun(opts...).SummarizeItem(false, 0, 0).VRAMs[0].NonUMA) / (1024 * 1024)
 			if got < tc.want*0.9 || got > tc.want*1.1 {
 				t.Errorf("NonUMA VRAM: got %.2f MiB, want within 10%% of the measured %.2f MiB", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestGGUFFile_EstimateLLaMACppRun_PartialOffloadComputeBuffer(t *testing.T) {
+	ctx := context.Background()
+
+	// The figures below are the real "CUDA0 compute buffer size" that llama.cpp (c841aeeb8)
+	// reserves on a GTX 1070 Ti, read from sched_reserve with
+	// `llama-server -c <ctx> -fa on -ctk <cache> -ctv <cache> -b 2048 -ub 512 -np 1 -v`.
+	// The estimate is a bound over the graph's peak moments: it must not fall below the
+	// measurement, and stays within about half above it. The upper slack is the price of
+	// staying above the measurement on every one of the hundred-family sweep in the PR;
+	// the lower bound is the one that protects a fit decision. The real buffer is flat
+	// across partial depths and steps down only at full offload.
+	cases := []struct {
+		name       string
+		repo, file string
+		ctx        int32
+		cache      GGMLType
+		full       uint64  // layers for a full offload
+		partialMiB float64 // measured at a 4-layer offload
+		fullMiB    float64 // measured at full offload
+		deepMiB    float64 // measured one layer short of full; 0 means equal to partialMiB
+	}{
+		{"qwen3 q8_0 cache", "Qwen/Qwen3-0.6B-GGUF", "Qwen3-0.6B-Q8_0.gguf", 4096, GGMLTypeQ8_0, 29, 41.64, 32.09, 0},
+		{"qwen3 f16 cache", "Qwen/Qwen3-0.6B-GGUF", "Qwen3-0.6B-Q8_0.gguf", 4096, GGMLTypeF16, 29, 34.13, 30.01, 0},
+		{"qwen3 q8_0 cache 8k ctx", "Qwen/Qwen3-0.6B-GGUF", "Qwen3-0.6B-Q8_0.gguf", 8192, GGMLTypeQ8_0, 29, 78.64, 52.09, 0},
+		{"olmoe q8_0 cache", "bartowski/OLMoE-1B-7B-0924-Instruct-GGUF", "OLMoE-1B-7B-0924-Instruct-Q4_K_M.gguf", 4096, GGMLTypeQ8_0, 17, 172.37, 64.09, 0},
+		{"olmoe f16 cache", "bartowski/OLMoE-1B-7B-0924-Instruct-GGUF", "OLMoE-1B-7B-0924-Instruct-Q4_K_M.gguf", 4096, GGMLTypeF16, 17, 171.26, 64.01, 0},
+		// granitemoe: the down projection outsizes the freed gate and up hole,
+		// so the full-offload peak stacks all four FFN stages.
+		{"granitemoe q8_0 cache", "bartowski/granite-3.1-3b-a800m-instruct-GGUF", "granite-3.1-3b-a800m-instruct-Q4_K_M.gguf", 4096, GGMLTypeQ8_0, 33, 73.02, 61.04, 0},
+		// dots1: leading dense blocks. The expert weights live past block zero,
+		// the dense hole strands under the mixture's attention peak, and the
+		// buffer is not flat across depths: with only the dense block on the
+		// host, no expert tensor is staged.
+		{"dots1 q8_0 cache", "KBlueLeaf/TIPOv2-1B-A200M", "TIPOv2-1B-A200M-f16.gguf", 4096, GGMLTypeQ8_0, 17, 70.03, 34.42, 40.03},
+	}
+	const mib = float64(1 << 20)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, err := ParseGGUFFileFromHuggingFace(ctx, tc.repo, tc.file, SkipLargeMetadata())
+			if err != nil {
+				t.Fatal(err)
+			}
+			estimate := func(layers uint64) float64 {
+				e := f.EstimateLLaMACppRun(
+					WithLLaMACppContextSize(tc.ctx),
+					WithFlashAttention(),
+					WithLLaMACppCacheKeyType(tc.cache),
+					WithLLaMACppCacheValueType(tc.cache),
+					WithLLaMACppPhysicalBatchSize(512),
+					WithLLaMACppLogicalBatchSize(2048),
+					WithLLaMACppOffloadLayers(layers),
+				)
+				return float64(e.Devices[1].Computation.Compute)
+			}
+
+			// A uniform model holds one figure at every partial depth. A model
+			// with leading dense blocks steps down once its expert blocks are
+			// all on the device.
+			partial := estimate(4)
+			if got := estimate(1); got != partial {
+				t.Errorf("partial offload at 1 layer: got %s, want %s as at 4 layers",
+					GGUFBytesScalar(got), GGUFBytesScalar(partial))
+			}
+			deep := estimate(tc.full - 1)
+			deepMiB := tc.partialMiB
+			if tc.deepMiB != 0 {
+				deepMiB = tc.deepMiB
+			}
+			if lo, hi := deepMiB*0.99*mib, deepMiB*1.55*mib; float64(deep) < lo || float64(deep) > hi {
+				t.Errorf("offload one short of full: got %s, want within [%s, %s]",
+					GGUFBytesScalar(deep), GGUFBytesScalar(lo), GGUFBytesScalar(hi))
+			}
+			if lo, hi := tc.partialMiB*0.99*mib, tc.partialMiB*1.55*mib; partial < lo || partial > hi {
+				t.Errorf("partial offload compute: got %s, want within [%s, %s]",
+					GGUFBytesScalar(partial), GGUFBytesScalar(lo), GGUFBytesScalar(hi))
+			}
+
+			full := estimate(tc.full)
+			if lo, hi := tc.fullMiB*0.99*mib, tc.fullMiB*1.55*mib; full < lo || full > hi {
+				t.Errorf("full offload compute: got %s, want within [%s, %s]",
+					GGUFBytesScalar(full), GGUFBytesScalar(lo), GGUFBytesScalar(hi))
+			}
+		})
+	}
+}
+
+func TestGGUFFile_EstimateLLaMACppRun_BackendUnholdableComputeBuffer(t *testing.T) {
+	ctx := context.Background()
+
+	// llama.cpp (c841aeeb8) has no CUDA kernels for nanbeige: it assigns every
+	// layer to the CPU whatever the offload asks, and the batch offload path
+	// streams each layer's weights through the device compute buffer. The real
+	// "CUDA0 compute buffer size" on a GTX 1070 Ti is 1854.23 MiB at every
+	// offload depth, read from sched_reserve with
+	// `llama-server -c 4096 -fa on -ctk q8_0 -ctv q8_0 -b 2048 -ub 512 -np 1 -v`.
+	// The estimate must not fall below that measurement, and stays within
+	// less than half above it.
+	f, err := ParseGGUFFileFromHuggingFace(ctx,
+		"owao/Nanbeige4.2-3B-GGUF", "Nanbeige4.2-3B-Q4_K_M.gguf", SkipLargeMetadata())
+	if err != nil {
+		t.Fatal(err)
+	}
+	estimate := func(layers uint64) float64 {
+		e := f.EstimateLLaMACppRun(
+			WithLLaMACppContextSize(4096),
+			WithFlashAttention(),
+			WithLLaMACppCacheKeyType(GGMLTypeQ8_0),
+			WithLLaMACppCacheValueType(GGMLTypeQ8_0),
+			WithLLaMACppPhysicalBatchSize(512),
+			WithLLaMACppLogicalBatchSize(2048),
+			WithLLaMACppOffloadLayers(layers),
+		)
+		return float64(e.Devices[1].Computation.Compute)
+	}
+	const measuredMiB, mib = 1854.23, float64(1 << 20)
+	full := f.Architecture().BlockCount + 1
+	for name, layers := range map[string]uint64{"4-layer offload": 4, "full offload": full} {
+		got := estimate(layers)
+		if lo, hi := measuredMiB*mib, measuredMiB*1.4*mib; got < lo || got > hi {
+			t.Errorf("%s compute: got %s, want within [%s, %s]",
+				name, GGUFBytesScalar(got), GGUFBytesScalar(lo), GGUFBytesScalar(hi))
+		}
+	}
+}
+
+func TestGGUFFile_EstimateLLaMACppRun_EncoderComputeBuffer(t *testing.T) {
+	ctx := context.Background()
+
+	// The figures below are the real device compute buffer that llama.cpp (c841aeeb8)
+	// reserves on an A40 for a non-causal model, read from sched_reserve with
+	// `llama-server -c <ctx> -fa on -ctk q8_0 -ctv q8_0 -b 2048 -ub 512 -np 1 -v`.
+	// llama.cpp encodes in n_ubatch slices whatever the context is, so the reserve
+	// graph is priced over min(n_ctx, n_ubatch) tokens, not the window. t5encoder
+	// also declines the flash path: build_attn_mha requires kq_b == nullptr, so the
+	// relative-bias graph holds the quadratic kq and its bias rows.
+	cases := []struct {
+		name       string
+		repo, file string
+		ctx        int32
+		full       uint64  // layers for a full offload
+		partialMiB float64 // measured at a 4-layer offload
+		fullMiB    float64 // measured at full offload
+	}{
+		{"nomic-bert", "nomic-ai/nomic-embed-text-v1.5-GGUF", "nomic-embed-text-v1.5.Q4_K_M.gguf", 2048, 13, 23.00, 21.51},
+		{"jina-bert-v3", "second-state/jina-embeddings-v3-GGUF", "jina-embeddings-v3-Q4_K_M.gguf", 4096, 25, 16.04, 13.51},
+		{"t5encoder", "city96/umt5-xxl-encoder-gguf", "umt5-xxl-encoder-Q4_K_M.gguf", 512, 25, 233.50, 248.50},
+	}
+	const mib = float64(1 << 20)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, err := ParseGGUFFileFromHuggingFace(ctx, tc.repo, tc.file, SkipLargeMetadata())
+			if err != nil {
+				t.Fatal(err)
+			}
+			estimate := func(layers uint64) float64 {
+				e := f.EstimateLLaMACppRun(
+					WithLLaMACppContextSize(tc.ctx),
+					WithFlashAttention(),
+					WithLLaMACppCacheKeyType(GGMLTypeQ8_0),
+					WithLLaMACppCacheValueType(GGMLTypeQ8_0),
+					WithLLaMACppPhysicalBatchSize(512),
+					WithLLaMACppLogicalBatchSize(2048),
+					WithLLaMACppOffloadLayers(layers),
+				)
+				return float64(e.Devices[1].Computation.Compute)
+			}
+
+			partial := estimate(4)
+			if lo, hi := tc.partialMiB*0.99*mib, tc.partialMiB*2.0*mib; partial < lo || partial > hi {
+				t.Errorf("partial offload compute: got %s, want within [%s, %s]",
+					GGUFBytesScalar(partial), GGUFBytesScalar(lo), GGUFBytesScalar(hi))
+			}
+
+			full := estimate(tc.full)
+			if lo, hi := tc.fullMiB*0.99*mib, tc.fullMiB*2.0*mib; full < lo || full > hi {
+				t.Errorf("full offload compute: got %s, want within [%s, %s]",
+					GGUFBytesScalar(full), GGUFBytesScalar(lo), GGUFBytesScalar(hi))
+			}
+		})
+	}
+}
+
+func TestGGUFFile_EstimateLLaMACppRun_BoundedHyperparameters(t *testing.T) {
+	ctx := context.Background()
+
+	// Each case rewrites one metadata value in memory to a value the parser's
+	// validation does not see, and checks that the estimator's arithmetic
+	// widens, clamps or saturates rather than wrapping.
+	t.Run("scale factor squared in uint64", func(t *testing.T) {
+		// 65536 squared is 2^32, which a uint32 product wraps to zero.
+		f, err := ParseGGUFFileFromHuggingFace(ctx,
+			"ggml-org/SmolVLM-256M-Instruct-GGUF", "mmproj-SmolVLM-256M-Instruct-Q8_0.gguf", SkipLargeMetadata())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := range f.Header.MetadataKV {
+			if f.Header.MetadataKV[i].Key == "clip.vision.projector.scale_factor" {
+				f.Header.MetadataKV[i].Value = uint32(65536)
+			}
+		}
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("estimate panicked: %v", r)
+			}
+		}()
+		// The projector keeps no token past that merge, so only the absence of a
+		// panic is asserted.
+		f.EstimateLLaMACppRun()
+	})
+
+	t.Run("context above int32 clamps", func(t *testing.T) {
+		// The embedding-only path derives the context option, an int32, from the
+		// file's declared context, a uint64.
+		f, err := ParseGGUFFileFromHuggingFace(ctx, "unsloth/bge-small-en-v1.5-GGUF", "bge-small-en-v1.5-f16.gguf", SkipLargeMetadata())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := range f.Header.MetadataKV {
+			if f.Header.MetadataKV[i].Key == "bert.context_length" {
+				f.Header.MetadataKV[i].Value = uint32(1<<31 + 4096)
+			}
+		}
+		e := f.EstimateLLaMACppRun()
+		// The estimate covers at most the int32 range, padded to llama.cpp's cache
+		// alignment, rather than a wrapped negative context.
+		if e.ContextSize > 1<<31 || e.ContextSize < 1<<30 {
+			t.Errorf("context size %d is not the clamped declared context", e.ContextSize)
+		}
+	})
+
+	t.Run("no block tensors", func(t *testing.T) {
+		// A file whose block_count promises layers its tensor list does not hold
+		// leaves the layer list empty. llama.cpp refuses such a file; the
+		// estimator must not read past the list at a partial offload.
+		f, err := ParseGGUFFileFromHuggingFace(ctx, "Qwen/Qwen3-0.6B-GGUF", "Qwen3-0.6B-Q8_0.gguf", SkipLargeMetadata())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var kept GGUFTensorInfos
+		for _, ti := range f.TensorInfos {
+			if len(ti.Name) < 4 || ti.Name[:4] != "blk." {
+				kept = append(kept, ti)
+			}
+		}
+		f.TensorInfos = kept
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("estimate panicked: %v", r)
+			}
+		}()
+		f.EstimateLLaMACppRun(WithLLaMACppOffloadLayers(4), WithFlashAttention())
+		f.EstimateLLaMACppRun(WithLLaMACppOffloadLayers(4))
+	})
+
+	t.Run("nextn beyond the block count saturates", func(t *testing.T) {
+		f, err := ParseGGUFFileFromHuggingFace(ctx,
+			"sszymczyk/DeepSeek-V3.2-4Layers-GGUF", "DeepSeek-V3.2-4Layers-Q8_0.gguf", SkipLargeMetadata())
+		if err != nil {
+			t.Fatal(err)
+		}
+		a := f.Architecture()
+		for i := range f.Header.MetadataKV {
+			if f.Header.MetadataKV[i].Key == "deepseek32.nextn_predict_layers" {
+				f.Header.MetadataKV[i].Value = uint32(a.BlockCount + 1)
+			}
+		}
+		// Every block is a NextN block, and llama.cpp keeps none of them in the
+		// cache, so no KV cache remains to charge.
+		e := f.EstimateLLaMACppRun(WithLLaMACppContextSize(4096))
+		for i := range e.Devices {
+			if kv := e.Devices[i].KVCache.Sum(); kv != 0 {
+				t.Errorf("device %d charges %s of KV cache for a model with no cached block", i, kv)
+			}
+		}
+	})
+}
+
+func TestGGUFFile_EstimateLLaMACppRun_MeasuredSweep(t *testing.T) {
+	// The table holds the "CUDA0 compute buffer size" llama.cpp c841aeeb8 reserved
+	// for every text architecture with a servable GGUF on HuggingFace, read from
+	// sched_reserve with `llama-server -c <ctx> -fa on -ctk q8_0 -ctv q8_0 -b 2048
+	// -ub 512 -np 1 -v` at a 4-layer offload and at a full offload. The estimate
+	// must not fall below a measurement: a low estimate approves a model that does
+	// not fit. The one allowance is the allocator's alignment padding: ggml-alloc
+	// rounds every allocation up to the CUDA buffer alignment of 128 bytes, and a
+	// graph holds about a thousand allocations, so a measurement sits up to 0.1 MiB
+	// above the rows the estimate sums. The sweep parses every file remotely, one
+	// at a time because concurrent ranged reads from the HuggingFace CDN come back
+	// corrupted, and it takes minutes, so it runs only when
+	// TEST_COMPUTE_BUFFER_SWEEP is set.
+	if _, ok := os.LookupEnv("TEST_COMPUTE_BUFFER_SWEEP"); !ok {
+		t.Skip("TEST_COMPUTE_BUFFER_SWEEP is not set")
+	}
+	ctx := context.Background()
+
+	b, err := os.ReadFile("testdata/llamacpp_compute_buffer_sweep.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases []struct {
+		Architecture      string  `json:"architecture"`
+		Repository        string  `json:"repository"`
+		File              string  `json:"file"`
+		ContextSize       int32   `json:"contextSize"`
+		FullOffloadLayers uint64  `json:"fullOffloadLayers"`
+		MeasuredPartial   float64 `json:"measuredPartialMiB"`
+		MeasuredFull      float64 `json:"measuredFullMiB"`
+	}
+	if err := json.Unmarshal(b, &cases); err != nil {
+		t.Fatal(err)
+	}
+	const mib = float64(1 << 20)
+	const alignmentPaddingMiB = 0.1
+	for _, tc := range cases {
+		t.Run(tc.Architecture, func(t *testing.T) {
+			f, err := ParseGGUFFileFromHuggingFace(ctx, tc.Repository, tc.File, SkipLargeMetadata())
+			if err != nil {
+				t.Fatal(err)
+			}
+			estimate := func(layers uint64) float64 {
+				e := f.EstimateLLaMACppRun(
+					WithLLaMACppContextSize(tc.ContextSize),
+					WithFlashAttention(),
+					WithLLaMACppCacheKeyType(GGMLTypeQ8_0),
+					WithLLaMACppCacheValueType(GGMLTypeQ8_0),
+					WithLLaMACppPhysicalBatchSize(512),
+					WithLLaMACppLogicalBatchSize(2048),
+					WithLLaMACppOffloadLayers(layers),
+				)
+				// llama.cpp's compute buffer also holds the output tensor when a
+				// speculator keeps its logits on the device (eagle3), which the
+				// estimate books under the device footprint. Every other family
+				// reports zero there, so the sum compares the same buffer.
+				return float64(e.Devices[1].Computation.Compute + e.Devices[1].Computation.Output + e.Devices[1].Footprint)
+			}
+			for name, cell := range map[string]struct {
+				layers   uint64
+				measured float64
+			}{
+				"4-layer offload": {4, tc.MeasuredPartial},
+				"full offload":    {tc.FullOffloadLayers, tc.MeasuredFull},
+			} {
+				if got, want := estimate(cell.layers), (cell.measured-alignmentPaddingMiB)*mib; got < want {
+					t.Errorf("%s: estimate %s falls below the measured %.2f MiB", name, GGUFBytesScalar(got), cell.measured)
+				}
 			}
 		})
 	}
