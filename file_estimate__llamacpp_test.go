@@ -2,6 +2,8 @@ package gguf_parser
 
 import (
 	"context"
+	"encoding/json"
+	"os"
 	"testing"
 
 	"github.com/davecgh/go-spew/spew"
@@ -1151,4 +1153,77 @@ func TestGGUFFile_EstimateLLaMACppRun_BoundedHyperparameters(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestGGUFFile_EstimateLLaMACppRun_MeasuredSweep(t *testing.T) {
+	// The table holds the "CUDA0 compute buffer size" llama.cpp c841aeeb8 reserved
+	// for every text architecture with a servable GGUF on HuggingFace, read from
+	// sched_reserve with `llama-server -c <ctx> -fa on -ctk q8_0 -ctv q8_0 -b 2048
+	// -ub 512 -np 1 -v` at a 4-layer offload and at a full offload. The estimate
+	// must not fall below a measurement: a low estimate approves a model that does
+	// not fit. The one allowance is the allocator's alignment padding: ggml-alloc
+	// rounds every allocation up to the CUDA buffer alignment of 128 bytes, and a
+	// graph holds about a thousand allocations, so a measurement sits up to 0.1 MiB
+	// above the rows the estimate sums. The sweep parses every file remotely, one
+	// at a time because concurrent ranged reads from the HuggingFace CDN come back
+	// corrupted, and it takes minutes, so it runs only when
+	// TEST_COMPUTE_BUFFER_SWEEP is set.
+	if _, ok := os.LookupEnv("TEST_COMPUTE_BUFFER_SWEEP"); !ok {
+		t.Skip("TEST_COMPUTE_BUFFER_SWEEP is not set")
+	}
+	ctx := context.Background()
+
+	b, err := os.ReadFile("testdata/llamacpp_compute_buffer_sweep.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases []struct {
+		Architecture      string  `json:"architecture"`
+		Repository        string  `json:"repository"`
+		File              string  `json:"file"`
+		ContextSize       int32   `json:"contextSize"`
+		FullOffloadLayers uint64  `json:"fullOffloadLayers"`
+		MeasuredPartial   float64 `json:"measuredPartialMiB"`
+		MeasuredFull      float64 `json:"measuredFullMiB"`
+	}
+	if err := json.Unmarshal(b, &cases); err != nil {
+		t.Fatal(err)
+	}
+	const mib = float64(1 << 20)
+	const alignmentPaddingMiB = 0.1
+	for _, tc := range cases {
+		t.Run(tc.Architecture, func(t *testing.T) {
+			f, err := ParseGGUFFileFromHuggingFace(ctx, tc.Repository, tc.File, SkipLargeMetadata())
+			if err != nil {
+				t.Fatal(err)
+			}
+			estimate := func(layers uint64) float64 {
+				e := f.EstimateLLaMACppRun(
+					WithLLaMACppContextSize(tc.ContextSize),
+					WithFlashAttention(),
+					WithLLaMACppCacheKeyType(GGMLTypeQ8_0),
+					WithLLaMACppCacheValueType(GGMLTypeQ8_0),
+					WithLLaMACppPhysicalBatchSize(512),
+					WithLLaMACppLogicalBatchSize(2048),
+					WithLLaMACppOffloadLayers(layers),
+				)
+				// llama.cpp's compute buffer also holds the output tensor when a
+				// speculator keeps its logits on the device (eagle3), which the
+				// estimate books under the device footprint. Every other family
+				// reports zero there, so the sum compares the same buffer.
+				return float64(e.Devices[1].Computation.Compute + e.Devices[1].Computation.Output + e.Devices[1].Footprint)
+			}
+			for name, cell := range map[string]struct {
+				layers   uint64
+				measured float64
+			}{
+				"4-layer offload": {4, tc.MeasuredPartial},
+				"full offload":    {tc.FullOffloadLayers, tc.MeasuredFull},
+			} {
+				if got, want := estimate(cell.layers), (cell.measured-alignmentPaddingMiB)*mib; got < want {
+					t.Errorf("%s: estimate %s falls below the measured %.2f MiB", name, GGUFBytesScalar(got), cell.measured)
+				}
+			}
+		})
+	}
 }
