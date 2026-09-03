@@ -709,6 +709,11 @@ func TestParseGGUFFile_ProjectorHyperparameters(t *testing.T) {
 		{"scale factor 65535", base(u(14), u(512), u(65535)), false},
 		{"patch size as a string", append(base(nil, u(512), u(4)),
 			GGUFMetadataKV{Key: "clip.vision.patch_size", ValueType: GGUFMetadataValueTypeString, Value: "14"}), true},
+		{"patch size as a string without the vision flag", []GGUFMetadataKV{
+			{Key: "general.architecture", ValueType: GGUFMetadataValueTypeString, Value: "clip"},
+			{Key: "clip.projector_type", ValueType: GGUFMetadataValueTypeString, Value: "idefics3"},
+			{Key: "clip.vision.patch_size", ValueType: GGUFMetadataValueTypeString, Value: "14"},
+		}, true},
 		{"vision flag as a number", append(base(u(14), u(512), u(4))[:2],
 			GGUFMetadataKV{Key: "clip.has_vision_encoder", ValueType: GGUFMetadataValueTypeUint32, Value: uint32(1)},
 			GGUFMetadataKV{Key: "clip.vision.image_size", ValueType: GGUFMetadataValueTypeUint32, Value: uint32(512)},
