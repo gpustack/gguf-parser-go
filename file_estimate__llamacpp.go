@@ -249,6 +249,48 @@ func (gf *GGUFFile) EstimateLLaMACppRun(opts ...GGUFRunEstimateOption) (e LLaMAC
 // reaches this size, see ggml_backend_cuda_device_offload_op.
 const _LMCOffloadOpMinBatchSize = 32
 
+// The measured rows. Each constant is a count of embedding-wide rows read from
+// one GGML_ALLOCATOR_DEBUG replay of the file named beside it. None of them
+// derives from the graph builder, so a change to that family's graph in
+// llama.cpp silently invalidates it. Re-measure the family when its graph
+// changes, and replace the constant with a derivation when one is found.
+const (
+	// rwkv7-g1c-13.3b: the rows alive at the peak, a dozen embedding-wide
+	// rows and the six-way fused projection.
+	_LMCMeasuredRWKV7PeakRows = 19
+	// arwkv-qwen-r1-1b5: the qwen FFN rides beside the rwkv rows.
+	_LMCMeasuredARWKV7PeakRows = 24
+	// v6-Finch-7B: a similar but narrower set than rwkv7.
+	_LMCMeasuredRWKV6PeakRows = 15
+	// RWKV6QwQ-32B.
+	_LMCMeasuredRWKV6Qwen2PeakRows = 20
+	// granite-switch-4.1-3b-preview: the switch router keeps three extra rows
+	// at the full-offload peak.
+	_LMCMeasuredGraniteSwitchRouterRows = 3
+	// moondream2 (phi2): the parallel residual holds one more row at both
+	// moments.
+	_LMCMeasuredPhi2ResidualRows = 1
+	// Qwen3-VL-8B: the deepstack embedding rides beside the residual through
+	// the whole graph, three rows wide.
+	_LMCMeasuredQwen3VLDeepstackRows = 3
+	// gemma-3n-E2B: the altup block holds the selected per-layer inputs in
+	// nine rows before the attention node.
+	_LMCMeasuredGemma3nAltupRows = 9
+	// gemma-3n-E2B: the altup input count that stands in when the file
+	// carries no altup_predict_coef tensor to read it from.
+	_LMCMeasuredGemma3nAltupInputs = 4
+	// NVIDIA-Nemotron-Nano-12B-v2 and plamo-2-translate: half of one zx row
+	// strands beside the zx row at the recurrent peak, so the share divides
+	// the row by this.
+	_LMCMeasuredSSMFragmentedZxDivisor = 2
+	// OLMoE-1B-7B and granite-3.1-3b-a800m: a host boundary stages four
+	// weight and cache slots, the K and V cache, the attention weight, and
+	// the gate and up weights, and each frees a slot that strands under the
+	// activation stack by at most one activation row. The two FFN slots price
+	// as the largest FFN weight.
+	_LMCMeasuredStagedFFNSlots = 2
+)
+
 // clampInt32 narrows a declared count to the int32 range the run options hold.
 // llama.cpp reads the same keys as uint32, so a file it loads declares at most
 // 2^32 - 1, and the clamp keeps the estimate at the largest context the options
@@ -298,22 +340,22 @@ func estimateLLaMACppRecurrentComputeFloor(
 	floor := uint64(0)
 	switch a.Architecture {
 	case "rwkv7":
-		floor = 19 * embdRow
+		floor = _LMCMeasuredRWKV7PeakRows * embdRow
 	case "arwkv7":
-		// Measured on arwkv-qwen-r1-1b5: the qwen FFN rides beside the rwkv rows.
-		floor = 24 * embdRow
+		floor = _LMCMeasuredARWKV7PeakRows * embdRow
 	case "rwkv6":
-		floor = 15 * embdRow
+		floor = _LMCMeasuredRWKV6PeakRows * embdRow
 	case "rwkv6qwen2":
-		// Measured on RWKV6QwQ-32B.
-		floor = 20 * embdRow
+		floor = _LMCMeasuredRWKV6Qwen2PeakRows * embdRow
 	}
 	if a.SSMInnerSize > 0 {
-		zx := GGMLTypeF32.RowSizeOf([]uint64{2*uint64(a.SSMInnerSize) + 2*uint64(a.SSMGroupCount)*uint64(a.SSMStateSize), nTokens})
-		conv := GGMLTypeF32.RowSizeOf([]uint64{uint64(a.SSMInnerSize) + 2*uint64(a.SSMGroupCount)*uint64(a.SSMStateSize), nTokens})
-		floor = max(floor, zx+2*conv+2*embdRow+zx/2)
+		zx, conv := a.ssmProjectionRows(nTokens)
+		floor = max(floor, zx+
+			2*conv+ // the two convolution-width rows
+			2*embdRow+ // the stranded residual rows
+			zx/_LMCMeasuredSSMFragmentedZxDivisor)
 	}
-	cp = max(cp, floor) + 2*embdRow
+	cp = max(cp, floor) + 2*embdRow // every recurrent graph strands two residual rows
 	if boundary {
 		var w uint64
 		for _, l := range tfLs[0].Search(_LMCLayerWeightRegex) {
@@ -380,6 +422,13 @@ type _LMCFlashStagedSlots struct {
 	wFfnSlot, wFfnSlot2 uint64
 }
 
+// strandedUnder is what the staged slots leave stranded under an activation
+// stack of the given row: at most one activation row per slot, see
+// _LMCMeasuredStagedFFNSlots.
+func (s _LMCFlashStagedSlots) strandedUnder(act uint64) uint64 {
+	return min(s.loadAttnInc, act) + min(s.wAttnSlot, act) + _LMCMeasuredStagedFFNSlots*min(s.wFfnSlot, act)
+}
+
 // estimateLLaMACppFlashFFNActivations sizes the widest run of FFN activations
 // in one flash attention layer, beside the slots a host boundary stages. It
 // also returns the dense hole a mixture strands under its peak, and one
@@ -419,11 +468,13 @@ func estimateLLaMACppFlashFFNActivations(
 			stack += down
 		}
 		if slots.boundary {
-			actsPhase := stack
-			for _, slot := range []uint64{slots.loadAttnInc, slots.wAttnSlot, slots.wFfnSlot, slots.wFfnSlot} {
-				actsPhase += min(slot, act)
-			}
-			acts += max(actsPhase, act /* swiglu */ +slots.wFfnSlot+slots.wAttnSlot+down+slots.stagedKV)
+			actsPhase := stack + slots.strandedUnder(act)
+			downMoment := act + // the swiglu product
+				slots.wFfnSlot + // the staged expert weight
+				slots.wAttnSlot + // the staged attention weight
+				down + // ffn_moe_down
+				slots.stagedKV // the host layer's K and V rows
+			acts += max(actsPhase, downMoment)
 		} else {
 			acts += stack
 		}
@@ -464,11 +515,12 @@ func estimateLLaMACppFlashFFNActivations(
 		}
 		lastAct = act
 		if slots.boundary {
-			actsPhase := actStack
-			for _, slot := range []uint64{slots.loadAttnInc, slots.wAttnSlot, slots.wFfnSlot, slots.wFfnSlot} {
-				actsPhase += min(slot, act)
-			}
-			downMoment := act + slots.wFfnSlot + slots.wAttnSlot + embdRow /* ffn_out */ + slots.stagedKV
+			actsPhase := actStack + slots.strandedUnder(act)
+			downMoment := act + // the up activation
+				slots.wFfnSlot + // the staged FFN weight
+				slots.wAttnSlot + // the staged attention weight
+				embdRow + // ffn_out
+				slots.stagedKV // the host layer's K and V rows
 			if !gated {
 				// Only the small down output follows, so the freed up-weight
 				// hole strands under the peak.
@@ -485,7 +537,7 @@ func estimateLLaMACppFlashFFNActivations(
 func estimateLLaMACppFlashComputeMoments(
 	o *_GGUFRunEstimateOptions, a *GGUFArchitecture,
 	hostLayers, allLayers []IGGUFTensorInfos,
-	nKV, nTokens, loadAttnInc, archRows uint64,
+	nKV, nTokens, loadAttnInc uint64,
 	boundary, gated bool,
 ) (attnInc, ffnInc uint64) {
 	// One layer's working set around the attention node.
@@ -501,9 +553,10 @@ func estimateLLaMACppFlashComputeMoments(
 
 	// A latent-attention graph decompresses K and V through low-rank rows that
 	// ride beside every moment.
+	archRows := uint64(0)
 	for _, tl := range allLayers {
 		if len(tl.Search(_LMCLatentAttentionRegex)) != 0 {
-			archRows += 2 * embdRow
+			archRows = 2 * embdRow
 			break
 		}
 	}
@@ -542,17 +595,31 @@ func estimateLLaMACppFlashComputeMoments(
 		faAlloc += GGMLTypeF16.RowSizeOf([]uint64{uint64(a.AttentionValueLength), nKV, a.AttentionHeadCountKV})
 	}
 
-	// Attention moment.
-	attnInc = archRows + embdRow /* l_out */ + embdRow /* norm */ + embdRow /* attn_out */ + attnQ + attnK + attnV + kqMask + faAlloc
+	// The attention moment: the rows alive at the FLASH_ATTN_EXT node.
+	attnInc = archRows +
+		embdRow + // l_out, the residual
+		embdRow + // the norm output
+		embdRow + // attn_out
+		attnQ + // Qcur
+		attnK + // Kcur
+		attnV + // Vcur
+		kqMask +
+		faAlloc
 	if boundary {
-		// The host layer's K and V cache, staged a second time to cross the boundary.
-		attnInc += loadAttnInc + slots.wAttnSlot + slots.stagedKV
+		attnInc += loadAttnInc + // the host layer's K and V cache
+			slots.wAttnSlot + // its largest attention weight
+			slots.stagedKV // its K and V rows, staged a second time to cross the boundary
 	}
 
-	// FFN moment: the stranded residual and Q slots, the mask, the FFN input,
-	// and the widest run of FFN activations.
-	ffnInc = archRows + embdRow /* l_out */ + attnQ /* Qcur slot */ +
-		embdRow /* ffn_inp */ + embdRow /* norm slot */ + embdRow /* attn_out slot */ + kqMask
+	// The FFN moment: the slots the attention node stranded, the mask, the
+	// FFN input, and the widest run of FFN activations.
+	ffnInc = archRows +
+		embdRow + // l_out, the residual
+		attnQ + // the stranded Qcur slot
+		embdRow + // ffn_inp
+		embdRow + // the stranded norm slot
+		embdRow + // the stranded attn_out slot
+		kqMask
 	acts, strand, lastAct := estimateLLaMACppFlashFFNActivations(
 		a, hostLayers, allLayers, nTokens, embdRow, slots, gated)
 	ffnInc += acts
@@ -561,28 +628,9 @@ func estimateLLaMACppFlashComputeMoments(
 	if boundary {
 		ffnInc += strand
 	}
-	switch a.Architecture {
-	case "graniteswitch":
-		// Measured on granite-switch-4.1-3b: the switch router keeps three
-		// extra rows at the full-offload peak.
-		ffnInc += 3 * embdRow
-	case "mistral4":
-		// Measured on Mistral-Small-4: two staged expert tensors overlap at
-		// a host boundary.
-		if boundary {
-			ffnInc += slots.wFfnSlot2
-		}
-	case "nemotron_h_moe":
-		// Measured on Nemotron-H MoE: the copies of two host layers' expert
-		// tensors overlap at a host boundary.
-		if boundary {
-			ffnInc += slots.wFfnSlot + slots.wFfnSlot2
-		}
-	case "phi2":
-		// Measured on phi-2: the parallel residual holds one more row.
-		ffnInc += embdRow
-		attnInc += embdRow
-	}
+	attnMeasured, ffnMeasured, ssmMeasured := estimateLLaMACppMeasuredFamilyRows(a, embdRow, lastAct, slots)
+	attnInc += attnMeasured
+	ffnInc += ffnMeasured
 	if a.AttentionSlidingWindow > 0 {
 		// An interleaved graph keeps the global layer's FLASH_ATTN_EXT scratch
 		// alive under the windowed layer's FFN peak.
@@ -592,19 +640,86 @@ func estimateLLaMACppFlashComputeMoments(
 	// projection, two convolution-width rows, the residuals and a
 	// fragmentation share, sized from the mamba2 graph.
 	if a.SSMInnerSize > 0 {
-		zx := GGMLTypeF32.RowSizeOf([]uint64{2*uint64(a.SSMInnerSize) + 2*uint64(a.SSMGroupCount)*uint64(a.SSMStateSize), nTokens})
-		conv := GGMLTypeF32.RowSizeOf([]uint64{uint64(a.SSMInnerSize) + 2*uint64(a.SSMGroupCount)*uint64(a.SSMStateSize), nTokens})
-		ssm := zx + 2*conv + 4*embdRow + zx/2 + kqMask
-		if a.Architecture == "plamo2" || a.Architecture == "nemotron_h" {
-			// These blocks hold the ssm and FFN working sets together.
-			ssm += lastAct + embdRow
-		}
+		zx, conv := a.ssmProjectionRows(nTokens)
+		ssm := zx +
+			2*conv + // the two convolution-width rows
+			4*embdRow + // the residual rows the block holds
+			zx/_LMCMeasuredSSMFragmentedZxDivisor +
+			kqMask +
+			ssmMeasured
 		if boundary {
 			ssm += loadAttnInc + slots.wAttnSlot
 		}
 		ffnInc = max(ffnInc, ssm)
 	}
 	return attnInc, ffnInc
+}
+
+// estimateLLaMACppMeasuredFamilyRows adds what one replay of one file showed
+// beyond the derived moments, for the families that carry such a constant.
+// See the measured rows above for what each one is and where it came from.
+func estimateLLaMACppMeasuredFamilyRows(
+	a *GGUFArchitecture, embdRow, lastAct uint64, slots _LMCFlashStagedSlots,
+) (attnInc, ffnInc, ssmInc uint64) {
+	switch a.Architecture {
+	case "qwen3vl", "qwen3vlmoe":
+		// The deepstack embedding rides beside the residual through the
+		// whole graph, at both moments.
+		attnInc = _LMCMeasuredQwen3VLDeepstackRows * embdRow
+		ffnInc = _LMCMeasuredQwen3VLDeepstackRows * embdRow
+	case "plamo2", "nemotron_h":
+		// These blocks hold the ssm and FFN working sets together.
+		ssmInc = lastAct + embdRow
+	case "graniteswitch":
+		ffnInc = _LMCMeasuredGraniteSwitchRouterRows * embdRow
+	case "mistral4":
+		// Mistral-Small-4: two staged expert tensors overlap at a host boundary.
+		if slots.boundary {
+			ffnInc = slots.wFfnSlot2
+		}
+	case "nemotron_h_moe":
+		// Nemotron-3.5-Lightning: the copies of two host layers' expert
+		// tensors overlap at a host boundary.
+		if slots.boundary {
+			ffnInc = slots.wFfnSlot + slots.wFfnSlot2
+		}
+	case "phi2":
+		attnInc = _LMCMeasuredPhi2ResidualRows * embdRow
+		ffnInc = _LMCMeasuredPhi2ResidualRows * embdRow
+	}
+	return attnInc, ffnInc, ssmInc
+}
+
+// estimateLLaMACppGemma3nAltupMoment sizes the moment before the attention
+// node of a gemma3n layer, where the altup block holds the selected per-layer
+// inputs, one [n_embd, n_altup] row per altup projection, two masks, and at a
+// host boundary the staged cache and FFN weight. Measured on gemma-3n-E2B.
+func estimateLLaMACppGemma3nAltupMoment(
+	a *GGUFArchitecture, ipLs, tfLs GGUFLayerTensorInfos,
+	nKV, nTokens, loadAttnInc uint64, boundary bool,
+) uint64 {
+	embdRow := GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingLength, nTokens})
+	am := _LMCMeasuredGemma3nAltupRows * embdRow
+	if l, ok := ipLs.Get("per_layer_model_proj.weight"); ok {
+		am += 2 * GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
+	}
+	var nAltup uint64
+	for _, l := range tfLs[0].Search(_LMCAltupPredictCoefRegex) {
+		nAltup = l.Dimensions[0]
+	}
+	if nAltup == 0 {
+		nAltup = _LMCMeasuredGemma3nAltupInputs
+	}
+	am += 4 * nAltup * embdRow
+	am += 2 * GGMLTypeF16.RowSizeOf([]uint64{nKV, nTokens})
+	if boundary {
+		var wFfn uint64
+		for _, l := range tfLs[0].Search(_LMCFeedForwardWeightRegex) {
+			wFfn = max(wFfn, l.Bytes())
+		}
+		am += loadAttnInc + wFfn
+	}
+	return am
 }
 
 // estimateLLaMACppRunInModel estimates the usages of the GGUF file for model,
@@ -1245,39 +1360,11 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 						break
 					}
 				}
-				archRows := uint64(0)
-				if a.Architecture == "qwen3vl" || a.Architecture == "qwen3vlmoe" {
-					// The deepstack embedding rides beside the residual through
-					// the whole graph, three extra embedding rows wide.
-					archRows = 3 * GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingLength, nTokens})
-				}
 				offloadAttnInc, offloadFfnInc = estimateLLaMACppFlashComputeMoments(
-					o, a, hostLayers, tfLs, nKV, nTokens, loadAttnInc, archRows, boundary, gated)
+					o, a, hostLayers, tfLs, nKV, nTokens, loadAttnInc, boundary, gated)
 				if a.Architecture == "gemma3n" {
-					// The altup block holds the selected per-layer inputs and one
-					// [n_embd, n_altup] row per altup projection, all before the
-					// attention node.
-					am := 9 * GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingLength, nTokens})
-					if l, ok := ipLs.Get("per_layer_model_proj.weight"); ok {
-						am += 2 * GGMLTypeF32.RowSizeOf([]uint64{l.Dimensions[l.NDimensions-1], nTokens})
-					}
-					var nAltup uint64
-					for _, l := range tfLs[0].Search(_LMCAltupPredictCoefRegex) {
-						nAltup = l.Dimensions[0]
-					}
-					if nAltup == 0 {
-						nAltup = 4
-					}
-					am += 4 * nAltup * GGMLTypeF32.RowSizeOf([]uint64{a.EmbeddingLength, nTokens})
-					am += GGMLTypeF16.RowSizeOf([]uint64{nKV, nTokens}) * 2
-					if boundary {
-						var wFfn uint64
-						for _, l := range tfLs[0].Search(_LMCFeedForwardWeightRegex) {
-							wFfn = max(wFfn, l.Bytes())
-						}
-						am += loadAttnInc + wFfn
-					}
-					offloadAttnInc = max(offloadAttnInc, am)
+					offloadAttnInc = max(offloadAttnInc,
+						estimateLLaMACppGemma3nAltupMoment(a, ipLs, tfLs, nKV, nTokens, loadAttnInc, boundary))
 				}
 			} else {
 				offloadAttnInc = uint64(0)

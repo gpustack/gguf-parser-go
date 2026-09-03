@@ -1466,6 +1466,18 @@ func (ga GGUFArchitecture) emitsLogitsAtEveryPosition() bool {
 	return slices.Contains([]string{"eagle3"}, ga.Architecture)
 }
 
+// ssmProjectionRows are the rows a mamba2 block holds per token: the fused zx
+// projection, twice the inner width plus the group state, and one
+// convolution-width row, the inner width plus the group state, both f32, see
+// build_mamba2_layer in llama.cpp. Every factor widens to uint64 before the
+// product, as the fields are uint32.
+func (ga GGUFArchitecture) ssmProjectionRows(nTokens uint64) (zx, conv uint64) {
+	groupState := 2 * uint64(ga.SSMGroupCount) * uint64(ga.SSMStateSize)
+	zx = GGMLTypeF32.RowSizeOf([]uint64{2*uint64(ga.SSMInnerSize) + groupState, nTokens})
+	conv = GGMLTypeF32.RowSizeOf([]uint64{uint64(ga.SSMInnerSize) + groupState, nTokens})
+	return zx, conv
+}
+
 // ssmConvolutionStateSize is the element count of one sequence's mamba
 // convolution state: the kernel width less one, times the inner and group state
 // widths, and zero for a zero kernel, see llama_hparams::n_embd_r at
