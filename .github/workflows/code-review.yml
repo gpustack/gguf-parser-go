@@ -92,6 +92,9 @@ jobs:
       llm-model: "${{ vars.CI_GPUSTACK_CODEREVIEW_LLM_MODEL }}"
       llm-thinking: "${{ vars.CI_GPUSTACK_CODEREVIEW_LLM_THINKING }}"
       llm-reasoning-effort: "${{ vars.CI_GPUSTACK_CODEREVIEW_LLM_REASONING_EFFORT }}"
+      llm-temperature: "${{ vars.CI_GPUSTACK_CODEREVIEW_LLM_TEMPERATURE }}"
+      llm-top-p: "${{ vars.CI_GPUSTACK_CODEREVIEW_LLM_TOP_P }}"
+      llm-thinking-clear: "${{ vars.CI_GPUSTACK_CODEREVIEW_LLM_THINKING_CLEAR }}"
     secrets:
       llm-auth-token: ${{ secrets.CI_GPUSTACK_CODEREVIEW_LLM_AUTH_TOKEN }}
       app-id: ${{ secrets.CI_GPUSTACK_CODEREVIEW_APP_ID }}
