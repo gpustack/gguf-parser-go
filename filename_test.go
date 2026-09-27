@@ -73,6 +73,41 @@ func TestParseGGUFFilename(t *testing.T) {
 			},
 		},
 		{
+			given: "Meta-Llama-3.1-8B-Instruct-Q2_K_XL.gguf",
+			expected: &GGUFFilename{
+				BaseName:  "Meta Llama 3.1",
+				SizeLabel: "8B",
+				FineTune:  "Instruct",
+				Encoding:  "Q2_K_XL",
+			},
+		},
+		{
+			given: "Meta-Llama-3.1-8B-Instruct-IQ2_XXS.gguf",
+			expected: &GGUFFilename{
+				BaseName:  "Meta Llama 3.1",
+				SizeLabel: "8B",
+				FineTune:  "Instruct",
+				Encoding:  "IQ2_XXS",
+			},
+		},
+		{
+			given: "Meta-Llama-3.1-8B-Q4_0-LoRA.gguf",
+			expected: &GGUFFilename{
+				BaseName:  "Meta Llama 3.1",
+				SizeLabel: "8B",
+				Encoding:  "Q4_0",
+				Type:      "LoRA",
+			},
+		},
+		{
+			given: "Meta-Llama-3.1-8B-LoRA.gguf",
+			expected: &GGUFFilename{
+				BaseName:  "Meta Llama 3.1",
+				SizeLabel: "8B",
+				Type:      "LoRA",
+			},
+		},
+		{
 			given:    "Meta-Llama-3.1-405B-Instruct.Q2_K.gguf-00001-of-00009.gguf",
 			expected: nil,
 		},
