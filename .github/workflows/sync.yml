@@ -31,45 +31,6 @@ on:
     - cron: "0 */12 * * *" # every 12 hours
 
 jobs:
-  gitcode:
-    runs-on: ubuntu-22.04
-    timeout-minutes: 240
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Sync
-        uses: gpustack/.github/.github/actions/mirror-release-gitcode@main
-        with:
-          gitcode-username: "${{ secrets.CI_GITCODE_USERNAME }}"
-          gitcode-password: "${{ secrets.CI_GITCODE_PASSWORD }}"
-          gitcode-token: "${{ secrets.CI_GITCODE_TOKEN }}"
-          max-releases: "${{ inputs.max_releases && inputs.max_releases || '1' }}"
-          specific-release-tag: "${{ inputs.specific_release_tag && inputs.specific_release_tag || '' }}"
-          code-only: true
-          dry-run: "${{ inputs.dry_run && inputs.dry_run || 'false' }}"
-
-  gitee:
-    runs-on: ubuntu-22.04
-    timeout-minutes: 120
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Sync
-        uses: gpustack/.github/.github/actions/mirror-release-gitee@main
-        with:
-          gitee-username: "${{ secrets.CI_GITEE_USERNAME }}"
-          gitee-token: "${{ secrets.CI_GITEE_TOKEN }}"
-          max-releases: "${{ inputs.max_releases && inputs.max_releases || '1' }}"
-          specific-release-tag: "${{ inputs.specific_release_tag && inputs.specific_release_tag || '' }}"
-          code-only: true
-          dry-run: "${{ inputs.dry_run && inputs.dry_run || 'false' }}"
-
   tencent-cos:
     runs-on: ubuntu-22.04
     timeout-minutes: 120
