@@ -37,7 +37,7 @@
     },
     {
       "path": "**/*.md",
-      "rule": "Markdown documentation. README.md usage examples and option tables must stay in sync with the CLI flags in cmd/gguf-parser/main.go — flag a drift in either direction; its Notes section records behavior-affecting version changes. CLAUDE.md must stay in sync with the repo's real structure, Makefile targets, .golangci.yaml, and gen.go — flag stale commands or conventions. AGENTS.md must remain exactly `@CLAUDE.md`. State a fact once and link to it; flag duplicated facts across pages."
+      "rule": "Markdown documentation. README.md usage examples and option tables must stay in sync with the CLI flags in cmd/gguf-parser/main.go — flag a drift in either direction; its Notes section records behavior-affecting version changes. AGENTS.md must stay in sync with the repo's real structure, Makefile targets, .golangci.yaml, and gen.go — flag stale commands or conventions. State a fact once and link to it; flag duplicated facts across pages."
     }
   ]
 }
