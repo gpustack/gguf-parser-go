@@ -36,8 +36,8 @@ resolve HuggingFace, ModelScope, and Ollama model references into parseable sour
 
 - `README.md` owns the estimation semantics and CLI usage; read it before changing an estimator or
   a flag. Its examples and option tables change together with `cmd/gguf-parser/main.go`.
-- `.github/copilot-instructions.md` owns the code-review rules; it restates the conventions here
-  for a reviewer, so keep the two in agreement when one changes.
+- `.github/copilot-instructions.md` owns the code-review rules and links back here for the conventions, so
+  each fact is stated once.
 
 ## Development
 
