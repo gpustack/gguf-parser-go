@@ -156,6 +156,21 @@ type (
 		RoPEScalingFinetuned bool `json:"ropeScalingFinetuned,omitempty"`
 		// PoolingType is the type of pooling used in the model.
 		PoolingType uint32 `json:"poolingType,omitempty"`
+		// DecisionType is the declared type of the decision head of the model,
+		// e.g. "openjev", "laya".
+		//
+		// It comes from the "<architecture>.decision.type" metadata, which the
+		// llama.cpp conversion tools write and llama-server reads to decide
+		// whether the model can serve the "POST /v1/systemone" endpoint,
+		// see https://github.com/ggml-org/llama.cpp/blob/master/gguf-py/gguf/constants.py
+		// (Keys.Decision.TYPE) and common_get_decision_type.
+		//
+		// Empty means the model declares no decision head with a string value,
+		// either the key is absent, mistyped, or holds an empty string. Marking
+		// a model as decision is presence-based, see LLaMACppRunEstimate.Decision.
+		// An unrecognized value still declares a decision model, one that the
+		// current llama.cpp build cannot serve.
+		DecisionType string `json:"decisionType,omitempty"`
 		// SSMConvolutionKernel is the size of the convolution kernel used in the Selective State Space Model (SSM) and similar architectures.
 		SSMConvolutionKernel uint32 `json:"ssmConvolutionKernel,omitempty"`
 		// SSMInnerSize is the embedding size of the state in SSM and similar architectures.
@@ -1046,6 +1061,8 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 
 		poolingTypeKey = arch + ".pooling_type"
 
+		decisionTypeKey = arch + ".decision.type"
+
 		fullAttentionIntervalKey = arch + ".full_attention_interval"
 
 		ssmConvolutionKernelKey = arch + ".ssm.conv_kernel"
@@ -1110,6 +1127,7 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 		ropeScalingOriginalContextKey,
 		ropeScalingFinetunedKey,
 		poolingTypeKey,
+		decisionTypeKey,
 		fullAttentionIntervalKey,
 		ssmConvolutionKernelKey,
 		ssmInnerSizeKey,
@@ -1390,6 +1408,14 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 		if ga.AttentionCausal && ga.PoolingType > 2 {
 			ga.AttentionCausal = false
 		}
+	}
+
+	// The presence of the "<architecture>.decision.type" metadata marks
+	// a decision model, see common_get_decision_type in llama.cpp's
+	// common/common.cpp. The value type is guarded because the key comes
+	// straight from the untrusted file, a mistyped key reads as no decision head.
+	if v, ok := m[decisionTypeKey]; ok && v.ValueType == GGUFMetadataValueTypeString {
+		ga.DecisionType = v.ValueString()
 	}
 
 	if v, ok := m[ssmConvolutionKernelKey]; ok {
