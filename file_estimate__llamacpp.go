@@ -51,6 +51,16 @@ type (
 		//
 		// Only available when EmbeddingOnly is true.
 		Reranking bool `json:"reranking"`
+		// Decision is the flag to indicate whether the model is used for decision,
+		// i.e. serving the "POST /v1/systemone" endpoint in llama-server,
+		// true for decision.
+		//
+		// It is presence-based: any string-typed "<architecture>.decision.type"
+		// metadata marks the model, mirroring common_get_decision_type in
+		// llama.cpp. It outranks Reranking: a declared decision head carries
+		// classifier tensors and rank pooling that would otherwise read as
+		// reranking.
+		Decision bool `json:"decision"`
 		// Distributable is the flag to indicate whether the model is distributable,
 		// true for distributable.
 		Distributable bool `json:"distributable"`
@@ -843,6 +853,16 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		e.FlashAttention = o.FlashAttention
 	}
 
+	// Decision, see common_get_decision_type in llama.cpp's common/common.cpp:
+	// a string-typed "<arch>.decision.type" metadata marks a decision model
+	// serving "POST /v1/systemone". The detection is presence-only and
+	// independent of the attention direction: causal decision models read
+	// logits, non-causal ones read embeddings.
+	{
+		v, found := gf.Header.MetadataKV.Get(a.Architecture + ".decision.type")
+		e.Decision = found && v.ValueType == GGUFMetadataValueTypeString
+	}
+
 	// Embedding.
 	if !a.AttentionCausal {
 		ropeFrequencyBase := ptr.Deref(o.LMCRoPEFrequencyBase, a.RoPEFrequencyBase)
@@ -864,12 +884,16 @@ func (gf *GGUFFile) estimateLLaMACppRunInModel(o *_GGUFRunEstimateOptions, a *GG
 		// slices whatever the context is, and sched_reserve prices the worst
 		// graph over min(n_ctx, n_ubatch) tokens, see
 		// https://github.com/ggml-org/llama.cpp/blob/c841aeeb8/src/llama-context.cpp#L595.
-		// Reranking.
-		if _, found := gf.TensorInfos.Index([]string{"cls.bias", "cls.weight"}); found > 0 {
-			e.Reranking = true
-		}
-		if !e.Reranking && a.PoolingType == 4 { // 0: None, 1: Mean, 2: Cls, 3: Last, 4: Rank
-			e.Reranking = true
+		// Reranking is outranked by a declared decision head: general backbones
+		// (e.g. modern-bert) carry classifier tensors and rank pooling while
+		// serving decisions.
+		if !e.Decision {
+			if _, found := gf.TensorInfos.Index([]string{"cls.bias", "cls.weight"}); found > 0 {
+				e.Reranking = true
+			}
+			if !e.Reranking && a.PoolingType == 4 { // 0: None, 1: Mean, 2: Cls, 3: Last, 4: Rank
+				e.Reranking = true
+			}
 		}
 	}
 
@@ -2218,6 +2242,16 @@ type (
 		//
 		// Only available when EmbeddingOnly is true.
 		Reranking bool `json:"reranking"`
+		// Decision is the flag to indicate whether the model is used for decision,
+		// i.e. serving the "POST /v1/systemone" endpoint in llama-server,
+		// true for decision.
+		//
+		// It is presence-based: any string-typed "<architecture>.decision.type"
+		// metadata marks the model, mirroring common_get_decision_type in
+		// llama.cpp. It outranks Reranking: a declared decision head carries
+		// classifier tensors and rank pooling that would otherwise read as
+		// reranking.
+		Decision bool `json:"decision"`
 		// Distributable is the flag to indicate whether the model is distributable,
 		// true for distributable.
 		Distributable bool `json:"distributable"`
@@ -2385,6 +2419,7 @@ func (e LLaMACppRunEstimate) Summarize(mmap bool, nonUMARamFootprint, nonUMAVram
 	es.NoMMap = e.NoMMap
 	es.EmbeddingOnly = e.EmbeddingOnly
 	es.Reranking = e.Reranking
+	es.Decision = e.Decision
 	es.LogicalBatchSize = e.LogicalBatchSize
 	es.PhysicalBatchSize = e.PhysicalBatchSize
 	es.Distributable = e.Distributable

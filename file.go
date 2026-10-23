@@ -1722,6 +1722,12 @@ func (rd _GGUFReader) ReadString() (v string, err error) {
 		}
 	}
 
+	// An empty string holds no bytes. Reading zero would hand a default-sized
+	// pooled buffer to the reader, which swallows the rest of the file.
+	if l == 0 {
+		return "", nil
+	}
+
 	b := bytex.GetBytes(l)
 	defer bytex.Put(b)
 	if _, err = rd.f.Read(b); err != nil {
