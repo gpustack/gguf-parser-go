@@ -54,6 +54,10 @@ download it.
 
 ## Notes
 
+- **Since v0.28.1**, GGUF Parser estimates the llama.cpp `auto` value of a boolean flag, e.g.
+  `--flash-attn auto`, as off, the state that uses more memory, because the backend decides at
+  runtime whether the device supports the feature.
+  See [Parameter Compatibility](cmd/gguf-parser/README.md#parameter-compatibility).
 - **Since v0.28.0**, GGUF Parser accepts the llama.cpp spelling of the boolean flags, e.g.
   `--flash-attn on`, next to its own `--flash-attn` and `--flash-attn=true`.
   See [Parameter Compatibility](cmd/gguf-parser/README.md#parameter-compatibility).

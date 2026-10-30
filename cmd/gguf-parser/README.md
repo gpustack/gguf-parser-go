@@ -179,14 +179,16 @@ booleans and accepts both spellings:
 | --- | --- |
 | `--flash-attn on` | `--flash-attn` or `--flash-attn=true` |
 | `--flash-attn off` | `--flash-attn=false` |
-| `--flash-attn=auto` | `--flash-attn=true` |
+| `--flash-attn=auto` | `--flash-attn=false` |
 
-`auto` means "enable it when the device supports it". Every device the estimate targets supports
-it, so `auto` is enabled.
+`auto` means "enable it when the device supports it", and the device decides at runtime. The
+estimate cannot tell whether the device supports it, so `auto` is estimated as off. The backend
+turns the feature off when the device does not support it, for example on CUDA with a K cache type
+that the CUDA Flash Attention path does not implement, and that state uses more memory.
 
-The two tools default Flash Attention differently. llama.cpp defaults it to `auto`, which is enabled
-on a GPU that supports it, while GGUF Parser defaults it to off. Pass `--flash-attn on` to make the
-two agree.
+The two tools default Flash Attention differently. llama.cpp defaults it to `auto`, and the backend
+runs it when the device supports it, while GGUF Parser estimates it as off. Pass `--flash-attn on`
+to estimate the state a supported device runs.
 
 llama.cpp accepts `--flag value` and never `--flag=value`. GGUF Parser accepts both.
 
