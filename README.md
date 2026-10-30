@@ -30,6 +30,7 @@ download it.
 
 - [Notes](#notes)
 - [Installation](#installation)
+- [Parameter Compatibility](#parameter-compatibility)
 - [Overview](#overview)
     + [Parse](#parse)
         * [Local File](#parse-local-file)
@@ -54,6 +55,9 @@ download it.
 
 ## Notes
 
+- **Since v0.28.0**, GGUF Parser accepts the llama.cpp spelling of the boolean flags, e.g.
+  `--flash-attn on`, next to its own `--flash-attn` and `--flash-attn=true`.
+  See [Parameter Compatibility](#parameter-compatibility).
 - **Since v0.20.0**, GGUF Parser supports leveraging `--override-tensor` to indicate how to place the model tensors.
 - **Since v0.19.0**, GGUF Parser supports estimating Audio projector model file, like Ultravox series, Qwen2 Audio
   series, etc.
@@ -92,6 +96,79 @@ download it.
 ## Installation
 
 Install from [releases](https://github.com/gpustack/gguf-parser-go/releases).
+
+## Parameter Compatibility
+
+GGUF Parser accepts the flag spellings of [llama.cpp](https://github.com/ggml-org/llama.cpp), so a
+llama.cpp command line can be handed to the estimator unchanged.
+
+### The Boolean Flags
+
+llama.cpp gives some boolean flags an `on|off|auto` value. GGUF Parser models them as plain
+booleans and accepts both spellings:
+
+| llama.cpp | GGUF Parser |
+| --- | --- |
+| `--flash-attn on` | `--flash-attn` or `--flash-attn=true` |
+| `--flash-attn off` | `--flash-attn=false` |
+| `--flash-attn=auto` | `--flash-attn=true` |
+
+`auto` means "enable it when the device supports it". Every device the estimate targets supports
+it, so `auto` is enabled.
+
+The two tools default Flash Attention differently. llama.cpp defaults it to `auto`, which is enabled
+on a GPU that supports it, while GGUF Parser defaults it to off. Pass `--flash-attn on` to make the
+two agree.
+
+llama.cpp accepts `--flag value` and never `--flag=value`. GGUF Parser accepts both.
+
+### The Flag Names
+
+| llama.cpp | GGUF Parser | Note |
+| --- | --- | --- |
+| `-c`, `--ctx-size N` | `--ctx-size N`, `-c N` | |
+| `-b`, `--batch-size N` | `--batch-size N`, `-b N` | |
+| `-ub`, `--ubatch-size N` | `--ubatch-size N`, `-ub N` | |
+| `-fa`, `--flash-attn on\|off\|auto` | `--flash-attention`, `--flash-attn`, `--fa` | |
+| `-np`, `--parallel N` | `--parallel N`, `--parallel-size N`, `-np N`, `--threads-http N` | |
+| `-ngl`, `--gpu-layers N`, `--n-gpu-layers N` | `--gpu-layers N`, `--ngl N`, `--n-gpu-layers N` | |
+| `-ts`, `--tensor-split N` | `--tensor-split N`, `--ts N` | |
+| `-mg`, `--main-gpu N` | `--main-gpu N`, `--mg N` | |
+| `-ctk`, `--cache-type-k TYPE` | `--cache-type-k TYPE`, `--ctk TYPE` | |
+| `-ctv`, `--cache-type-v TYPE` | `--cache-type-v TYPE`, `--ctv TYPE` | |
+| `--split-mode MODE` | `--split-mode MODE`, `--sm MODE` | |
+| `--no-kv-offload` | `--no-kv-offload`, `--nkvo` | |
+| `--swa-full` | `--swa-full` | |
+| `--override-tensor SPEC` | `--override-tensor SPEC`, `-ot SPEC` | |
+| `--spec-draft-ngl N`, `-ngld N`, `--gpu-layers-draft N`, `--n-gpu-layers-draft N` | `--gpu-layers-draft N`, `--ngld N`, `--n-gpu-layers-draft N` | |
+| `--rope-scale N` | `--rope-scale N` | |
+| `--rope-freq-base N` | `--rope-freq-base N` | |
+| `--rope-freq-scale N` | `--rope-freq-scale N` | |
+| `--rope-scaling TYPE` | `--rope-scaling TYPE` | |
+| `--yarn-orig-ctx N` | `--yarn-orig-ctx N` | |
+| `-m`, `--model PATH` | `--path PATH`, `--model PATH`, `-m PATH` | |
+| `-mu`, `--model-url URL` | `--url URL`, `--model-url URL`, `-mu URL` | |
+| `--mmproj FILE` | `--mmproj-path FILE`, `--mmproj FILE` | |
+| `--lora FNAME` | `--lora-path FNAME`, `--lora FNAME` | |
+| `--control-vector FNAME` | `--control-vector-path FNAME`, `--control-vector FNAME` | |
+| `--model-draft FNAME` | `--draft-path FNAME`, `--model-draft FNAME`, `--md FNAME` | |
+
+### The Flags GGUF Parser Does Not Model
+
+These llama.cpp flags change the memory usage and have no GGUF Parser equivalent. A command line
+that carries them is estimated as if they were absent.
+
+| llama.cpp | Effect on the estimate |
+| --- | --- |
+| `--spec-type`, `--spec-draft-n-max` | Speculative decoding. The draft model and its KV cache are not estimated. |
+| `--cpu-moe`, `--n-cpu-moe`, `--moe-cache-mib` | Expert tensors kept on the CPU. |
+| `--n-cpu-ffn` | Feed-forward tensors kept on the CPU. |
+| `--override-kv` | Per-tensor KV cache type overrides. |
+| `--kv-unified-per-slot` | A KV cache shared between the slots. |
+| `--cache-reuse N` | The number of cached prompt slots. |
+| `--fit`, `--fit-ctx` | llama.cpp fitting the context to the device. |
+| `--load-mode` | `mmap`, `mlock` and `mmap+mlock`. GGUF Parser has `--mmap` and `--no-mmap` instead. |
+| `--yarn-ext-factor`, `--yarn-attn-factor` | YaRN factors beyond `--yarn-orig-ctx`. |
 
 ## Overview
 

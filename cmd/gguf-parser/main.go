@@ -512,9 +512,9 @@ func main() {
 				Destination: &parallelSize,
 				Value:       parallelSize,
 				Category:    "Estimate",
-				Name:        "parallel-size",
+				Name:        "parallel",
 				Aliases: []string{ // LLaMACpp compatibility
-					"parallel",
+					"parallel-size",
 					"np",
 					"threads-http", // LLaMABox v0.0.140+ compatibility
 				},
@@ -1014,7 +1014,7 @@ func main() {
 		Action: mainAction,
 	}
 
-	if err := app.RunContext(signalx.Handler(), os.Args); err != nil {
+	if err := app.RunContext(signalx.Handler(), normalizeArgs(os.Args)); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
