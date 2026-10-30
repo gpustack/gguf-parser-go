@@ -30,8 +30,9 @@ var llamaValueBoolFlags = map[string]bool{
 // llamaBoolValues maps the value words llama.cpp accepts to the booleans Go's flag package
 // accepts.
 //
-// "auto" means "enable it when the device supports it". Every device the estimate targets
-// supports it, so "auto" is enabled.
+// "auto" means "enable it when the device supports it", and the device decides at runtime. The
+// estimate cannot tell whether the device supports it, so "auto" is disabled. The backend turns
+// the feature off when the device does not support it, and that state uses more memory.
 var llamaBoolValues = map[string]string{
 	"on":       "true",
 	"enabled":  "true",
@@ -41,8 +42,8 @@ var llamaBoolValues = map[string]string{
 	"disabled": "false",
 	"false":    "false",
 	"0":        "false",
-	"auto":     "true",
-	"-1":       "true",
+	"auto":     "false",
+	"-1":       "false",
 }
 
 // normalizeArgs translates the llama.cpp spelling of the boolean flags into the GGUF Parser

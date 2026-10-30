@@ -38,9 +38,14 @@ func TestNormalizeArgs(t *testing.T) {
 			expected: []string{"gguf-parser", "--flash-attn=false"},
 		},
 		{
-			name:     "the value auto enables it",
+			name:     "the value auto disables it",
 			args:     []string{"gguf-parser", "--flash-attn", "auto"},
-			expected: []string{"gguf-parser", "--flash-attn=true"},
+			expected: []string{"gguf-parser", "--flash-attn=false"},
+		},
+		{
+			name:     "the value minus one disables it",
+			args:     []string{"gguf-parser", "--flash-attn", "-1"},
+			expected: []string{"gguf-parser", "--flash-attn=false"},
 		},
 		{
 			name:     "the value enabled enables it",
