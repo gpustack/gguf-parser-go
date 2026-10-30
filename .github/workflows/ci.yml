@@ -38,7 +38,11 @@ on:
 
 jobs:
   ci:
-    timeout-minutes: 15
+    # The test step alone runs for 13 minutes on a good day, because the
+    # library suite talks to the model registries. The job needs room for
+    # that plus the cross-compiled build, which lands at about 15 minutes
+    # in total and was cancelled by the old 15 minute limit.
+    timeout-minutes: 30
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
