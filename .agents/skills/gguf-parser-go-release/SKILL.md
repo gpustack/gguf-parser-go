@@ -18,8 +18,9 @@ The git tag is the single source of truth: `cmd.yml` injects the tag into the bu
 keys the release on it. There is no version file to bump and no `release.yml` — the `CMD` workflow
 IS the pipeline. A `v*.*.*` tag push builds `.dist` for darwin/linux/windows, creates the GitHub
 Release with the seven binaries (prerelease when the tag contains `rc`), then pushes the multi-arch
-Docker image (`gpustack/gguf-parser`, semver tags plus the moving `latest` on finals). A plain
-`main` push builds branch-level artifacts only — no Release.
+Docker image (`gpustack/gguf-parser`; on finals the semver tag and `latest` end on the same digest —
+verified on v0.28.2). A plain `main` push republishes the `:main` Docker tag and creates no Release;
+a docs-only push (`.md`, `docs/**`) runs no workflow at all — observed on the v0.28.2 train.
 
 The automated Release is born with an empty body. Curating its notes is a maintainer duty, not an
 optional polish.
@@ -64,7 +65,9 @@ git tag -l 'v*' --sort=-v:refname | head -5
 ### 3. Draft notes
 
 Group the range by type: Features / Fixes / Docs / Other; omit empty sections. Link PRs from
-`(#NNN)` subjects. Do not open the body with a heading that repeats the tag. End with the Full
+`(#NNN)` subjects. A range that carries a breaking change adds a `BREAKING CHANGE:` line inside the
+group bullet. The v0.28.2 body is the house example — group headings, the breaking-change line, and
+the compare URL last. Do not open the body with a heading that repeats the tag. End with the Full
 Changelog compare URL (`https://github.com/gpustack/gguf-parser-go/compare/<last>...<VER>`). Keep
 this draft for phase 5.
 
@@ -77,8 +80,11 @@ git push origin "$VER"
 gh run list --workflow cmd.yml --limit 3          # the run for the tag
 ```
 
-The `CMD` run builds the binaries, creates the Release with them, and publishes the image. Direct
-mode reports the run URL and moves on; interactive mode may `gh run watch <run-id> --exit-status`.
+The `CMD` run builds the binaries, creates the Release with them, and publishes the image. The
+Release with the binaries lands fast — about a minute after the tag push on the v0.28.2 train —
+while the Docker publish finishes minutes later: two different completion moments, check both.
+Direct mode reports the run URL and moves on; interactive mode may `gh run watch <run-id>
+--exit-status`.
 
 ### 5. Curate the release (confirm)
 
@@ -90,8 +96,15 @@ gh release view "$VER" --repo gpustack/gguf-parser-go --json assets --jq '[.asse
 
 The asset list must carry the seven names: `gguf-parser-darwin-amd64`,
 `gguf-parser-darwin-arm64`, `gguf-parser-darwin-universal`, `gguf-parser-linux-amd64`,
-`gguf-parser-linux-arm64`, `gguf-parser-windows-amd64.exe`, `gguf-parser-windows-arm64.exe`. In
-direct mode, poll briefly for the Release; if the run is still building, hand the user the
+`gguf-parser-linux-arm64`, `gguf-parser-windows-amd64.exe`, `gguf-parser-windows-arm64.exe`. The
+Docker image finishes after the Release; verify it through the Docker Hub registry API — no local
+docker needed — and on finals `latest` must end on the same digest as the semver tag:
+
+```sh
+curl --proto '=https' -sS "https://hub.docker.com/v2/repositories/gpustack/gguf-parser/tags/$VER"
+```
+
+In direct mode, poll briefly for the Release; if the run is still building, hand the user the
 curation command instead of waiting.
 
 ## Align version docs
