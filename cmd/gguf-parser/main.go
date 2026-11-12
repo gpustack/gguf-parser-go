@@ -42,7 +42,15 @@ func init() {
 
 func main() {
 	name := filepath.Base(os.Args[0])
-	app := &cli.App{
+	app := newApp(name)
+	if err := app.RunContext(signalx.Handler(), normalizeArgs(os.Args)); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+}
+
+func newApp(name string) *cli.App {
+	return &cli.App{
 		Name:            name,
 		Usage:           "Review/Check GGUF files and estimate the memory usage and provide optimization suggestions.",
 		UsageText:       name + " [GLOBAL OPTIONS]",
@@ -1024,11 +1032,6 @@ func main() {
 			},
 		},
 		Action: mainAction,
-	}
-
-	if err := app.RunContext(signalx.Handler(), normalizeArgs(os.Args)); err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(1)
 	}
 }
 
