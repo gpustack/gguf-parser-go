@@ -29,7 +29,7 @@ GLOBAL OPTIONS:
 
    --device-metric value [ --device-metric value ]                              Specify the device metrics, which is used to estimate the throughput, in form of "FLOPS;Up Bandwidth[;Down Bandwidth]". The FLOPS unit, select from [PFLOPS, TFLOPS, GFLOPS, MFLOPS, KFLOPS]. The Up/Down Bandwidth unit, select from [PiBps, TiBps, GiBps, MiBps, KiBps, PBps, TBps, GBps, MBps, KBps, Pbps, Tbps, Gbps, Mbps, Kbps]. Up Bandwidth usually indicates the bandwidth to transmit the data to calculate, and Down Bandwidth indicates the bandwidth to transmit the calculated result to next layer. For example, "--device-metric 10TFLOPS;400GBps" means the device has 10 TFLOPS and 400 GBps Up/Down bandwidth, "--device-metric 10TFLOPS;400GBps;5000MBps" means the device has 5000MBps Down bandwidth. If the quantity specified by "--device-metric" is less than the number of estimation devices(determined by "--tensor-split" and "--rpc" to infer the device count), then replicate the last "--device-metric" to meet the required number of evaluation devices.
    --flash-attention, --flash-attn, --fa, --diffusion-fa                        Specify enabling Flash Attention, which is used to estimate the usage. Flash Attention can reduce the usage of RAM/VRAM. (default: false)
-   --gpu-layers value, --ngl value, --n-gpu-layers value                        Specify how many layers of the main model to offload, which is used to estimate the usage, default is full offloaded. (default: -1)
+   --gpu-layers value, --ngl value, --n-gpu-layers value                        Specify how many layers of the main model to offload, which is used to estimate the usage, -2 means offloading all layers, which is the default, an exact number means offloading that many layers, and -1 is rejected because llama.cpp means "auto" by it, which gguf-parser cannot resolve without the host GPU devices. (default: -2)
    --main-gpu value, --mg value                                                 Specify the GPU to use for the model (with "--split-mode=none") or for intermediate results and KV (with "--split-mode=row"), which is used to estimate the usage. Since gguf-parser cannot recognize the host GPU devices or RPC servers, "--main-gpu" only works when "--tensor-split" is set. (default: 0)
    --no-flash-attention, --no-flash-attn                                        Specify disabling Flash Attention. (default: false)
    --override-tensor value, --ot value [ --override-tensor value, --ot value ]  Override tensor buffer type, for example, use --override-tensor "[2-9][0-9]\.ffn_.*_exps\.=CPU" to keep experts of layers 20-99 in the CPU
@@ -44,7 +44,7 @@ GLOBAL OPTIONS:
    --cache-type-k value, --ctk value                                   Specify the type of Key cache, which is used to estimate the usage, select from [f32, f16, bf16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1]. (default: "f16")
    --cache-type-v value, --ctv value                                   Specify the type of Value cache, which is used to estimate the usage, select from [f32, f16, bf16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1]. (default: "f16")
    --ctx-size value, -c value                                          Specify the size of prompt context, which is used to estimate the usage, default is equal to the model's maximum context size. (default: 0)
-   --gpu-layers-draft value, --ngld value, --n-gpu-layers-draft value  Specify how many layers of the draft model to offload, which is used to estimate the usage, default is full offloaded. (default: -1)
+   --gpu-layers-draft value, --ngld value, --n-gpu-layers-draft value  Specify how many layers of the draft model to offload, which is used to estimate the usage, -2 means offloading all layers, which is the default, an exact number means offloading that many layers, and -1 is rejected because llama.cpp means "auto" by it, which gguf-parser cannot resolve without the host GPU devices. (default: -2)
    --gpu-layers-step value                                             Specify the step of layers to offload, works with "--gpu-layers". (default: 0)
    --in-max-ctx-size                                                   Limit the context size to the maximum context size of the model, if the context size is larger than the maximum context size. (default: false)
    --max-projected-cache value, --visual-max-image-cache value         Specify how many projected embedding to be cached. (default: 0)
@@ -168,7 +168,9 @@ GLOBAL OPTIONS:
 ## Parameter Compatibility
 
 GGUF Parser accepts the flag spellings of [llama.cpp](https://github.com/ggml-org/llama.cpp), so a
-llama.cpp command line can be handed to the estimator unchanged.
+llama.cpp command line can be handed to the estimator unchanged, except the word values of
+`--gpu-layers` and `--gpu-layers-draft`,
+see [The GPU Layers Word Values](#the-gpu-layers-word-values).
 
 ### The Boolean Flags
 
@@ -192,6 +194,27 @@ to estimate the state a supported device runs.
 
 llama.cpp accepts `--flag value` and never `--flag=value`. GGUF Parser accepts both.
 
+### The GPU Layers Word Values
+
+llama.cpp accepts `auto` and `all` as the values of `-ngl`/`--gpu-layers` and
+`-ngld`/`--gpu-layers-draft`, and spells them as `-1` and `-2` internally, see
+[common/arg.cpp](https://github.com/ggml-org/llama.cpp/blob/master/common/arg.cpp). GGUF Parser
+accepts the numerals, and only the numerals:
+
+| llama.cpp | GGUF Parser |
+| --- | --- |
+| `-ngl -1`, the `auto` form | rejected |
+| `-ngl -2`, the `all` form | `--gpu-layers -2`, offload all layers |
+| `-ngl N`, an exact number | `--gpu-layers N`, unchanged |
+| no `-ngl` | full offload, unchanged |
+
+`auto` means the backend counts the offloadable layers from the host GPU devices at runtime. The
+estimate has no view of the host devices, so it cannot resolve `auto`, and `-1` is rejected with
+an error. Pass `-2` to estimate the full offload, which is the default, or an exact number.
+
+**Since v0.28.2 (BREAKING CHANGE)**, `-1` no longer means "all layers". Before, every negative
+`--gpu-layers` value estimated as the full offload.
+
 ### The Flag Names
 
 | llama.cpp | GGUF Parser | Note |
@@ -201,7 +224,7 @@ llama.cpp accepts `--flag value` and never `--flag=value`. GGUF Parser accepts b
 | `-ub`, `--ubatch-size N` | `--ubatch-size N`, `-ub N` | |
 | `-fa`, `--flash-attn on\|off\|auto` | `--flash-attention`, `--flash-attn`, `--fa` | |
 | `-np`, `--parallel N` | `--parallel N`, `--parallel-size N`, `-np N`, `--threads-http N` | |
-| `-ngl`, `--gpu-layers N`, `--n-gpu-layers N` | `--gpu-layers N`, `--ngl N`, `--n-gpu-layers N` | |
+| `-ngl`, `--gpu-layers N`, `--n-gpu-layers N` | `--gpu-layers N`, `--ngl N`, `--n-gpu-layers N` | see [The GPU Layers Word Values](#the-gpu-layers-word-values) |
 | `-ts`, `--tensor-split N` | `--tensor-split N`, `--ts N` | |
 | `-mg`, `--main-gpu N` | `--main-gpu N`, `--mg N` | |
 | `-ctk`, `--cache-type-k TYPE` | `--cache-type-k TYPE`, `--ctk TYPE` | |
@@ -210,7 +233,7 @@ llama.cpp accepts `--flag value` and never `--flag=value`. GGUF Parser accepts b
 | `--no-kv-offload` | `--no-kv-offload`, `--nkvo` | |
 | `--swa-full` | `--swa-full` | |
 | `--override-tensor SPEC` | `--override-tensor SPEC`, `-ot SPEC` | |
-| `--spec-draft-ngl N`, `-ngld N`, `--gpu-layers-draft N`, `--n-gpu-layers-draft N` | `--gpu-layers-draft N`, `--ngld N`, `--n-gpu-layers-draft N` | |
+| `--spec-draft-ngl N`, `-ngld N`, `--gpu-layers-draft N`, `--n-gpu-layers-draft N` | `--gpu-layers-draft N`, `--ngld N`, `--n-gpu-layers-draft N` | see [The GPU Layers Word Values](#the-gpu-layers-word-values) |
 | `--rope-scale N` | `--rope-scale N` | |
 | `--rope-freq-base N` | `--rope-freq-base N` | |
 | `--rope-freq-scale N` | `--rope-freq-scale N` | |

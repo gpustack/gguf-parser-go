@@ -597,7 +597,10 @@ func main() {
 				},
 				Usage: "Specify how many layers of the main model to offload, " +
 					"which is used to estimate the usage, " +
-					"default is full offloaded.",
+					"-2 means offloading all layers, which is the default, " +
+					"an exact number means offloading that many layers, " +
+					"and -1 is rejected because llama.cpp means \"auto\" by it, " +
+					"which gguf-parser cannot resolve without the host GPU devices.",
 				Action: func(context *cli.Context, v int) error {
 					return validateGPULayers("gpu-layers", v)
 				},
@@ -824,7 +827,10 @@ func main() {
 				},
 				Usage: "Specify how many layers of the draft model to offload, " +
 					"which is used to estimate the usage, " +
-					"default is full offloaded.",
+					"-2 means offloading all layers, which is the default, " +
+					"an exact number means offloading that many layers, " +
+					"and -1 is rejected because llama.cpp means \"auto\" by it, " +
+					"which gguf-parser cannot resolve without the host GPU devices.",
 				Action: func(context *cli.Context, v int) error {
 					return validateGPULayers("gpu-layers-draft", v)
 				},
