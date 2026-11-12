@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -97,4 +98,22 @@ func validateGPULayers(name string, layers int) error {
 		return fmt.Errorf("invalid --%s %d, use -2 (all layers) or an exact number", name, layers)
 	}
 	return nil
+}
+
+// draftOffloadOverride resolves the draft model's offload layers independently of the main model.
+//
+// The draft estimate starts from a copy of the main model's options, so the draft must restate a
+// non-negative value to win the merge, and an explicit -2 must override the main value it would
+// otherwise inherit. Without the flag, the draft inherits, which is how it follows the main model.
+// The second return is false when the draft should keep the inherited value.
+func draftOffloadOverride(draft int, draftSet bool) (uint64, bool) {
+	switch {
+	case draft >= 0:
+		return uint64(draft), true
+	case draftSet:
+		// The only negative that reaches here is -2, llama.cpp's "all", and the full-offload
+		// sentinel overrides whatever the copy carried.
+		return math.MaxUint64, true
+	}
+	return 0, false
 }

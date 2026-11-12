@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -174,6 +175,58 @@ func TestValidateGPULayers(t *testing.T) {
 				return
 			}
 			assert.ErrorContains(t, err, c.wantErr)
+		})
+	}
+}
+
+func TestDraftOffloadOverride(t *testing.T) {
+	cases := []struct {
+		name   string
+		draft  int
+		isSet  bool
+		wantOK bool
+		wantN  uint64
+	}{
+		{
+			name:   "an exact draft count restates itself",
+			draft:  5,
+			isSet:  true,
+			wantOK: true,
+			wantN:  5,
+		},
+		{
+			name:   "zero restates itself",
+			draft:  0,
+			isSet:  true,
+			wantOK: true,
+			wantN:  0,
+		},
+		{
+			name:   "an explicit all overrides the inherited main value",
+			draft:  -2,
+			isSet:  true,
+			wantOK: true,
+			wantN:  math.MaxUint64,
+		},
+		{
+			name:  "an unset draft inherits the main value",
+			draft: -2,
+			isSet: false,
+		},
+		{
+			name:  "a draft value the flag never carried inherits too",
+			draft: -1,
+			isSet: false,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			n, ok := draftOffloadOverride(c.draft, c.isSet)
+			assert.Equal(t, c.wantOK, ok)
+			if c.wantOK {
+				assert.Equal(t, c.wantN, n)
+			}
 		})
 	}
 }

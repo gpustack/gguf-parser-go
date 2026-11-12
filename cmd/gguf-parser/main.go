@@ -1616,8 +1616,8 @@ func mainAction(c *cli.Context) error {
 	if !skipEstimate && m.Architecture != "diffusion" {
 		if lmcDrafterGf != nil {
 			dlmceopts := eopts[:len(eopts):len(eopts)]
-			if lmcOffloadLayersDraft >= 0 {
-				dlmceopts = append(dlmceopts, WithLLaMACppOffloadLayers(uint64(lmcOffloadLayersDraft)))
+			if n, ok := draftOffloadOverride(lmcOffloadLayersDraft, c.IsSet("gpu-layers-draft")); ok {
+				dlmceopts = append(dlmceopts, WithLLaMACppOffloadLayers(n))
 			}
 			dlmceopts = append(dlmceopts, WithLLaMACppCacheKeyType(GGMLTypeF16), WithLLaMACppCacheValueType(GGMLTypeF16))
 			de := lmcDrafterGf.EstimateLLaMACppRun(dlmceopts...)
