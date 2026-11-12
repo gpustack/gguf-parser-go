@@ -54,6 +54,11 @@ download it.
 
 ## Notes
 
+- **Since v0.28.2 (BREAKING CHANGE)**, GGUF Parser rejects `--gpu-layers -1` and
+  `--gpu-layers-draft -1`, because llama.cpp means `auto` by `-1` and the estimate cannot resolve
+  it without the host GPU devices; use `-2` for all layers, which is the new default, or an exact
+  number.
+  See [Parameter Compatibility](cmd/gguf-parser/README.md#parameter-compatibility).
 - **Since v0.28.1**, GGUF Parser estimates the llama.cpp `auto` value of a boolean flag, e.g.
   `--flash-attn auto`, as off, the state that uses more memory, because the backend decides at
   runtime whether the device supports the feature.

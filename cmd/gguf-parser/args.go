@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"math"
 	"strings"
 )
 
@@ -80,4 +82,38 @@ func normalizeArgs(args []string) []string {
 		normalized = append(normalized, arg)
 	}
 	return normalized
+}
+
+// validateGPULayers rejects the llama.cpp word values the estimate cannot carry.
+//
+// llama.cpp spells "auto" as -1 and "all" as -2 in common/arg.cpp. An estimate cannot resolve
+// "auto", it has no view of the host GPU devices, so -1 is rejected with the reason. A value
+// below -2 carries no meaning in either tool.
+func validateGPULayers(name string, layers int) error {
+	switch {
+	case layers == -1:
+		return fmt.Errorf("--%s -1 is llama.cpp's \"auto\", which gguf-parser cannot estimate "+
+			"because it cannot see the host GPU devices, use -2 (all layers) or an exact number instead", name)
+	case layers < -2:
+		return fmt.Errorf("invalid --%s %d, use -2 (all layers) or an exact number", name, layers)
+	}
+	return nil
+}
+
+// draftOffloadOverride resolves the draft model's offload layers independently of the main model.
+//
+// The draft estimate starts from a copy of the main model's options, so the draft must restate a
+// non-negative value to win the merge, and an explicit -2 must override the main value it would
+// otherwise inherit. Without the flag, the draft inherits, which is how it follows the main model.
+// The second return is false when the draft should keep the inherited value.
+func draftOffloadOverride(draft int, draftSet bool) (uint64, bool) {
+	switch {
+	case draft >= 0:
+		return uint64(draft), true
+	case draftSet:
+		// The only negative that reaches here is -2, llama.cpp's "all", and the full-offload
+		// sentinel overrides whatever the copy carried.
+		return math.MaxUint64, true
+	}
+	return 0, false
 }

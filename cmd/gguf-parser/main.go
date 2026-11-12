@@ -42,7 +42,15 @@ func init() {
 
 func main() {
 	name := filepath.Base(os.Args[0])
-	app := &cli.App{
+	app := newApp(name)
+	if err := app.RunContext(signalx.Handler(), normalizeArgs(os.Args)); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+}
+
+func newApp(name string) *cli.App {
+	return &cli.App{
 		Name:            name,
 		Usage:           "Review/Check GGUF files and estimate the memory usage and provide optimization suggestions.",
 		UsageText:       name + " [GLOBAL OPTIONS]",
@@ -597,7 +605,13 @@ func main() {
 				},
 				Usage: "Specify how many layers of the main model to offload, " +
 					"which is used to estimate the usage, " +
-					"default is full offloaded.",
+					"-2 means offloading all layers, which is the default, " +
+					"an exact number means offloading that many layers, " +
+					"and -1 is rejected because llama.cpp means \"auto\" by it, " +
+					"which gguf-parser cannot resolve without the host GPU devices.",
+				Action: func(context *cli.Context, v int) error {
+					return validateGPULayers("gpu-layers", v)
+				},
 			},
 			&cli.StringSliceFlag{
 				Destination: &overrideTensors,
@@ -821,7 +835,13 @@ func main() {
 				},
 				Usage: "Specify how many layers of the draft model to offload, " +
 					"which is used to estimate the usage, " +
-					"default is full offloaded.",
+					"-2 means offloading all layers, which is the default, " +
+					"an exact number means offloading that many layers, " +
+					"and -1 is rejected because llama.cpp means \"auto\" by it, " +
+					"which gguf-parser cannot resolve without the host GPU devices.",
+				Action: func(context *cli.Context, v int) error {
+					return validateGPULayers("gpu-layers-draft", v)
+				},
 			},
 			&cli.Uint64Flag{
 				Destination: &lmcOffloadLayersStep,
@@ -1013,11 +1033,6 @@ func main() {
 		},
 		Action: mainAction,
 	}
-
-	if err := app.RunContext(signalx.Handler(), normalizeArgs(os.Args)); err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(1)
-	}
 }
 
 var (
@@ -1080,7 +1095,7 @@ var (
 	mainGPU           uint
 	rpcServers        string
 	tensorSplit       string
-	offloadLayers     = -1
+	offloadLayers     = -2
 	overrideTensors   cli.StringSlice
 	deviceMetrics     cli.StringSlice
 	platformFootprint = "150,250"
@@ -1101,7 +1116,7 @@ var (
 	lmcNoMMap                 bool
 	lmcVisualMaxImageSize     uint
 	lmcMaxProjectedCache      uint
-	lmcOffloadLayersDraft     = -1
+	lmcOffloadLayersDraft     = -2
 	lmcOffloadLayersStep      uint64
 	// estimate options for stable-diffusion.cpp
 	sdcBatchCount                   uint = 1
@@ -1601,8 +1616,8 @@ func mainAction(c *cli.Context) error {
 	if !skipEstimate && m.Architecture != "diffusion" {
 		if lmcDrafterGf != nil {
 			dlmceopts := eopts[:len(eopts):len(eopts)]
-			if lmcOffloadLayersDraft >= 0 {
-				dlmceopts = append(dlmceopts, WithLLaMACppOffloadLayers(uint64(lmcOffloadLayersDraft)))
+			if n, ok := draftOffloadOverride(lmcOffloadLayersDraft, c.IsSet("gpu-layers-draft")); ok {
+				dlmceopts = append(dlmceopts, WithLLaMACppOffloadLayers(n))
 			}
 			dlmceopts = append(dlmceopts, WithLLaMACppCacheKeyType(GGMLTypeF16), WithLLaMACppCacheValueType(GGMLTypeF16))
 			de := lmcDrafterGf.EstimateLLaMACppRun(dlmceopts...)
