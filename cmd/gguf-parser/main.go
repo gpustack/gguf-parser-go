@@ -598,6 +598,9 @@ func main() {
 				Usage: "Specify how many layers of the main model to offload, " +
 					"which is used to estimate the usage, " +
 					"default is full offloaded.",
+				Action: func(context *cli.Context, v int) error {
+					return validateGPULayers("gpu-layers", v)
+				},
 			},
 			&cli.StringSliceFlag{
 				Destination: &overrideTensors,
@@ -822,6 +825,9 @@ func main() {
 				Usage: "Specify how many layers of the draft model to offload, " +
 					"which is used to estimate the usage, " +
 					"default is full offloaded.",
+				Action: func(context *cli.Context, v int) error {
+					return validateGPULayers("gpu-layers-draft", v)
+				},
 			},
 			&cli.Uint64Flag{
 				Destination: &lmcOffloadLayersStep,
@@ -1080,7 +1086,7 @@ var (
 	mainGPU           uint
 	rpcServers        string
 	tensorSplit       string
-	offloadLayers     = -1
+	offloadLayers     = -2
 	overrideTensors   cli.StringSlice
 	deviceMetrics     cli.StringSlice
 	platformFootprint = "150,250"
@@ -1101,7 +1107,7 @@ var (
 	lmcNoMMap                 bool
 	lmcVisualMaxImageSize     uint
 	lmcMaxProjectedCache      uint
-	lmcOffloadLayersDraft     = -1
+	lmcOffloadLayersDraft     = -2
 	lmcOffloadLayersStep      uint64
 	// estimate options for stable-diffusion.cpp
 	sdcBatchCount                   uint = 1

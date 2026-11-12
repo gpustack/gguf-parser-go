@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 )
 
@@ -80,4 +81,20 @@ func normalizeArgs(args []string) []string {
 		normalized = append(normalized, arg)
 	}
 	return normalized
+}
+
+// validateGPULayers rejects the llama.cpp word values the estimate cannot carry.
+//
+// llama.cpp spells "auto" as -1 and "all" as -2 in common/arg.cpp. An estimate cannot resolve
+// "auto", it has no view of the host GPU devices, so -1 is rejected with the reason. A value
+// below -2 carries no meaning in either tool.
+func validateGPULayers(name string, layers int) error {
+	switch {
+	case layers == -1:
+		return fmt.Errorf("--%s -1 is llama.cpp's \"auto\", which gguf-parser cannot estimate "+
+			"because it cannot see the host GPU devices, use -2 (all layers) or an exact number instead", name)
+	case layers < -2:
+		return fmt.Errorf("invalid --%s %d, use -2 (all layers) or an exact number", name, layers)
+	}
+	return nil
 }

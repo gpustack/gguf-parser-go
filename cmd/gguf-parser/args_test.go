@@ -123,3 +123,57 @@ func TestNormalizeArgsDoesNotChangeTheInput(t *testing.T) {
 	assert.Equal(t, []string{"gguf-parser", "--flash-attn", "on", "--parallel", "1"}, args)
 	assert.Equal(t, []string{"gguf-parser", "--flash-attn=true", "--parallel", "1"}, normalized)
 }
+
+func TestValidateGPULayers(t *testing.T) {
+	cases := []struct {
+		name    string
+		flag    string
+		layers  int
+		wantErr string
+	}{
+		{
+			name:   "the llama.cpp all value passes",
+			flag:   "gpu-layers",
+			layers: -2,
+		},
+		{
+			name:   "zero passes",
+			flag:   "gpu-layers",
+			layers: 0,
+		},
+		{
+			name:   "a positive count passes",
+			flag:   "gpu-layers",
+			layers: 33,
+		},
+		{
+			name:    "the llama.cpp auto value is rejected",
+			flag:    "gpu-layers",
+			layers:  -1,
+			wantErr: `--gpu-layers -1 is llama.cpp's "auto"`,
+		},
+		{
+			name:    "a value below the word values is rejected",
+			flag:    "gpu-layers",
+			layers:  -3,
+			wantErr: "invalid --gpu-layers -3",
+		},
+		{
+			name:    "the draft flag carries its own name in the message",
+			flag:    "gpu-layers-draft",
+			layers:  -1,
+			wantErr: `--gpu-layers-draft -1 is llama.cpp's "auto"`,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := validateGPULayers(c.flag, c.layers)
+			if c.wantErr == "" {
+				assert.NoError(t, err)
+				return
+			}
+			assert.ErrorContains(t, err, c.wantErr)
+		})
+	}
+}
