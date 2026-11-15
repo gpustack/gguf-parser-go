@@ -731,3 +731,14 @@ func TestParseGGUFFile_ProjectorHyperparameters(t *testing.T) {
 		})
 	}
 }
+
+func TestParseGGUFFile_InvalidAlignment(t *testing.T) {
+	for _, kv := range []GGUFMetadataKV{
+		{Key: "general.alignment", ValueType: GGUFMetadataValueTypeUint32, Value: uint32(0)},
+		{Key: "general.alignment", ValueType: GGUFMetadataValueTypeString, Value: "32"},
+	} {
+		if _, err := ParseGGUFFile(writeProjectorGGUF(t, []GGUFMetadataKV{kv})); err == nil {
+			t.Errorf("expected an error for general.alignment = %v", kv.Value)
+		}
+	}
+}
