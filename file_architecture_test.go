@@ -341,3 +341,14 @@ func TestGGUFFile_Architecture_SlidingWindowLayerArray(t *testing.T) {
 		t.Errorf("AttentionKVFromStartLayerCount: got %d, want 0", a.AttentionKVFromStartLayerCount)
 	}
 }
+
+func TestGGUFFile_Architecture_UnprefixedStableDiffusion(t *testing.T) {
+	f := &GGUFFile{TensorInfos: GGUFTensorInfos{
+		{Name: "output_blocks.11.1.transformer_blocks.0.attn2.to_v.weight", NDimensions: 2, Dimensions: []uint64{1024, 320}},
+		{Name: "decoder.conv_in.weight", NDimensions: 4, Dimensions: []uint64{3, 3, 4, 512}},
+	}}
+
+	if got, want := f.Architecture().DiffusionArchitecture, "Stable Diffusion 2.x"; got != want {
+		t.Errorf("DiffusionArchitecture: got %q, want %q", got, want)
+	}
+}
