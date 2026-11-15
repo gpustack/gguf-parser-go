@@ -2012,6 +2012,19 @@ func (rd _GGUFTensorInfoReader) Read() (ti GGUFTensorInfo, err error) {
 		}
 	}
 
+	// Refuse shapes whose size overflows uint64, which would make Elements or Bytes panic.
+	tt, _ := ti.Type.Trait()
+	elements := uint64(1)
+	for _, d := range ti.Dimensions {
+		var hi uint64
+		if hi, elements = bits.Mul64(elements, d); hi != 0 {
+			return ti, fmt.Errorf("invalid dimensions: %v (size overflows uint64)", ti.Dimensions)
+		}
+	}
+	if hi, _ := bits.Mul64(elements, tt.TypeSize); hi != 0 {
+		return ti, fmt.Errorf("invalid dimensions: %v (size overflows uint64)", ti.Dimensions)
+	}
+
 	ti.Offset, err = rd.ReadUint64()
 	if err != nil {
 		return ti, fmt.Errorf("read offset: %w", err)
