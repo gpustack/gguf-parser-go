@@ -476,7 +476,12 @@ func parseGGUFFile(fs []_GGUFFileReadSeeker, o _GGUFReadOptions) (_ *GGUFFile, e
 			// If the alignment is not specified, assume it is 32.
 			var ag uint32 = 32
 			if v, ok := gf.Header.MetadataKV.Get("general.alignment"); ok {
-				ag = v.ValueUint32()
+				if v.ValueType != GGUFMetadataValueTypeUint32 {
+					return nil, fmt.Errorf("metadata key %q holds a %v, but it must hold a uint32", "general.alignment", v.ValueType)
+				}
+				if ag = v.ValueUint32(); ag == 0 {
+					return nil, fmt.Errorf("metadata key %q holds 0, but it must be positive", "general.alignment")
+				}
 			}
 			// A header that already ends on the alignment boundary needs no
 			// padding. Without the outer modulo this adds a whole alignment
