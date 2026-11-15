@@ -646,6 +646,13 @@ func TestParseGGUFArrayLengthDoS(t *testing.T) {
 	}
 }
 
+func TestParseGGUFFile_InvalidSplitTensorsCount(t *testing.T) {
+	kv := GGUFMetadataKV{Key: "split.tensors.count", ValueType: GGUFMetadataValueTypeString, Value: "-1"}
+	if _, err := ParseGGUFFile(writeProjectorGGUF(t, []GGUFMetadataKV{kv})); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
 // writeProjectorGGUF writes a projector file with no tensors and the given
 // vision metadata, in the order llama.cpp's loader reads it.
 func writeProjectorGGUF(t *testing.T, kvs []GGUFMetadataKV) string {
