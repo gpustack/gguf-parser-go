@@ -586,7 +586,7 @@ func (gf *GGUFFile) diffuserArchitecture() (ga GGUFArchitecture) {
 		if ti, ok := tis[sdInPaintFeatureKey]; ok && ti.Dimensions[2] == 9 {
 			ga.DiffusionArchitecture += " InPaint"
 		}
-	} else if _, ok := tis[sdKey2]; ok {
+	} else if ti, ok := tis[sdKey2]; ok {
 		ga.DiffusionArchitecture = "Stable Diffusion 1.x"
 		if ti.Dimensions[0] == 1024 {
 			ga.DiffusionArchitecture = "Stable Diffusion 2.x"
