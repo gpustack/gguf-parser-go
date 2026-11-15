@@ -514,6 +514,26 @@ func TestTensorInfoReaderRejectsBadNDimensions(t *testing.T) {
 	}
 }
 
+func TestTensorInfoReaderRejectsRemovedTypes(t *testing.T) {
+	for _, typ := range []GGMLType{GGMLTypeQ4_2, GGMLTypeQ4_3} {
+		t.Run(typ.String(), func(t *testing.T) {
+			var buf bytes.Buffer
+			bo := binary.LittleEndian
+			_ = binary.Write(&buf, bo, uint64(1)) // name length
+			buf.WriteByte('x')
+			_ = binary.Write(&buf, bo, uint32(1))  // n dimensions
+			_ = binary.Write(&buf, bo, uint64(32)) // dimension
+			_ = binary.Write(&buf, bo, uint32(typ))
+			_ = binary.Write(&buf, bo, uint64(0)) // offset
+
+			rd := _GGUFTensorInfoReader{_GGUFReader: _GGUFReader{v: GGUFVersionV3, bo: bo, f: bytes.NewReader(buf.Bytes())}}
+			if _, err := rd.Read(); err == nil {
+				t.Fatalf("expected error for type %v", typ)
+			}
+		})
+	}
+}
+
 func TestBytesZeroDimension(t *testing.T) {
 	// A tensor with an empty dimension holds no bytes. The stride arithmetic
 	// subtracts 1 from each dimension, so an unsigned zero wraps to 2^64-1 and

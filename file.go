@@ -2007,7 +2007,8 @@ func (rd _GGUFTensorInfoReader) Read() (ti GGUFTensorInfo, err error) {
 			return ti, fmt.Errorf("read type: %w", err)
 		}
 		ti.Type = GGMLType(v)
-		if ti.Type >= _GGMLTypeCount {
+		// Q4_2 and Q4_3 were removed from ggml and have no block size.
+		if tt, _ := ti.Type.Trait(); ti.Type >= _GGMLTypeCount || tt.BlockSize == 0 {
 			return ti, fmt.Errorf("%v: This quantized type is currently unsupported", ti.Type)
 		}
 	}
