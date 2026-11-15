@@ -752,6 +752,13 @@ func TestParseGGUFFile_ProjectorHyperparameters(t *testing.T) {
 	}
 }
 
+func TestParseGGUFFile_DuplicateMetadataKey(t *testing.T) {
+	kv := GGUFMetadataKV{Key: "general.architecture", ValueType: GGUFMetadataValueTypeString, Value: "llama"}
+	if _, err := ParseGGUFFile(writeProjectorGGUF(t, []GGUFMetadataKV{kv, kv})); err == nil {
+		t.Error("expected an error for a duplicate metadata key")
+	}
+}
+
 func TestParseGGUFFile_InvalidAlignment(t *testing.T) {
 	for _, kv := range []GGUFMetadataKV{
 		{Key: "general.alignment", ValueType: GGUFMetadataValueTypeUint32, Value: uint32(0)},
