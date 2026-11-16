@@ -424,11 +424,16 @@ func parseGGUFFile(fs []_GGUFFileReadSeeker, o _GGUFReadOptions) (_ *GGUFFile, e
 		{
 			rd := _GGUFMetadataReader{_GGUFReader: rd}
 			kvs := make(GGUFMetadataKVs, metadataKVCount)
+			seen := make(map[string]struct{}, metadataKVCount)
 			for i := uint64(0); i < metadataKVCount; i++ {
 				kvs[i], err = rd.Read()
 				if err != nil {
 					return nil, fmt.Errorf("read metadata kv %d: %w", i, err)
 				}
+				if _, ok := seen[kvs[i].Key]; ok {
+					return nil, fmt.Errorf("duplicate metadata key %q", kvs[i].Key)
+				}
+				seen[kvs[i].Key] = struct{}{}
 			}
 			for i := range kvs {
 				if kvs[i].Key == "split.no" {
