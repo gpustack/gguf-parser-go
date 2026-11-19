@@ -446,13 +446,8 @@ func parseGGUFFile(fs []_GGUFFileReadSeeker, o _GGUFReadOptions) (_ *GGUFFile, e
 
 		// tensor infos
 		if gf.TensorInfos == nil {
-			tc, ok := gf.Header.MetadataKV.Get("split.tensors.count")
-			if ok {
-				gf.TensorInfos = make(GGUFTensorInfos, 0, anyx.Number[int](tc.Value))
-			} else {
-				// avoid preallocating with tensorCount (could be huge); start empty and append
-				gf.TensorInfos = make(GGUFTensorInfos, 0)
-			}
+			// avoid preallocating with tensorCount (could be huge); start empty and append
+			gf.TensorInfos = make(GGUFTensorInfos, 0)
 		}
 		{
 			rd := _GGUFTensorInfoReader{_GGUFReader: rd}
