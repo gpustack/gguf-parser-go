@@ -208,7 +208,7 @@ func (gf *GGUFFile) Metadata() (gm GGUFMetadata) {
 			}
 		}
 	}
-	if v, ok := m[quantizationKey]; ok {
+	if v, ok := m[quantizationKey]; ok && v.ValueType.IsNumeric() {
 		gm.QuantizationVersion = ValueNumeric[uint32](v)
 	}
 	if v, ok := m[alignmentKey]; ok {
@@ -219,16 +219,16 @@ func (gf *GGUFFile) Metadata() (gm GGUFMetadata) {
 	if v, ok := m[nameKey]; ok {
 		gm.Name = v.ValueString()
 	}
-	if v, ok := m[authorKey]; ok {
+	if v, ok := m[authorKey]; ok && v.ValueType == GGUFMetadataValueTypeString {
 		gm.Author = v.ValueString()
 	}
-	if v, ok := m[urlKey]; ok {
+	if v, ok := m[urlKey]; ok && v.ValueType == GGUFMetadataValueTypeString {
 		gm.URL = v.ValueString()
 	}
-	if v, ok := m[descriptionKey]; ok {
+	if v, ok := m[descriptionKey]; ok && v.ValueType == GGUFMetadataValueTypeString {
 		gm.Description = v.ValueString()
 	}
-	if v, ok := m[licenseKey]; ok {
+	if v, ok := m[licenseKey]; ok && v.ValueType == GGUFMetadataValueTypeString {
 		gm.License = v.ValueString()
 	}
 	gm.FileType, gm.FileTypeDescriptor = gf.extractFileType(gm.Architecture)

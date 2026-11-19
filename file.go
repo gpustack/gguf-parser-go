@@ -620,6 +620,28 @@ func (gf *GGUFFile) validateMetadata() error {
 		}
 	}
 
+	// General and tokenizer keys must hold the type the readers expect.
+	for _, key := range []string{
+		"general.type", "general.architecture", "general.name", "controlvector.model_hint", "tokenizer.ggml.model",
+	} {
+		if v, ok := gf.Header.MetadataKV.Get(key); ok && v.ValueType != GGUFMetadataValueTypeString {
+			return fmt.Errorf("metadata key %q holds a %v, but it must hold a string", key, v.ValueType)
+		}
+	}
+	for _, key := range []string{"tokenizer.ggml.tokens", "tokenizer.ggml.merges", "tokenizer.ggml.added_tokens"} {
+		if v, ok := gf.Header.MetadataKV.Get(key); ok && v.ValueType != GGUFMetadataValueTypeArray {
+			return fmt.Errorf("metadata key %q holds a %v, but it must hold an array", key, v.ValueType)
+		}
+	}
+	for _, key := range []string{
+		"tokenizer.ggml.bos_token_id", "tokenizer.ggml.eos_token_id", "tokenizer.ggml.eot_token_id", "tokenizer.ggml.eom_token_id",
+		"tokenizer.ggml.unknown_token_id", "tokenizer.ggml.separator_token_id", "tokenizer.ggml.padding_token_id",
+	} {
+		if v, ok := gf.Header.MetadataKV.Get(key); ok && !v.ValueType.IsNumeric() {
+			return fmt.Errorf("metadata key %q holds a %v, but it must hold a number", key, v.ValueType)
+		}
+	}
+
 	return nil
 }
 
@@ -1042,6 +1064,9 @@ func (kvs GGUFMetadataKVs) Index(keys []string) (values map[string]GGUFMetadataK
 	values = make(map[string]GGUFMetadataKV)
 	for i := range kvs {
 		if _, ok := ks[kvs[i].Key]; ok {
+			if _, seen := values[kvs[i].Key]; seen {
+				continue
+			}
 			values[kvs[i].Key] = kvs[i]
 			found++
 		}

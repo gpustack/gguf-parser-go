@@ -803,3 +803,58 @@ func TestParseGGUFFile_InvalidAlignment(t *testing.T) {
 		}
 	}
 }
+
+func TestParseGGUFFile_MetadataKeyTypes(t *testing.T) {
+	cases := []struct {
+		name    string
+		kv      GGUFMetadataKV
+		refused bool
+	}{
+		{"string key as a number", GGUFMetadataKV{Key: "general.architecture", ValueType: GGUFMetadataValueTypeUint32, Value: uint32(1)}, true},
+		{"tokenizer string key as a number", GGUFMetadataKV{Key: "tokenizer.ggml.model", ValueType: GGUFMetadataValueTypeUint32, Value: uint32(1)}, true},
+		{"array key as a number", GGUFMetadataKV{Key: "tokenizer.ggml.tokens", ValueType: GGUFMetadataValueTypeUint32, Value: uint32(1)}, true},
+		{"numeric key as a string", GGUFMetadataKV{Key: "tokenizer.ggml.bos_token_id", ValueType: GGUFMetadataValueTypeString, Value: "1"}, true},
+		{"author as a number", GGUFMetadataKV{Key: "general.author", ValueType: GGUFMetadataValueTypeUint32, Value: uint32(1)}, false},
+		{
+			"quantization version as a string",
+			GGUFMetadataKV{Key: "general.quantization_version", ValueType: GGUFMetadataValueTypeString, Value: "2"},
+			false,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f, err := ParseGGUFFile(writeProjectorGGUF(t, []GGUFMetadataKV{c.kv}))
+			if c.refused && (err == nil || !strings.Contains(err.Error(), c.kv.Key)) {
+				t.Fatalf("expected an error naming %q, got %v", c.kv.Key, err)
+			}
+			if !c.refused && err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+			if err == nil {
+				f.Architecture()
+				f.Tokenizer()
+				if m := f.Metadata(); m.Author != "" || m.QuantizationVersion != 0 {
+					t.Errorf("expected no author or quantization version, got %q and %d", m.Author, m.QuantizationVersion)
+				}
+			}
+		})
+	}
+}
+
+func TestGGUFMetadataKVs_IndexRepeatedKey(t *testing.T) {
+	kvs := GGUFMetadataKVs{
+		{Key: "general.architecture", ValueType: GGUFMetadataValueTypeString, Value: "llama"},
+		{Key: "general.architecture", ValueType: GGUFMetadataValueTypeUint32, Value: uint32(1)},
+		{Key: "general.name", ValueType: GGUFMetadataValueTypeString, Value: "x"},
+	}
+	m, found := kvs.Index([]string{"general.architecture", "general.name"})
+	if found != 2 {
+		t.Fatalf("found %d keys, want 2", found)
+	}
+	if v := m["general.architecture"]; v.ValueType != GGUFMetadataValueTypeString {
+		t.Errorf("general.architecture holds a %v, want the first entry", v.ValueType)
+	}
+	if _, ok := m["general.name"]; !ok {
+		t.Error("general.name is missing")
+	}
+}
