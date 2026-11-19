@@ -354,6 +354,33 @@ func TestBytesOverflowPanics(t *testing.T) {
 	_ = ti.Bytes()
 }
 
+func TestTensorInfoReaderRejectsOverflowingShapes(t *testing.T) {
+	cases := []struct {
+		name string
+		dims []uint64
+	}{
+		{"elements overflow", []uint64{1 << 32, 1 << 32}},
+		{"bytes overflow", []uint64{1 << 62, 1}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			bo := binary.LittleEndian
+			_ = binary.Write(&buf, bo, uint64(1)) // name length
+			buf.WriteByte('x')
+			_ = binary.Write(&buf, bo, uint32(len(c.dims)))
+			_ = binary.Write(&buf, bo, c.dims)
+			_ = binary.Write(&buf, bo, uint32(GGMLTypeF32))
+			_ = binary.Write(&buf, bo, uint64(0)) // offset
+
+			rd := _GGUFTensorInfoReader{_GGUFReader: _GGUFReader{v: GGUFVersionV3, bo: bo, f: bytes.NewReader(buf.Bytes())}}
+			if _, err := rd.Read(); err == nil {
+				t.Fatalf("expected error for dimensions %v", c.dims)
+			}
+		})
+	}
+}
+
 func TestElementsAndBytesValid(t *testing.T) {
 	ti := GGUFTensorInfo{
 		Name:        "ok",
