@@ -260,17 +260,7 @@ func ParseGGUFFile(path string, opts ...GGUFReadOption) (*GGUFFile, error) {
 		opt(&o)
 	}
 
-	var paths []string
-	{
-		rs := CompleteShardGGUFFilename(path)
-		if rs != nil {
-			paths = rs
-		} else {
-			paths = []string{path}
-		}
-	}
-
-	return parseGGUFFile(paths, o, func(path string) (_GGUFFileReadSeeker, error) {
+	return parseGGUFFile(ggufShardFiles(path), o, func(path string) (_GGUFFileReadSeeker, error) {
 		if o.MMap {
 			mf, err := osx.OpenMmapFile(path)
 			if err != nil {
@@ -337,15 +327,15 @@ func _validateCountWithRemaining(f _GGUFFileReadSeeker, count uint64, version GG
 	return nil
 }
 
-func parseGGUFFile(paths []string, o _GGUFReadOptions, open func(string) (_GGUFFileReadSeeker, error)) (*GGUFFile, error) {
+func parseGGUFFile(files ggufFiles, o _GGUFReadOptions, open func(string) (_GGUFFileReadSeeker, error)) (*GGUFFile, error) {
 	var gf GGUFFile
 	budget := metadataReadBudget(o.metadataBudget())
-	for _, path := range paths {
-		f, err := open(path)
+	for i := 0; i < files.count; i++ {
+		f, err := open(files.path(i))
 		if err != nil {
 			return nil, err
 		}
-		err = gf.readShard(f, o, len(paths) == 1, &budget)
+		err = gf.readShard(f, o, i, files.count, &budget)
 		if err != nil {
 			return nil, err
 		}
@@ -359,7 +349,7 @@ func parseGGUFFile(paths []string, o _GGUFReadOptions, open func(string) (_GGUFF
 	// such a file as parsed tells a caller it can load something it cannot.
 	// Checked only for a single file, where every tensor is accounted for by one
 	// offset and one size.
-	if len(paths) == 1 && gf.TensorDataStartOffset >= 0 &&
+	if files.count == 1 && gf.TensorDataStartOffset >= 0 &&
 		uint64(gf.TensorDataStartOffset) <= uint64(gf.Size) {
 		held := uint64(gf.Size) - uint64(gf.TensorDataStartOffset)
 		if want := gf.TensorInfos.Bytes(); want > held {
@@ -385,7 +375,7 @@ func parseGGUFFile(paths []string, o _GGUFReadOptions, open func(string) (_GGUFF
 	return &gf, nil
 }
 
-func (gf *GGUFFile) readShard(f _GGUFFileReadSeeker, o _GGUFReadOptions, single bool, budget *metadataReadBudget) error {
+func (gf *GGUFFile) readShard(f _GGUFFileReadSeeker, o _GGUFReadOptions, index, total int, budget *metadataReadBudget) error {
 	defer osx.Close(f)
 	var err error
 	var bo binary.ByteOrder = binary.LittleEndian
@@ -465,6 +455,18 @@ func (gf *GGUFFile) readShard(f _GGUFFileReadSeeker, o _GGUFReadOptions, single 
 				return fmt.Errorf("duplicate metadata key %q", kv.Key)
 			}
 			seen[kv.Key] = struct{}{}
+			if total > 1 {
+				switch kv.Key {
+				case "split.count":
+					if !kv.ValueType.IsNumeric() || ValueNumeric[float64](kv) != float64(total) {
+						return fmt.Errorf("split.count differs from the filename total %d", total)
+					}
+				case "split.no":
+					if !kv.ValueType.IsNumeric() || ValueNumeric[float64](kv) != float64(index) {
+						return fmt.Errorf("split.no differs from the expected shard index %d", index)
+					}
+				}
+			}
 			if kv.Key == "split.no" {
 				gf.Header.MetadataKVCount--
 				continue
@@ -518,14 +520,14 @@ func (gf *GGUFFile) readShard(f _GGUFFileReadSeeker, o _GGUFReadOptions, single 
 		// and understating ModelSize by the same amount.
 		padding = (int64(ag) - pds%int64(ag)) % int64(ag)
 	}
-	if single {
+	if total == 1 {
 		gf.Padding = padding
 	}
 	gf.SplitPaddings = append(gf.SplitPaddings, padding)
 
 	// tensor data offset
 	tensorDataStartOffset := pds + padding
-	if single {
+	if total == 1 {
 		gf.TensorDataStartOffset = tensorDataStartOffset
 	}
 	gf.SplitTensorDataStartOffsets = append(gf.SplitTensorDataStartOffsets, tensorDataStartOffset)
@@ -1657,15 +1659,12 @@ func (ltis GGUFLayerTensorInfos) Cut(names []string) (before, after GGUFLayerTen
 	return before, after, len(before) > 0
 }
 
-// Metadata accounting includes strings, decoded array slots and metadata records across all shards.
-const defaultMetadataBudget = 256 << 20
-
 type metadataReadBudget uint64
 
 func (b *metadataReadBudget) reserve(count, cost uint64) error {
 	if b == nil {
 		// Standalone readers use the same per-value limit.
-		if count > defaultMetadataBudget/cost {
+		if count > DefaultMetadataReadBudget/cost {
 			return errors.New("metadata exceeds read budget")
 		}
 		return nil

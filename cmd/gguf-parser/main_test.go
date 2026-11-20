@@ -37,3 +37,18 @@ func TestGPULayersFlagsRejectTheLlamaCppAutoValue(t *testing.T) {
 		})
 	}
 }
+
+func TestReadLimitFlags(t *testing.T) {
+	for _, tc := range []struct{ flag, value string }{
+		{"--max-remote-shards", "0"},
+		{"--max-remote-shards", "100000"},
+		{"--metadata-budget-mib", "0"},
+		{"--metadata-budget-mib", "17592186044416"},
+		{"--remote-read-timeout", "0s"},
+	} {
+		t.Run(tc.flag+"="+tc.value, func(t *testing.T) {
+			err := newApp("gguf-parser").Run([]string{"gguf-parser", tc.flag, tc.value})
+			assert.ErrorContains(t, err, tc.flag)
+		})
+	}
+}

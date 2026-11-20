@@ -54,6 +54,9 @@ func ParseGGUFFileFromOllamaModel(ctx context.Context, model *OllamaModel, opts 
 		}()
 	}
 
+	ctx, cancel := o.remoteReadContext(ctx)
+	defer cancel()
+
 	var cli *http.Client
 	cli = httpx.Client(
 		httpx.ClientOptions().

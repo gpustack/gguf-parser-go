@@ -148,75 +148,45 @@ var ShardGGUFFilenameRegex = regexp.MustCompile(`^(?P<Prefix>.*)-(?:(?P<Shard>\d
 
 // IsShardGGUFFilename returns true if the given filename is a shard GGUF filename.
 func IsShardGGUFFilename(name string) bool {
-	n := name
-	if !strings.HasSuffix(n, ".gguf") {
-		n += ".gguf"
-	}
-
-	m := make(map[string]string)
-	{
-		r := ShardGGUFFilenameRegex.FindStringSubmatch(n)
-		for i, ne := range ShardGGUFFilenameRegex.SubexpNames() {
-			if i != 0 && i <= len(r) {
-				m[ne] = r[i]
-			}
-		}
-	}
-
-	var shard, shardTotal int
-	if v := m["Shard"]; v != "" {
-		shard = parseInt(v)
-	}
-	if v := m["ShardTotal"]; v != "" {
-		shardTotal = parseInt(v)
-	}
-	return shard > 0 && shardTotal > 0
+	return ggufShardFiles(name).index != 0
 }
 
-// CompleteShardGGUFFilename returns the list of shard GGUF filenames that are related to the given shard GGUF filename.
-//
-// Only available if the given filename is a shard GGUF filename.
+// CompleteShardGGUFFilename returns all filenames in the named shard set.
+// It returns nil for a filename outside the shard naming convention.
 func CompleteShardGGUFFilename(name string) []string {
-	names, _ := completeShardGGUFFilename(name, 99999)
+	files := ggufShardFiles(name)
+	if files.index == 0 {
+		return nil
+	}
+	names := make([]string, files.count)
+	for i := range names {
+		names[i] = files.path(i)
+	}
 	return names
 }
 
-func completeShardGGUFFilename(name string, limit int) ([]string, error) {
-	n := name
-	if !strings.HasSuffix(n, ".gguf") {
-		n += ".gguf"
-	}
+type ggufFiles struct {
+	name, prefix, suffix string
+	index, count         int
+}
 
-	m := make(map[string]string)
-	{
-		r := ShardGGUFFilenameRegex.FindStringSubmatch(n)
-		for i, ne := range ShardGGUFFilenameRegex.SubexpNames() {
-			if i != 0 && i <= len(r) {
-				m[ne] = r[i]
-			}
+func ggufShardFiles(name string) ggufFiles {
+	base := strings.TrimSuffix(name, ".gguf") + ".gguf"
+	match := ShardGGUFFilenameRegex.FindStringSubmatch(base)
+	if match != nil {
+		index, count := parseInt(match[2]), parseInt(match[3])
+		if index > 0 && index <= count {
+			return ggufFiles{prefix: match[1], index: index, count: count}
 		}
 	}
+	return ggufFiles{name: name, count: 1}
+}
 
-	var shard, shardTotal int
-	if v := m["Shard"]; v != "" {
-		shard = parseInt(v)
+func (f ggufFiles) path(i int) string {
+	if f.index == 0 {
+		return f.name
 	}
-	if v := m["ShardTotal"]; v != "" {
-		shardTotal = parseInt(v)
-	}
-
-	if shard <= 0 || shardTotal <= 0 {
-		return nil, nil
-	}
-	if shardTotal > limit {
-		return nil, fmt.Errorf("shard count %d exceeds limit %d", shardTotal, limit)
-	}
-
-	names := make([]string, 0, shardTotal)
-	for i := 1; i <= shardTotal; i++ {
-		names = append(names, fmt.Sprintf("%s-%05d-of-%05d.gguf", m["Prefix"], i, shardTotal))
-	}
-	return names, nil
+	return fmt.Sprintf("%s-%05d-of-%05d.gguf%s", f.prefix, i+1, f.count, f.suffix)
 }
 
 func parseInt(v string) int {

@@ -6,6 +6,8 @@ import (
 	"encoding/binary"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -56,7 +58,7 @@ func TestRemoteShardLimitBeforeOpen(t *testing.T) {
 		t.Fatal("unexpected shard request")
 		return nil, nil
 	})}
-	_, err := parseGGUFFileFromRemote(context.Background(), cli, "https://example.invalid/model-00001-of-00257.gguf", _GGUFReadOptions{})
+	_, err := parseGGUFFileFromRemote(context.Background(), cli, "https://example.invalid/model-00001-of-02049.gguf", _GGUFReadOptions{})
 	require.ErrorContains(t, err, "shard count")
 }
 
@@ -71,6 +73,7 @@ func TestRemoteShardsShareDeadline(t *testing.T) {
 	cli := &http.Client{Transport: httpx.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		deadline, ok := req.Context().Deadline()
 		require.True(t, ok)
+		require.Equal(t, "download=true", req.URL.RawQuery)
 		deadlines = append(deadlines, deadline)
 		paths = append(paths, req.Method+" "+req.URL.Path)
 		resp := &http.Response{Header: make(http.Header), StatusCode: http.StatusOK, ContentLength: int64(file.Len()), Body: http.NoBody}
@@ -82,7 +85,7 @@ func TestRemoteShardsShareDeadline(t *testing.T) {
 		}
 		return resp, nil
 	})}
-	_, err := parseGGUFFileFromRemote(context.Background(), cli, "https://example.invalid/model-00001-of-00002.gguf", _GGUFReadOptions{})
+	_, err := parseGGUFFileFromRemote(context.Background(), cli, "https://example.invalid/model-00001-of-00002.gguf?download=true", _GGUFReadOptions{})
 	require.NoError(t, err)
 	require.Equal(t, []string{
 		"HEAD /model-00001-of-00002.gguf", "GET /model-00001-of-00002.gguf",
@@ -123,8 +126,46 @@ func TestReadOptionsSelectCache(t *testing.T) {
 
 func TestRemoteShardLimitOption(t *testing.T) {
 	var o _GGUFReadOptions
-	UseRemoteShardLimit(512)(&o)
-	names, err := completeShardGGUFFilename("model-00001-of-00257.gguf", o.remoteShardLimit())
-	require.NoError(t, err)
-	require.Len(t, names, 257)
+	UseRemoteShardLimit(9999)(&o)
+	files := ggufShardFiles("model-00002-of-09999.gguf")
+	require.Equal(t, 9999, files.count)
+	require.Equal(t, 9999, o.remoteShardLimit())
+	require.Equal(t, "model-09999-of-09999.gguf", files.path(files.count-1))
+}
+
+func TestShardHeaderMatchesFilename(t *testing.T) {
+	for _, tc := range []struct {
+		key   string
+		value uint32
+	}{
+		{"split.count", 3},
+		{"split.no", 1},
+	} {
+		t.Run(tc.key, func(t *testing.T) {
+			first := writeProjectorGGUF(t, []GGUFMetadataKV{{Key: tc.key, ValueType: GGUFMetadataValueTypeUint32, Value: tc.value}})
+			named := filepath.Join(t.TempDir(), "model-00001-of-00002.gguf")
+			require.NoError(t, os.Rename(first, named))
+			_, err := ParseGGUFFile(named)
+			require.ErrorContains(t, err, tc.key+" differs")
+		})
+	}
+}
+
+func TestRemoteReadDeadline(t *testing.T) {
+	o := _GGUFReadOptions{}
+	UseRemoteReadTimeout(30 * time.Minute)(&o)
+	before := time.Now()
+	ctx, cancel := o.remoteReadContext(context.Background())
+	defer cancel()
+	deadline, ok := ctx.Deadline()
+	require.True(t, ok)
+	require.WithinRange(t, deadline, before.Add(30*time.Minute), time.Now().Add(30*time.Minute))
+
+	caller, stop := context.WithTimeout(context.Background(), time.Minute)
+	defer stop()
+	ctx, cancel = o.remoteReadContext(caller)
+	defer cancel()
+	parent, _ := caller.Deadline()
+	deadline, _ = ctx.Deadline()
+	require.Equal(t, parent, deadline)
 }

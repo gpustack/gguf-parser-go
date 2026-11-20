@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -103,22 +104,30 @@ func ParseGGUFFileRemote(ctx context.Context, url string, opts ...GGUFReadOption
 	return parseGGUFFileFromRemote(ctx, cli, url, o)
 }
 
-func parseGGUFFileFromRemote(ctx context.Context, cli *http.Client, url string, o _GGUFReadOptions) (*GGUFFile, error) {
-	urls, err := completeShardGGUFFilename(url, o.remoteShardLimit())
+func parseGGUFFileFromRemote(ctx context.Context, cli *http.Client, rawURL string, o _GGUFReadOptions) (*GGUFFile, error) {
+	u, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, err
 	}
-	if urls == nil {
-		urls = []string{url}
+	files := ggufShardFiles(u.EscapedPath())
+	if files.index == 0 {
+		files.name = rawURL
+	} else {
+		// Preserve the authority and query verbatim. Only the filename identifies siblings.
+		end := strings.IndexAny(rawURL, "?#")
+		if end < 0 {
+			end = len(rawURL)
+		}
+		files.prefix = strings.TrimSuffix(rawURL[:end], u.EscapedPath()) + files.prefix
+		files.suffix = rawURL[end:]
 	}
-	// A caller can supply its own operation deadline for a slower source.
-	if _, ok := ctx.Deadline(); !ok {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, 5*time.Minute)
-		defer cancel()
+	if files.count > o.remoteShardLimit() {
+		return nil, fmt.Errorf("shard count %d exceeds limit %d", files.count, o.remoteShardLimit())
 	}
+	ctx, cancel := o.remoteReadContext(ctx)
+	defer cancel()
 
-	return parseGGUFFile(urls, o, func(path string) (_GGUFFileReadSeeker, error) {
+	return parseGGUFFile(files, o, func(path string) (_GGUFFileReadSeeker, error) {
 		req, err := httpx.NewGetRequestWithContext(ctx, path)
 		if err != nil {
 			return _GGUFFileReadSeeker{}, fmt.Errorf("new request: %w", err)

@@ -77,6 +77,9 @@ GLOBAL OPTIONS:
 
    --cache-expiration value      Specify the expiration of cache, works with "--url/--hf-*/--ms-*/--ol-*". (default: 24h0m0s)
    --cache-path value            Cache the read result to the path, works with "--url/--hf-*/--ms-*/--ol-*". (default: "/Users/thxcode/.cache/gguf-parser")
+   --max-remote-shards value     Set the maximum number of remote shards per model (1 to 99999). (default: 2048)
+   --metadata-budget-mib value   Set the metadata accounting budget per model in MiB. (default: 256)
+   --remote-read-timeout value   Set the time limit for reading one remote model, including all its shards. (default: 5m0s)
    --skip-cache                  Skip cache, works with "--url/--hf-*/--ms-*/--ol-*", default is caching the read result. (default: false) [$SKIP_CACHE]
    --skip-dns-cache              Skip DNS cache, works with "--url/--hf-*/--ms-*/--ol-*", default is caching the DNS lookup result. (default: false) [$SKIP_DNS_CACHE]
    --skip-proxy                  Skip proxy settings, works with "--url/--hf-*/--ms-*/--ol-*", default is respecting the environment variables "HTTP_PROXY/HTTPS_PROXY/NO_PROXY". (default: false) [$SKIP_PROXY]
@@ -168,7 +171,7 @@ GLOBAL OPTIONS:
 ## GGUF File Compatibility
 
 **Since v0.28.4**, the parser checks the active architecture’s layer count against a limit of 4,096 and reads one shard at a time.
-A remote parse accepts up to 256 shards and uses a five-minute deadline by default.
+A remote parse accepts up to 2,048 shards and uses a five-minute deadline by default.
 Library callers can supply a deadline through the request context. The parser checks remote
 byte ranges against the object size and refreshes metadata caches written by earlier versions.
 
@@ -177,7 +180,10 @@ record, 32 bytes per materialized array element, and the byte length of each str
 This budget measures parsing work and does not specify peak process memory. Skipped array elements
 do not consume the materialization allowance. Go callers can set a different budget for a known
 model, for example `UseMetadataReadBudget(512 << 20)` and `UseRemoteShardLimit(512)`.
-The CLI uses the defaults.
+The CLI accepts the same limits per command. For a known model above the default shard limit, pass
+`--max-remote-shards 9999 --remote-read-timeout 30m`. The filename supplies the actual count.
+When present, `split.count` and `split.no` must agree with the named shard set. To raise the metadata budget separately,
+pass `--metadata-budget-mib 512`.
 
 **Since v0.28.3**, the CLI recognizes Stable Diffusion models with unprefixed tensor names.
 Each GGUF shard must have unique metadata keys. If present, `general.alignment` must be a

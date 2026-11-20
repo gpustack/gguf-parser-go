@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"os"
 	"path/filepath"
@@ -487,6 +488,18 @@ func newApp(name string) *cli.App {
 				Usage: "Skip range download detect, " +
 					"works with \"--url/--hf-*/--ms-*/--ol-*\", " +
 					"default is detecting the range download support.",
+			},
+			&cli.Uint64Flag{
+				Name: "metadata-budget-mib", Category: "Load", Value: DefaultMetadataReadBudget >> 20,
+				Usage: "Set the metadata accounting budget per model in MiB.",
+			},
+			&cli.IntFlag{
+				Name: "max-remote-shards", Category: "Load", Value: DefaultRemoteShardLimit,
+				Usage: "Set the maximum number of remote shards per model (1 to 99999).",
+			},
+			&cli.DurationFlag{
+				Name: "remote-read-timeout", Category: "Load", Value: DefaultRemoteReadTimeout,
+				Usage: "Set the time limit for reading one remote model, including all its shards.",
 			},
 			&cli.DurationFlag{
 				Destination: &cacheExpiration,
@@ -1146,7 +1159,22 @@ func mainAction(c *cli.Context) error {
 
 	// Prepare options.
 
+	metadataMiB := c.Uint64("metadata-budget-mib")
+	if metadataMiB == 0 || metadataMiB > math.MaxUint64>>20 {
+		return errors.New("--metadata-budget-mib must be positive and fit in a uint64 byte count")
+	}
+	shards := c.Int("max-remote-shards")
+	if shards < 1 || shards > 99999 {
+		return errors.New("--max-remote-shards must be between 1 and 99999")
+	}
+	timeout := c.Duration("remote-read-timeout")
+	if timeout <= 0 {
+		return errors.New("--remote-read-timeout must be positive")
+	}
 	ropts := []GGUFReadOption{
+		UseMetadataReadBudget(metadataMiB << 20),
+		UseRemoteShardLimit(shards),
+		UseRemoteReadTimeout(timeout),
 		SkipLargeMetadata(),
 		UseMMap(),
 		UseCache(),
