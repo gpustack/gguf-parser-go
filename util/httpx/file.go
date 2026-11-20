@@ -15,11 +15,12 @@ import (
 )
 
 type SeekerFile struct {
-	cli *http.Client
-	req *http.Request
-	b   *ringbuffer.RingBuffer
-	c   int64
-	l   int64
+	cli        *http.Client
+	req        *http.Request
+	b          *ringbuffer.RingBuffer
+	c          int64
+	l          int64
+	objectSize int64
 }
 
 // OpenSeekerFile tries the GET http.Request as a SeekerFile,
@@ -76,21 +77,21 @@ func OpenSeekerFile(cli *http.Client, req *http.Request, opts ...*SeekerFileOpti
 				return nil, fmt.Errorf("stat: do get request: %w", err)
 			}
 		}
-		switch sz := int64(o.size); {
-		case sz > l:
-			return nil, fmt.Errorf("size %d is greater than limit %d", o.size, l)
-		case sz <= 0:
-		default:
-			l = sz
-		}
 	}
 
 	if l < 0 {
 		return nil, errors.New("remote file size is unknown")
 	}
+	size := l
+	if o.size > 0 {
+		if int64(o.size) > l {
+			return nil, fmt.Errorf("size %d is greater than limit %d", o.size, l)
+		}
+		size = int64(o.size)
+	}
 	// Network requests carry the context. The in-memory ring is nonblocking.
 	b := ringbuffer.New(o.bufSize)
-	return &SeekerFile{cli: cli, req: req, b: b, l: l}, nil
+	return &SeekerFile{cli: cli, req: req, b: b, l: size, objectSize: l}, nil
 }
 
 func (f *SeekerFile) Close() error {
@@ -159,12 +160,12 @@ func (f *SeekerFile) sync(off int64) error {
 		var start, end int64
 		span, total, ok := strings.Cut(resp.Header.Get("Content-Range"), "/")
 		_, err = fmt.Sscanf(span, "bytes %d-%d", &start, &end)
-		if !ok || err != nil || start != off || end < start || end > lim || (total != "*" && total != strconv.FormatInt(f.Len(), 10)) {
+		if !ok || err != nil || start != off || end < start || end > lim || (total != "*" && total != strconv.FormatInt(f.objectSize, 10)) {
 			return errors.New("inconsistent remote byte range")
 		}
 		length = end - start + 1
 	case http.StatusOK:
-		if off != 0 || (resp.ContentLength >= 0 && resp.ContentLength != f.Len()) {
+		if off != 0 || (resp.ContentLength >= 0 && resp.ContentLength != f.objectSize) {
 			return errors.New("remote server did not return the requested range")
 		}
 	default:

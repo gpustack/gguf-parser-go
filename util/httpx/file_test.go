@@ -20,7 +20,7 @@ func TestSeekerFileRanges(t *testing.T) {
 	defer srv.Close()
 	req, err := NewGetRequestWithContext(context.Background(), srv.URL)
 	require.NoError(t, err)
-	f, err := OpenSeekerFile(srv.Client(), req, SeekerFileOptions().WithBufferSize(4))
+	f, err := OpenSeekerFile(srv.Client(), req, SeekerFileOptions().WithBufferSize(4).WithSize(15))
 	require.NoError(t, err)
 	defer f.Close()
 	for _, tc := range []struct {
@@ -32,7 +32,7 @@ func TestSeekerFileRanges(t *testing.T) {
 		{2, 7, "2345678", nil},
 		{0, 3, "012", nil},
 		{3, 1, "3", nil},
-		{14, 4, "ef", io.EOF},
+		{14, 4, "e", io.EOF},
 	} {
 		b := make([]byte, tc.size)
 		n, err := f.ReadAt(b, tc.offset)
