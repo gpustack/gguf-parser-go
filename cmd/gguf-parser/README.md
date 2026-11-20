@@ -165,6 +165,15 @@ GLOBAL OPTIONS:
 - `MS_ENDPOINT`: The ModelScope endpoint, default is `https://modelscope.cn`.
 - `MS_TOKEN`: The ModelScope token, see [ModelScope token](https://modelscope.cn/my/myaccesstoken).
 
+## GGUF File Compatibility
+
+**Since v0.28.3**, the CLI recognizes Stable Diffusion models with unprefixed tensor names.
+Each GGUF shard must have unique metadata keys. If present, `general.alignment` must be a
+positive `uint32`. The parser also checks the types of common model and tokenizer metadata,
+and rejects the removed `Q4_2` and `Q4_3` tensor types and tensor shapes whose size overflows
+`uint64`. When reading split files, it grows the tensor list as it reads each shard instead of
+preallocating it from `split.tensors.count`.
+
 ## Parameter Compatibility
 
 GGUF Parser accepts the flag spellings of [llama.cpp](https://github.com/ggml-org/llama.cpp), so a

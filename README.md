@@ -54,6 +54,10 @@ download it.
 
 ## Notes
 
+- **Since v0.28.3**, GGUF Parser detects Stable Diffusion models with unprefixed tensor names.
+  It also checks metadata and tensor shapes during parsing and reads tensor records from split
+  files without reserving memory based on `split.tensors.count`.
+  See [GGUF file compatibility](cmd/gguf-parser/README.md#gguf-file-compatibility).
 - **Since v0.28.2 (BREAKING CHANGE)**, GGUF Parser rejects `--gpu-layers -1` and
   `--gpu-layers-draft -1`, because llama.cpp means `auto` by `-1` and the estimate cannot resolve
   it without the host GPU devices; use `-2` for all layers, which is the new default, or an exact
