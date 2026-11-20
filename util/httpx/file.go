@@ -84,8 +84,12 @@ func OpenSeekerFile(cli *http.Client, req *http.Request, opts ...*SeekerFileOpti
 		}
 	}
 
-	b := ringbuffer.New(o.bufSize).WithCancel(req.Context())
-	return &SeekerFile{cli: cli, req: req, b: b, c: 1<<63 - 1, l: l}, nil
+	if l < 0 {
+		return nil, errors.New("remote file size is unknown")
+	}
+	// Network requests carry the context. The in-memory ring is nonblocking.
+	b := ringbuffer.New(o.bufSize)
+	return &SeekerFile{cli: cli, req: req, b: b, l: l}, nil
 }
 
 func (f *SeekerFile) Close() error {
@@ -103,63 +107,30 @@ func (f *SeekerFile) ReadAt(p []byte, off int64) (int, error) {
 	if off < 0 {
 		return 0, syscall.EINVAL
 	}
-	if off > f.Len() {
-		return 0, io.EOF
+	if len(p) == 0 {
+		return 0, nil
 	}
-
-	// Sync and move to new offset, if backward or empty buffer.
-	if f.c > off || f.b.IsEmpty() {
-		if err := f.sync(off, true); err != nil {
-			return 0, err
+	var n int
+	for n < len(p) {
+		if off >= f.Len() {
+			return n, io.EOF
 		}
-	}
-
-	var (
-		remain   = int64(f.b.Length())
-		capacity = int64(f.b.Capacity())
-		need     = int64(len(p))
-	)
-
-	switch {
-	case f.c+remain >= off+need: // Skip and move to new offset, if enough to forward.
-		if err := f.skip(off - f.c); err != nil {
-			return 0, err
-		}
-		return f.Read(p)
-	case f.c+capacity >= off+need: // Sync and move to new offset, if enough to forward after synced.
-		if err := f.sync(f.c+remain, false); err != nil {
-			return 0, err
+		if off < f.c || off-f.c >= int64(f.b.Length()) {
+			if err := f.sync(off); err != nil {
+				return n, err
+			}
 		}
 		if err := f.skip(off - f.c); err != nil {
-			return 0, err
+			return n, err
 		}
-		return f.Read(p)
-	default:
+		read, err := f.Read(p[n:])
+		n += read
+		off += int64(read)
+		if err != nil {
+			return n, err
+		}
 	}
-
-	// Otherwise, read directly.
-
-	f.b.Reset()
-	f.c = off
-
-	// Request remain needing.
-	lim := off + int64(len(p)) - 1
-	if lim > f.Len() {
-		lim = f.Len()
-	}
-	req := f.req.Clone(f.req.Context())
-	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", off, lim))
-	resp, err := f.cli.Do(req)
-	if err != nil {
-		return 0, err
-	}
-	defer Close(resp)
-	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
-		return 0, errors.New(resp.Status)
-	}
-	n, err := resp.Body.Read(p)
-	f.c += int64(n)
-	return n, err
+	return n, nil
 }
 
 func (f *SeekerFile) Read(p []byte) (int, error) {
@@ -168,11 +139,12 @@ func (f *SeekerFile) Read(p []byte) (int, error) {
 	return n, err
 }
 
-func (f *SeekerFile) sync(off int64, reset bool) error {
-	lim := off + int64(f.b.Free()) - 1
-	if lim > f.Len() {
-		lim = f.Len()
+func (f *SeekerFile) sync(off int64) error {
+	length := min(int64(f.b.Capacity()), f.Len()-off)
+	if length <= 0 {
+		return io.EOF
 	}
+	lim := off + length - 1
 	req := f.req.Clone(f.req.Context())
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", off, lim))
 
@@ -181,20 +153,33 @@ func (f *SeekerFile) sync(off int64, reset bool) error {
 		return err
 	}
 	defer Close(resp)
-	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
+	switch resp.StatusCode {
+	case http.StatusPartialContent:
+		var start, end, total int64
+		_, err = fmt.Sscanf(resp.Header.Get("Content-Range"), "bytes %d-%d/%d", &start, &end, &total)
+		if err != nil || start != off || end < start || end > lim || total != f.Len() {
+			return errors.New("inconsistent remote byte range")
+		}
+		length = end - start + 1
+	case http.StatusOK:
+		if off != 0 || (resp.ContentLength >= 0 && resp.ContentLength != f.Len()) {
+			return errors.New("remote server did not return the requested range")
+		}
+	default:
 		return errors.New(resp.Status)
 	}
 
 	buf := bytex.GetBytes()
 	defer bytex.Put(buf)
-	if reset {
-		f.b.Reset()
-		f.c = off
-	}
+	f.b.Reset()
+	f.c = off
 
-	_, err = io.CopyBuffer(_WriterOnly{w: f.b}, resp.Body, buf)
+	n, err := io.CopyBuffer(_WriterOnly{w: f.b}, io.LimitReader(resp.Body, length), buf)
 	if err != nil {
 		return err
+	}
+	if n != length {
+		return io.ErrUnexpectedEOF
 	}
 
 	return nil

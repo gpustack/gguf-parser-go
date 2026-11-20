@@ -15,7 +15,6 @@ import (
 
 	"github.com/gpustack/gguf-parser-go/util/anyx"
 	"github.com/gpustack/gguf-parser-go/util/bytex"
-	"github.com/gpustack/gguf-parser-go/util/funcx"
 	"github.com/gpustack/gguf-parser-go/util/osx"
 	"github.com/gpustack/gguf-parser-go/util/stringx"
 )
@@ -271,42 +270,25 @@ func ParseGGUFFile(path string, opts ...GGUFReadOption) (*GGUFFile, error) {
 		}
 	}
 
-	fs := make([]_GGUFFileReadSeeker, 0, len(paths))
-	defer func() {
-		for i := range fs {
-			osx.Close(fs[i])
-		}
-	}()
-
-	for i := range paths {
+	return parseGGUFFile(paths, o, func(path string) (_GGUFFileReadSeeker, error) {
 		if o.MMap {
-			mf, err := osx.OpenMmapFile(paths[i])
+			mf, err := osx.OpenMmapFile(path)
 			if err != nil {
-				return nil, fmt.Errorf("open mmap file: %w", err)
+				return _GGUFFileReadSeeker{}, fmt.Errorf("open mmap file: %w", err)
 			}
-
-			fs = append(fs, _GGUFFileReadSeeker{
-				Closer:     mf,
-				ReadSeeker: io.NewSectionReader(mf, 0, mf.Len()),
-				Size:       mf.Len(),
-			})
-
-			continue
+			return _GGUFFileReadSeeker{mf, io.NewSectionReader(mf, 0, mf.Len()), mf.Len()}, nil
 		}
-
-		ff, err := osx.Open(paths[i])
+		ff, err := osx.Open(path)
 		if err != nil {
-			return nil, fmt.Errorf("open file: %w", err)
+			return _GGUFFileReadSeeker{}, fmt.Errorf("open file: %w", err)
 		}
-
-		fs = append(fs, _GGUFFileReadSeeker{
-			Closer:     ff,
-			ReadSeeker: ff,
-			Size:       funcx.MustNoError(ff.Stat()).Size(),
-		})
-	}
-
-	return parseGGUFFile(fs, o)
+		st, err := ff.Stat()
+		if err != nil {
+			osx.Close(ff)
+			return _GGUFFileReadSeeker{}, err
+		}
+		return _GGUFFileReadSeeker{ff, ff, st.Size()}, nil
+	})
 }
 
 type _GGUFFileReadSeeker struct {
@@ -355,161 +337,18 @@ func _validateCountWithRemaining(f _GGUFFileReadSeeker, count uint64, version GG
 	return nil
 }
 
-func parseGGUFFile(fs []_GGUFFileReadSeeker, o _GGUFReadOptions) (_ *GGUFFile, err error) {
+func parseGGUFFile(paths []string, o _GGUFReadOptions, open func(string) (_GGUFFileReadSeeker, error)) (*GGUFFile, error) {
 	var gf GGUFFile
-
-	for _, f := range fs {
-		var bo binary.ByteOrder = binary.LittleEndian
-
-		// magic
-		var magic GGUFMagic
-		if err = binary.Read(f, bo, &magic); err != nil {
-			return nil, fmt.Errorf("read magic: %w", err)
-		}
-		switch magic {
-		default:
-			return nil, ErrGGUFFileInvalidFormat
-		case GGUFMagicGGML, GGUFMagicGGMF, GGUFMagicGGJT:
-			return nil, fmt.Errorf("unsupported format: %s", magic)
-		case GGUFMagicGGUFLe:
-		case GGUFMagicGGUFBe:
-			bo = binary.BigEndian
-		}
-		gf.Header.Magic = magic
-
-		// version
-		var version GGUFVersion
-		if err = binary.Read(f, bo, &version); err != nil {
-			return nil, fmt.Errorf("read version: %w", err)
-		}
-		if version > GGUFVersionV3 {
-			return nil, fmt.Errorf("unsupported GGUF version: %d (supported: %d-%d)",
-				version, GGUFVersionV1, GGUFVersionV3)
-		}
-		gf.Header.Version = version
-
-		rd := _GGUFReader{v: version, o: o, f: f, bo: bo, size: f.Size}
-
-		// tensor count
-		var tensorCount uint64
-		if version <= GGUFVersionV1 {
-			tensorCount, err = rd.ReadUint64FromUint32()
-		} else {
-			tensorCount, err = rd.ReadUint64()
-		}
+	budget := metadataReadBudget(defaultMetadataBudget)
+	for _, path := range paths {
+		f, err := open(path)
 		if err != nil {
-			return nil, fmt.Errorf("read tensor count: %w", err)
-		}
-		if err := _validateCountWithRemaining(f, tensorCount, version, "tensor"); err != nil {
 			return nil, err
 		}
-		gf.Header.TensorCount += tensorCount
-
-		// metadata kv count
-		var metadataKVCount uint64
-		if version <= GGUFVersionV1 {
-			metadataKVCount, err = rd.ReadUint64FromUint32()
-		} else {
-			metadataKVCount, err = rd.ReadUint64()
-		}
+		err = gf.readShard(f, o, len(paths) == 1, &budget)
 		if err != nil {
-			return nil, fmt.Errorf("read metadata kv count: %w", err)
-		}
-		if err := _validateCountWithRemaining(f, metadataKVCount, version, "metadatakvcount"); err != nil {
 			return nil, err
 		}
-		gf.Header.MetadataKVCount += metadataKVCount
-
-		// metadata kv
-		{
-			rd := _GGUFMetadataReader{_GGUFReader: rd}
-			kvs := make(GGUFMetadataKVs, metadataKVCount)
-			seen := make(map[string]struct{}, metadataKVCount)
-			for i := uint64(0); i < metadataKVCount; i++ {
-				kvs[i], err = rd.Read()
-				if err != nil {
-					return nil, fmt.Errorf("read metadata kv %d: %w", i, err)
-				}
-				if _, ok := seen[kvs[i].Key]; ok {
-					return nil, fmt.Errorf("duplicate metadata key %q", kvs[i].Key)
-				}
-				seen[kvs[i].Key] = struct{}{}
-			}
-			for i := range kvs {
-				if kvs[i].Key == "split.no" {
-					gf.Header.MetadataKVCount--
-					continue
-				}
-				gf.Header.MetadataKV = append(gf.Header.MetadataKV, kvs[i])
-			}
-		}
-
-		// tensor infos
-		if gf.TensorInfos == nil {
-			// avoid preallocating with tensorCount (could be huge); start empty and append
-			gf.TensorInfos = make(GGUFTensorInfos, 0)
-		}
-		{
-			rd := _GGUFTensorInfoReader{_GGUFReader: rd}
-			tis := make(GGUFTensorInfos, 0)
-			for i := uint64(0); i < tensorCount; i++ {
-				ti, err := rd.Read()
-				if err != nil {
-					return nil, fmt.Errorf("read tensor info %d: %w", i, err)
-				}
-				tis = append(tis, ti)
-			}
-			gf.TensorInfos = append(gf.TensorInfos, tis...)
-		}
-
-		pds, err := f.Seek(0, io.SeekCurrent)
-		if err != nil {
-			return nil, fmt.Errorf("seek padding start: %w", err)
-		}
-
-		// padding
-		var padding int64
-		{
-			// The global alignment to use, as described above.
-			// This can vary to allow for different alignment schemes, but it must be a multiple of 8.
-			// Some writers may not write the alignment.
-			// If the alignment is not specified, assume it is 32.
-			var ag uint32 = 32
-			if v, ok := gf.Header.MetadataKV.Get("general.alignment"); ok {
-				if v.ValueType != GGUFMetadataValueTypeUint32 {
-					return nil, fmt.Errorf("metadata key %q holds a %v, but it must hold a uint32", "general.alignment", v.ValueType)
-				}
-				if ag = v.ValueUint32(); ag == 0 {
-					return nil, fmt.Errorf("metadata key %q holds 0, but it must be positive", "general.alignment")
-				}
-			}
-			// A header that already ends on the alignment boundary needs no
-			// padding. Without the outer modulo this adds a whole alignment
-			// block, putting TensorDataStartOffset past where the data starts
-			// and understating ModelSize by the same amount.
-			padding = (int64(ag) - pds%int64(ag)) % int64(ag)
-		}
-		if len(fs) == 1 {
-			gf.Padding = padding
-		}
-		gf.SplitPaddings = append(gf.SplitPaddings, padding)
-
-		// tensor data offset
-		tensorDataStartOffset := pds + padding
-		if len(fs) == 1 {
-			gf.TensorDataStartOffset = tensorDataStartOffset
-		}
-		gf.SplitTensorDataStartOffsets = append(gf.SplitTensorDataStartOffsets, tensorDataStartOffset)
-
-		// size
-		size := GGUFBytesScalar(f.Size)
-		gf.Size += size
-		gf.SplitSizes = append(gf.SplitSizes, size)
-
-		// model size
-		modelSize := GGUFBytesScalar(f.Size - tensorDataStartOffset)
-		gf.ModelSize += modelSize
-		gf.SplitModelSizes = append(gf.SplitModelSizes, modelSize)
 	}
 
 	// tensor data consistency
@@ -520,7 +359,7 @@ func parseGGUFFile(fs []_GGUFFileReadSeeker, o _GGUFReadOptions) (_ *GGUFFile, e
 	// such a file as parsed tells a caller it can load something it cannot.
 	// Checked only for a single file, where every tensor is accounted for by one
 	// offset and one size.
-	if len(fs) == 1 && gf.TensorDataStartOffset >= 0 &&
+	if len(paths) == 1 && gf.TensorDataStartOffset >= 0 &&
 		uint64(gf.TensorDataStartOffset) <= uint64(gf.Size) {
 		held := uint64(gf.Size) - uint64(gf.TensorDataStartOffset)
 		if want := gf.TensorInfos.Bytes(); want > held {
@@ -546,10 +385,173 @@ func parseGGUFFile(fs []_GGUFFileReadSeeker, o _GGUFReadOptions) (_ *GGUFFile, e
 	return &gf, nil
 }
 
+func (gf *GGUFFile) readShard(f _GGUFFileReadSeeker, o _GGUFReadOptions, single bool, budget *metadataReadBudget) error {
+	defer osx.Close(f)
+	var err error
+	var bo binary.ByteOrder = binary.LittleEndian
+
+	// magic
+	var magic GGUFMagic
+	if err = binary.Read(f, bo, &magic); err != nil {
+		return fmt.Errorf("read magic: %w", err)
+	}
+	switch magic {
+	default:
+		return ErrGGUFFileInvalidFormat
+	case GGUFMagicGGML, GGUFMagicGGMF, GGUFMagicGGJT:
+		return fmt.Errorf("unsupported format: %s", magic)
+	case GGUFMagicGGUFLe:
+	case GGUFMagicGGUFBe:
+		bo = binary.BigEndian
+	}
+	gf.Header.Magic = magic
+
+	// version
+	var version GGUFVersion
+	if err = binary.Read(f, bo, &version); err != nil {
+		return fmt.Errorf("read version: %w", err)
+	}
+	if version > GGUFVersionV3 {
+		return fmt.Errorf("unsupported GGUF version: %d (supported: %d-%d)",
+			version, GGUFVersionV1, GGUFVersionV3)
+	}
+	gf.Header.Version = version
+
+	rd := _GGUFReader{v: version, o: o, f: f, bo: bo, size: f.Size, budget: budget}
+
+	// tensor count
+	var tensorCount uint64
+	if version <= GGUFVersionV1 {
+		tensorCount, err = rd.ReadUint64FromUint32()
+	} else {
+		tensorCount, err = rd.ReadUint64()
+	}
+	if err != nil {
+		return fmt.Errorf("read tensor count: %w", err)
+	}
+	if err := _validateCountWithRemaining(f, tensorCount, version, "tensor"); err != nil {
+		return err
+	}
+	gf.Header.TensorCount += tensorCount
+
+	// metadata kv count
+	var metadataKVCount uint64
+	if version <= GGUFVersionV1 {
+		metadataKVCount, err = rd.ReadUint64FromUint32()
+	} else {
+		metadataKVCount, err = rd.ReadUint64()
+	}
+	if err != nil {
+		return fmt.Errorf("read metadata kv count: %w", err)
+	}
+	if err := _validateCountWithRemaining(f, metadataKVCount, version, "metadatakvcount"); err != nil {
+		return err
+	}
+	gf.Header.MetadataKVCount += metadataKVCount
+
+	// metadata kv
+	{
+		rd := _GGUFMetadataReader{_GGUFReader: rd}
+		if err := budget.reserve(metadataKVCount, 96); err != nil {
+			return fmt.Errorf("metadata records: %w", err)
+		}
+		seen := make(map[string]struct{})
+		for i := uint64(0); i < metadataKVCount; i++ {
+			kv, err := rd.Read()
+			if err != nil {
+				return fmt.Errorf("read metadata kv %d: %w", i, err)
+			}
+			if _, ok := seen[kv.Key]; ok {
+				return fmt.Errorf("duplicate metadata key %q", kv.Key)
+			}
+			seen[kv.Key] = struct{}{}
+			if kv.Key == "split.no" {
+				gf.Header.MetadataKVCount--
+				continue
+			}
+			gf.Header.MetadataKV = append(gf.Header.MetadataKV, kv)
+		}
+	}
+
+	// tensor infos
+	if gf.TensorInfos == nil {
+		// avoid preallocating with tensorCount (could be huge); start empty and append
+		gf.TensorInfos = make(GGUFTensorInfos, 0)
+	}
+	{
+		rd := _GGUFTensorInfoReader{_GGUFReader: rd}
+		tis := make(GGUFTensorInfos, 0)
+		for i := uint64(0); i < tensorCount; i++ {
+			ti, err := rd.Read()
+			if err != nil {
+				return fmt.Errorf("read tensor info %d: %w", i, err)
+			}
+			tis = append(tis, ti)
+		}
+		gf.TensorInfos = append(gf.TensorInfos, tis...)
+	}
+
+	pds, err := f.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return fmt.Errorf("seek padding start: %w", err)
+	}
+
+	// padding
+	var padding int64
+	{
+		// The global alignment to use, as described above.
+		// This can vary to allow for different alignment schemes, but it must be a multiple of 8.
+		// Some writers may not write the alignment.
+		// If the alignment is not specified, assume it is 32.
+		var ag uint32 = 32
+		if v, ok := gf.Header.MetadataKV.Get("general.alignment"); ok {
+			if v.ValueType != GGUFMetadataValueTypeUint32 {
+				return fmt.Errorf("metadata key %q holds a %v, but it must hold a uint32", "general.alignment", v.ValueType)
+			}
+			if ag = v.ValueUint32(); ag == 0 {
+				return fmt.Errorf("metadata key %q holds 0, but it must be positive", "general.alignment")
+			}
+		}
+		// A header that already ends on the alignment boundary needs no
+		// padding. Without the outer modulo this adds a whole alignment
+		// block, putting TensorDataStartOffset past where the data starts
+		// and understating ModelSize by the same amount.
+		padding = (int64(ag) - pds%int64(ag)) % int64(ag)
+	}
+	if single {
+		gf.Padding = padding
+	}
+	gf.SplitPaddings = append(gf.SplitPaddings, padding)
+
+	// tensor data offset
+	tensorDataStartOffset := pds + padding
+	if single {
+		gf.TensorDataStartOffset = tensorDataStartOffset
+	}
+	gf.SplitTensorDataStartOffsets = append(gf.SplitTensorDataStartOffsets, tensorDataStartOffset)
+
+	// size
+	size := GGUFBytesScalar(f.Size)
+	gf.Size += size
+	gf.SplitSizes = append(gf.SplitSizes, size)
+
+	// model size
+	modelSize := GGUFBytesScalar(f.Size - tensorDataStartOffset)
+	gf.ModelSize += modelSize
+	gf.SplitModelSizes = append(gf.SplitModelSizes, modelSize)
+	return nil
+}
+
 // validateMetadata refuses a file whose metadata llama.cpp refuses to load,
 // so that a caller gets an error instead of a confident answer about a file
 // that cannot run.
 func (gf *GGUFFile) validateMetadata() error {
+	for _, kv := range gf.Header.MetadataKV {
+		if strings.HasSuffix(kv.Key, ".block_count") && !validBlockCount(kv) {
+			return fmt.Errorf("metadata key %q must hold a layer count between 0 and %d", kv.Key, maxSaneBlockCount)
+		}
+	}
+
 	// A file type of the wrong value type.
 	//
 	// llama.cpp reads "general.file_type" as a uint32 and throws
@@ -1647,12 +1649,34 @@ func (ltis GGUFLayerTensorInfos) Cut(names []string) (before, after GGUFLayerTen
 	return before, after, len(before) > 0
 }
 
+// Metadata accounting includes strings, decoded array slots and metadata records across all shards.
+const defaultMetadataBudget = 256 << 20
+
+type metadataReadBudget uint64
+
+func (b *metadataReadBudget) reserve(count, cost uint64) error {
+	if b == nil {
+		// Standalone readers use the same per-value limit.
+		if count > defaultMetadataBudget/cost {
+			return errors.New("metadata exceeds read budget")
+		}
+		return nil
+	}
+	if count > uint64(*b)/cost {
+		return errors.New("metadata exceeds read budget")
+	}
+	*b -= metadataReadBudget(count * cost)
+	return nil
+}
+
 type _GGUFReader struct {
-	v    GGUFVersion
-	o    _GGUFReadOptions
-	f    io.ReadSeeker
-	bo   binary.ByteOrder
-	size int64 // total file size, 0 when unknown; bounds untrusted string lengths
+	budget *metadataReadBudget
+	depth  int
+	v      GGUFVersion
+	o      _GGUFReadOptions
+	f      io.ReadSeeker
+	bo     binary.ByteOrder
+	size   int64 // total file size, 0 when unknown; bounds untrusted string lengths
 }
 
 func (rd _GGUFReader) ReadUint8() (v uint8, err error) {
@@ -1747,7 +1771,7 @@ func (rd _GGUFReader) ReadString() (v string, err error) {
 		if err != nil {
 			return "", fmt.Errorf("seek string start: %w", err)
 		}
-		if remaining := rd.size - pos; l > uint64(remaining) {
+		if remaining := rd.size - pos; remaining < 0 || l > uint64(remaining) {
 			return "", fmt.Errorf("read string: length %d exceeds %d remaining bytes", l, remaining)
 		}
 	}
@@ -1758,9 +1782,20 @@ func (rd _GGUFReader) ReadString() (v string, err error) {
 		return "", nil
 	}
 
+	if err := rd.budget.reserve(l, 1); err != nil {
+		return "", err
+	}
+	// Grow large strings only as their bytes arrive.
+	if l > 32<<10 {
+		var value strings.Builder
+		if _, err := io.CopyN(&value, rd.f, int64(l)); err != nil {
+			return "", fmt.Errorf("read string: %w", err)
+		}
+		return strings.TrimSpace(value.String()), nil
+	}
 	b := bytex.GetBytes(l)
 	defer bytex.Put(b)
-	if _, err = rd.f.Read(b); err != nil {
+	if _, err = io.ReadFull(rd.f, b); err != nil {
 		return "", fmt.Errorf("read string: %w", err)
 	}
 
@@ -1782,6 +1817,15 @@ func (rd _GGUFReader) SkipReadingString() (err error) {
 	delta, err := safeSeekDelta(l, 1, "skip string")
 	if err != nil {
 		return err
+	}
+	if rd.size > 0 {
+		pos, err := rd.f.Seek(0, io.SeekCurrent)
+		if err != nil {
+			return err
+		}
+		if delta > rd.size-pos {
+			return errors.New("skipped string exceeds remaining bytes")
+		}
 	}
 	_, err = rd.f.Seek(delta, io.SeekCurrent)
 	if err != nil {
@@ -1814,27 +1858,48 @@ func (rd _GGUFReader) ReadArray(key string) (v GGUFMetadataKVArrayValue, err err
 		return v, fmt.Errorf("seek array item start: %w", err)
 	}
 
-	// Bound the untrusted array length before allocating. Every array item
-	// occupies at least one byte on disk, so a valid array can never declare
-	// more items than the bytes remaining in the file. Without this guard a
-	// crafted length makes `make([]any, v.Len)` below either panic
-	// ("makeslice: len out of range") or allocate gigabytes and OOM the host
-	// before any item is read. Mirrors the remaining-bytes guard in ReadString.
-	if rd.size > 0 {
-		if remaining := rd.size - itemStart; v.Len > uint64(remaining) {
-			return v, fmt.Errorf("read array: length %d exceeds %d remaining bytes", v.Len, remaining)
+	width := uint64(1)
+	switch v.Type {
+	case GGUFMetadataValueTypeUint8, GGUFMetadataValueTypeInt8, GGUFMetadataValueTypeBool:
+	case GGUFMetadataValueTypeUint16, GGUFMetadataValueTypeInt16:
+		width = 2
+	case GGUFMetadataValueTypeUint32, GGUFMetadataValueTypeInt32, GGUFMetadataValueTypeFloat32:
+		width = 4
+	case GGUFMetadataValueTypeUint64, GGUFMetadataValueTypeInt64, GGUFMetadataValueTypeFloat64:
+		width = 8
+	case GGUFMetadataValueTypeString, GGUFMetadataValueTypeArray:
+		width = 8
+		if rd.v <= GGUFVersionV1 {
+			width = 4
 		}
+	default:
+		return v, fmt.Errorf("invalid array element type: %v", v.Type)
 	}
-
+	delta, err := safeSeekDelta(v.Len, width, "array elements")
+	if err != nil {
+		return v, err
+	}
+	if rd.size > 0 && delta > rd.size-itemStart {
+		return v, fmt.Errorf("read array: length %d exceeds remaining bytes", v.Len)
+	}
+	if rd.depth >= 32 {
+		return v, errors.New("metadata arrays nested too deeply")
+	}
+	rd.depth++
 	if !rd.o.SkipLargeMetadata ||
 		stringx.HasSuffixes(key,
-			".feed_forward_length", ".attention.head_count", ".attention.head_count_kv", ".attention.sliding_window_pattern") {
-		v.Array = make([]any, v.Len)
+			".feed_forward_length", ".attention.head_count", ".attention.head_count_kv",
+			".attention.sliding_window", ".attention.sliding_window_pattern") {
+		if err := rd.budget.reserve(v.Len, 32); err != nil {
+			return v, err
+		}
+		v.Array = make([]any, 0, min(v.Len, 1024))
 		for i := uint64(0); i < v.Len; i++ {
-			v.Array[i], err = rd.ReadValue(key, v.Type)
+			value, err := rd.ReadValue(key, v.Type)
 			if err != nil {
 				return v, fmt.Errorf("read array item %d: %w", i, err)
 			}
+			v.Array = append(v.Array, value)
 		}
 
 		itemEnd, err := rd.f.Seek(0, io.SeekCurrent)
@@ -1846,44 +1911,21 @@ func (rd _GGUFReader) ReadArray(key string) (v GGUFMetadataKVArrayValue, err err
 		return v, nil
 	}
 
-	// Each branch computes v.Len*elemSize through safeSeekDelta so a crafted
-	// array length cannot overflow int64 and turn the forward seek into a
-	// negative-offset seek (which would re-expose earlier bytes to the
-	// parser at an attacker-chosen offset).
 	switch v.Type {
-	case GGUFMetadataValueTypeUint8, GGUFMetadataValueTypeInt8, GGUFMetadataValueTypeBool:
-		var delta int64
-		delta, err = safeSeekDelta(v.Len, 1, "skip array u8")
-		if err == nil {
-			_, err = rd.f.Seek(delta, io.SeekCurrent)
-		}
-	case GGUFMetadataValueTypeUint16, GGUFMetadataValueTypeInt16:
-		var delta int64
-		delta, err = safeSeekDelta(v.Len, 2, "skip array u16")
-		if err == nil {
-			_, err = rd.f.Seek(delta, io.SeekCurrent)
-		}
-	case GGUFMetadataValueTypeUint32, GGUFMetadataValueTypeInt32, GGUFMetadataValueTypeFloat32:
-		var delta int64
-		delta, err = safeSeekDelta(v.Len, 4, "skip array u32")
-		if err == nil {
-			_, err = rd.f.Seek(delta, io.SeekCurrent)
-		}
-	case GGUFMetadataValueTypeUint64, GGUFMetadataValueTypeInt64, GGUFMetadataValueTypeFloat64:
-		var delta int64
-		delta, err = safeSeekDelta(v.Len, 8, "skip array u64")
-		if err == nil {
-			_, err = rd.f.Seek(delta, io.SeekCurrent)
-		}
 	case GGUFMetadataValueTypeString:
 		for i := uint64(0); i < v.Len; i++ {
 			if err = rd.SkipReadingString(); err != nil {
 				return v, fmt.Errorf("seek array[string] %d: %w", i, err)
 			}
 		}
+	case GGUFMetadataValueTypeArray:
+		for i := uint64(0); i < v.Len; i++ {
+			if _, err = rd.ReadArray(key); err != nil {
+				return v, err
+			}
+		}
 	default:
-		// Should not happen.
-		panic(fmt.Errorf("invalid type: %v", v.Type))
+		_, err = rd.f.Seek(delta, io.SeekCurrent)
 	}
 	if err != nil {
 		return v, fmt.Errorf("seek array end: %w", err)

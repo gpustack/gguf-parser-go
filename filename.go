@@ -177,6 +177,11 @@ func IsShardGGUFFilename(name string) bool {
 //
 // Only available if the given filename is a shard GGUF filename.
 func CompleteShardGGUFFilename(name string) []string {
+	names, _ := completeShardGGUFFilename(name, 99999)
+	return names
+}
+
+func completeShardGGUFFilename(name string, limit int) ([]string, error) {
 	n := name
 	if !strings.HasSuffix(n, ".gguf") {
 		n += ".gguf"
@@ -201,14 +206,17 @@ func CompleteShardGGUFFilename(name string) []string {
 	}
 
 	if shard <= 0 || shardTotal <= 0 {
-		return nil
+		return nil, nil
+	}
+	if shardTotal > limit {
+		return nil, fmt.Errorf("shard count %d exceeds limit %d", shardTotal, limit)
 	}
 
 	names := make([]string, 0, shardTotal)
 	for i := 1; i <= shardTotal; i++ {
 		names = append(names, fmt.Sprintf("%s-%05d-of-%05d.gguf", m["Prefix"], i, shardTotal))
 	}
-	return names
+	return names, nil
 }
 
 func parseInt(v string) int {

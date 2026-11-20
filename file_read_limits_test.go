@@ -1,0 +1,87 @@
+package gguf_parser
+
+import (
+	"bytes"
+	"context"
+	"encoding/binary"
+	"io"
+	"net/http"
+	"strconv"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/gpustack/gguf-parser-go/util/httpx"
+)
+
+func TestLayerCountRange(t *testing.T) {
+	for _, key := range []string{"llama.block_count", "clip.vision.block_count", "clip.audio.block_count"} {
+		t.Run(key, func(t *testing.T) {
+			kv := GGUFMetadataKV{Key: key, ValueType: GGUFMetadataValueTypeUint32, Value: uint32(maxSaneBlockCount)}
+			_, err := ParseGGUFFile(writeProjectorGGUF(t, []GGUFMetadataKV{kv}))
+			require.NoError(t, err)
+			kv.Value = uint32(maxSaneBlockCount + 1)
+			_, err = ParseGGUFFile(writeProjectorGGUF(t, []GGUFMetadataKV{kv}))
+			require.ErrorContains(t, err, key)
+		})
+	}
+}
+
+func TestArrayBudgetAcrossReads(t *testing.T) {
+	var data bytes.Buffer
+	for i := 0; i < 2; i++ {
+		require.NoError(t, binary.Write(&data, binary.LittleEndian, GGUFMetadataValueTypeUint8))
+		require.NoError(t, binary.Write(&data, binary.LittleEndian, uint64(2)))
+		data.Write([]byte{1, 2})
+	}
+	budget := metadataReadBudget(64)
+	rd := _GGUFReader{v: GGUFVersionV3, f: bytes.NewReader(data.Bytes()), bo: binary.LittleEndian, size: int64(data.Len()), budget: &budget}
+	a, err := rd.ReadArray("samples")
+	require.NoError(t, err)
+	require.Equal(t, []any{uint8(1), uint8(2)}, a.Array)
+	_, err = rd.ReadArray("samples")
+	require.ErrorContains(t, err, "budget")
+}
+
+func TestRemoteShardLimitBeforeOpen(t *testing.T) {
+	cli := &http.Client{Transport: httpx.RoundTripperFunc(func(*http.Request) (*http.Response, error) {
+		t.Fatal("unexpected shard request")
+		return nil, nil
+	})}
+	_, err := parseGGUFFileFromRemote(context.Background(), cli, "https://example.invalid/model-00001-of-00257.gguf", _GGUFReadOptions{})
+	require.ErrorContains(t, err, "shard count")
+}
+
+func TestRemoteShardsShareDeadline(t *testing.T) {
+	var file bytes.Buffer
+	for _, v := range []any{GGUFMagicGGUFLe, uint32(GGUFVersionV3), uint64(0), uint64(0)} {
+		require.NoError(t, binary.Write(&file, binary.LittleEndian, v))
+	}
+	file.Write(make([]byte, 8)) // Pad the header to the data alignment.
+	var deadlines []time.Time
+	var paths []string
+	cli := &http.Client{Transport: httpx.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		deadline, ok := req.Context().Deadline()
+		require.True(t, ok)
+		deadlines = append(deadlines, deadline)
+		paths = append(paths, req.Method+" "+req.URL.Path)
+		resp := &http.Response{Header: make(http.Header), StatusCode: http.StatusOK, ContentLength: int64(file.Len()), Body: http.NoBody}
+		resp.Header.Set("Accept-Ranges", "bytes")
+		if req.Method == http.MethodGet {
+			resp.StatusCode = http.StatusPartialContent
+			resp.Header.Set("Content-Range", "bytes 0-31/"+strconv.Itoa(file.Len()))
+			resp.Body = io.NopCloser(bytes.NewReader(file.Bytes()))
+		}
+		return resp, nil
+	})}
+	_, err := parseGGUFFileFromRemote(context.Background(), cli, "https://example.invalid/model-00001-of-00002.gguf", _GGUFReadOptions{})
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		"HEAD /model-00001-of-00002.gguf", "GET /model-00001-of-00002.gguf",
+		"HEAD /model-00002-of-00002.gguf", "GET /model-00002-of-00002.gguf",
+	}, paths)
+	for _, d := range deadlines {
+		require.Equal(t, deadlines[0], d)
+	}
+}

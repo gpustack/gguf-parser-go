@@ -387,6 +387,14 @@ type (
 // in the spirit of the header validation of https://github.com/gpustack/gguf-parser-go/pull/18.
 const maxSaneBlockCount = 4096
 
+func validBlockCount(kv GGUFMetadataKV) bool {
+	if !kv.ValueType.IsNumeric() {
+		return false
+	}
+	n := ValueNumeric[float64](kv)
+	return n >= 0 && n <= maxSaneBlockCount && n == float64(uint64(n))
+}
+
 // interleavesFullAttention returns true if the architecture is hybrid and declares how it
 // interleaves its full (self-)attention layers with its recurrent layers.
 func (ga GGUFArchitecture) interleavesFullAttention() bool {
@@ -845,7 +853,7 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 	if v, ok := m[visionEmbeddingLengthKey]; ok {
 		ga.ClipVisionEmbeddingLength = ValueNumeric[uint64](v)
 	}
-	if v, ok := m[visionBlockCountKey]; ok {
+	if v, ok := m[visionBlockCountKey]; ok && validBlockCount(v) {
 		ga.ClipVisionBlockCount = ValueNumeric[uint64](v)
 	}
 	if v, ok := m[visionFeedForwardLengthKey]; ok {
@@ -902,7 +910,7 @@ func (gf *GGUFFile) clipArchitecture() (ga GGUFArchitecture) {
 	if v, ok := m[audioEmbeddingLengthKey]; ok {
 		ga.ClipAudioEmbeddingLength = ValueNumeric[uint64](v)
 	}
-	if v, ok := m[audioBlockCountKey]; ok {
+	if v, ok := m[audioBlockCountKey]; ok && validBlockCount(v) {
 		ga.ClipAudioBlockCount = ValueNumeric[uint64](v)
 	}
 	if v, ok := m[audioFeedForwardLengthKey]; ok {
@@ -1151,7 +1159,7 @@ func (gf *GGUFFile) transformerArchitecture(arch string) (ga GGUFArchitecture) {
 	if v, ok := m[embeddingLengthKey]; ok {
 		ga.EmbeddingLength = ValueNumeric[uint64](v)
 	}
-	if v, ok := m[blockCountKey]; ok {
+	if v, ok := m[blockCountKey]; ok && validBlockCount(v) {
 		ga.BlockCount = ValueNumeric[uint64](v)
 	}
 	if v, ok := m[feedForwardLengthKey]; ok {

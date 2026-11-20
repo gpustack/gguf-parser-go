@@ -41,7 +41,7 @@ func ParseGGUFFileFromOllamaModel(ctx context.Context, model *OllamaModel, opts 
 	// Cache.
 	{
 		if o.CachePath != "" {
-			o.CachePath = filepath.Join(o.CachePath, "distro", "ollama")
+			o.CachePath = filepath.Join(o.CachePath, "v2", "distro", "ollama")
 		}
 		c := GGUFFileCache(o.CachePath)
 

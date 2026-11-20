@@ -54,6 +54,9 @@ download it.
 
 ## Notes
 
+- **Since v0.28.4**, GGUF Parser reads split files one shard at a time and checks the layer count
+  and metadata read budget before estimating a model.
+  See [GGUF file compatibility](cmd/gguf-parser/README.md#gguf-file-compatibility).
 - **Since v0.28.3**, GGUF Parser detects Stable Diffusion models with unprefixed tensor names.
   It also checks metadata and tensor shapes during parsing and reads tensor records from split
   files without reserving memory based on `split.tensors.count`.

@@ -39,7 +39,7 @@ func ParseGGUFFileRemote(ctx context.Context, url string, opts ...GGUFReadOption
 	// Cache.
 	{
 		if o.CachePath != "" {
-			o.CachePath = filepath.Join(o.CachePath, "remote")
+			o.CachePath = filepath.Join(o.CachePath, "v2", "remote")
 			if o.SkipLargeMetadata {
 				o.CachePath = filepath.Join(o.CachePath, "brief")
 			}
@@ -111,29 +111,26 @@ func ParseGGUFFileRemote(ctx context.Context, url string, opts ...GGUFReadOption
 }
 
 func parseGGUFFileFromRemote(ctx context.Context, cli *http.Client, url string, o _GGUFReadOptions) (*GGUFFile, error) {
-	var urls []string
-	{
-		rs := CompleteShardGGUFFilename(url)
-		if rs != nil {
-			urls = rs
-		} else {
-			urls = []string{url}
-		}
+	const maxRemoteShards = 256
+	urls, err := completeShardGGUFFilename(url, maxRemoteShards)
+	if err != nil {
+		return nil, err
+	}
+	if urls == nil {
+		urls = []string{url}
+	}
+	// A caller can supply its own operation deadline for a slower source.
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 5*time.Minute)
+		defer cancel()
 	}
 
-	fs := make([]_GGUFFileReadSeeker, 0, len(urls))
-	defer func() {
-		for i := range fs {
-			osx.Close(fs[i])
-		}
-	}()
-
-	for i := range urls {
-		req, err := httpx.NewGetRequestWithContext(ctx, urls[i])
+	return parseGGUFFile(urls, o, func(path string) (_GGUFFileReadSeeker, error) {
+		req, err := httpx.NewGetRequestWithContext(ctx, path)
 		if err != nil {
-			return nil, fmt.Errorf("new request: %w", err)
+			return _GGUFFileReadSeeker{}, fmt.Errorf("new request: %w", err)
 		}
-
 		sf, err := httpx.OpenSeekerFile(cli, req,
 			httpx.SeekerFileOptions().
 				WithBufferSize(o.BufferSize).
@@ -144,15 +141,8 @@ func parseGGUFFileFromRemote(ctx context.Context, cli *http.Client, url string, 
 				),
 		)
 		if err != nil {
-			return nil, fmt.Errorf("open http file: %w", err)
+			return _GGUFFileReadSeeker{}, fmt.Errorf("open http file: %w", err)
 		}
-
-		fs = append(fs, _GGUFFileReadSeeker{
-			Closer:     sf,
-			ReadSeeker: io.NewSectionReader(sf, 0, sf.Len()),
-			Size:       sf.Len(),
-		})
-	}
-
-	return parseGGUFFile(fs, o)
+		return _GGUFFileReadSeeker{sf, io.NewSectionReader(sf, 0, sf.Len()), sf.Len()}, nil
+	})
 }
