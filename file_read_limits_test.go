@@ -85,11 +85,11 @@ func TestRemoteShardsShareDeadline(t *testing.T) {
 		}
 		return resp, nil
 	})}
-	_, err := parseGGUFFileFromRemote(context.Background(), cli, "https://example.invalid/model-00001-of-00002.gguf?download=true", _GGUFReadOptions{})
+	_, err := parseGGUFFileFromRemote(context.Background(), cli, "https://example.invalid/模型 dir/model-00001-of-00002.gguf?download=true", _GGUFReadOptions{})
 	require.NoError(t, err)
 	require.Equal(t, []string{
-		"HEAD /model-00001-of-00002.gguf", "GET /model-00001-of-00002.gguf",
-		"HEAD /model-00002-of-00002.gguf", "GET /model-00002-of-00002.gguf",
+		"HEAD /模型 dir/model-00001-of-00002.gguf", "GET /模型 dir/model-00001-of-00002.gguf",
+		"HEAD /模型 dir/model-00002-of-00002.gguf", "GET /模型 dir/model-00002-of-00002.gguf",
 	}, paths)
 	for _, d := range deadlines {
 		require.Equal(t, deadlines[0], d)

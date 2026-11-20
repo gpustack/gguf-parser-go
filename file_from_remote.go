@@ -114,6 +114,7 @@ func parseGGUFFileFromRemote(ctx context.Context, cli *http.Client, rawURL strin
 		files.name = rawURL
 	} else {
 		// Preserve the authority and query verbatim. Only the filename identifies siblings.
+		rawURL = u.String()
 		end := strings.IndexAny(rawURL, "?#")
 		if end < 0 {
 			end = len(rawURL)

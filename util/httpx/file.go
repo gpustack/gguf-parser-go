@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -155,9 +156,10 @@ func (f *SeekerFile) sync(off int64) error {
 	defer Close(resp)
 	switch resp.StatusCode {
 	case http.StatusPartialContent:
-		var start, end, total int64
-		_, err = fmt.Sscanf(resp.Header.Get("Content-Range"), "bytes %d-%d/%d", &start, &end, &total)
-		if err != nil || start != off || end < start || end > lim || total != f.Len() {
+		var start, end int64
+		span, total, ok := strings.Cut(resp.Header.Get("Content-Range"), "/")
+		_, err = fmt.Sscanf(span, "bytes %d-%d", &start, &end)
+		if !ok || err != nil || start != off || end < start || end > lim || (total != "*" && total != strconv.FormatInt(f.Len(), 10)) {
 			return errors.New("inconsistent remote byte range")
 		}
 		length = end - start + 1

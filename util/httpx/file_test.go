@@ -62,3 +62,26 @@ func TestSeekerFileChecksRangeSize(t *testing.T) {
 	_, err = f.ReadAt(b[:], 0)
 	require.ErrorContains(t, err, "inconsistent remote byte range")
 }
+
+func TestSeekerFileAcceptsUnspecifiedRangeTotal(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodHead {
+			w.Header().Set("Accept-Ranges", "bytes")
+			w.Header().Set("Content-Length", "12")
+			return
+		}
+		w.Header().Set("Content-Range", "bytes 0-3/*")
+		w.WriteHeader(http.StatusPartialContent)
+		_, _ = w.Write([]byte("0123"))
+	}))
+	defer srv.Close()
+	req, err := NewGetRequestWithContext(context.Background(), srv.URL)
+	require.NoError(t, err)
+	f, err := OpenSeekerFile(srv.Client(), req, SeekerFileOptions().WithBufferSize(4))
+	require.NoError(t, err)
+	defer f.Close()
+	var b [4]byte
+	_, err = f.ReadAt(b[:], 0)
+	require.NoError(t, err)
+	require.Equal(t, "0123", string(b[:]))
+}
