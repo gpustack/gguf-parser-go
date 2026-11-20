@@ -339,7 +339,7 @@ func _validateCountWithRemaining(f _GGUFFileReadSeeker, count uint64, version GG
 
 func parseGGUFFile(paths []string, o _GGUFReadOptions, open func(string) (_GGUFFileReadSeeker, error)) (*GGUFFile, error) {
 	var gf GGUFFile
-	budget := metadataReadBudget(defaultMetadataBudget)
+	budget := metadataReadBudget(o.metadataBudget())
 	for _, path := range paths {
 		f, err := open(path)
 		if err != nil {
@@ -546,12 +546,6 @@ func (gf *GGUFFile) readShard(f _GGUFFileReadSeeker, o _GGUFReadOptions, single 
 // so that a caller gets an error instead of a confident answer about a file
 // that cannot run.
 func (gf *GGUFFile) validateMetadata() error {
-	for _, kv := range gf.Header.MetadataKV {
-		if strings.HasSuffix(kv.Key, ".block_count") && !validBlockCount(kv) {
-			return fmt.Errorf("metadata key %q must hold a layer count between 0 and %d", kv.Key, maxSaneBlockCount)
-		}
-	}
-
 	// A file type of the wrong value type.
 	//
 	// llama.cpp reads "general.file_type" as a uint32 and throws
@@ -628,6 +622,20 @@ func (gf *GGUFFile) validateMetadata() error {
 	} {
 		if v, ok := gf.Header.MetadataKV.Get(key); ok && v.ValueType != GGUFMetadataValueTypeString {
 			return fmt.Errorf("metadata key %q holds a %v, but it must hold a string", key, v.ValueType)
+		}
+	}
+	// Check the layer counts used by this architecture. Extension keys can have their own semantics.
+	arch := "llama" //nolint:goconst
+	if ok {
+		arch = v.ValueString()
+	}
+	layerKeys := []string{arch + ".block_count"}
+	if isClip {
+		layerKeys = []string{"clip.vision.block_count", "clip.audio.block_count"}
+	}
+	for _, key := range layerKeys {
+		if count, found := gf.Header.MetadataKV.Get(key); found && !validBlockCount(count) {
+			return fmt.Errorf("metadata key %q must hold a layer count between 0 and %d", key, maxSaneBlockCount)
 		}
 	}
 	for _, key := range []string{"tokenizer.ggml.tokens", "tokenizer.ggml.merges", "tokenizer.ggml.added_tokens"} {

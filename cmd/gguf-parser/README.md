@@ -167,7 +167,7 @@ GLOBAL OPTIONS:
 
 ## GGUF File Compatibility
 
-**Since v0.28.4**, the parser accepts up to 4,096 layers and reads one shard at a time.
+**Since v0.28.4**, the parser checks the active architecture’s layer count against a limit of 4,096 and reads one shard at a time.
 A remote parse accepts up to 256 shards and uses a five-minute deadline by default.
 Library callers can supply a deadline through the request context. The parser checks remote
 byte ranges against the object size and refreshes metadata caches written by earlier versions.
@@ -175,7 +175,9 @@ byte ranges against the object size and refreshes metadata caches written by ear
 The parser applies a 256 MiB accounting budget across all shards. It charges 96 bytes per metadata
 record, 32 bytes per materialized array element, and the byte length of each string it reads.
 This budget measures parsing work and does not specify peak process memory. Skipped array elements
-do not consume the materialization allowance.
+do not consume the materialization allowance. Go callers can set a different budget for a known
+model, for example `UseMetadataReadBudget(512 << 20)` and `UseRemoteShardLimit(512)`.
+The CLI uses the defaults.
 
 **Since v0.28.3**, the CLI recognizes Stable Diffusion models with unprefixed tensor names.
 Each GGUF shard must have unique metadata keys. If present, `general.alignment` must be a

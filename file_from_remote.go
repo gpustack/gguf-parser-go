@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -38,13 +37,7 @@ func ParseGGUFFileRemote(ctx context.Context, url string, opts ...GGUFReadOption
 
 	// Cache.
 	{
-		if o.CachePath != "" {
-			o.CachePath = filepath.Join(o.CachePath, "v2", "remote")
-			if o.SkipLargeMetadata {
-				o.CachePath = filepath.Join(o.CachePath, "brief")
-			}
-		}
-		c := GGUFFileCache(o.CachePath)
+		c := o.parsedFileCache("remote")
 
 		// Get from cache.
 		if gf, err = c.Get(url, o.CacheExpiration); err == nil {
@@ -111,8 +104,7 @@ func ParseGGUFFileRemote(ctx context.Context, url string, opts ...GGUFReadOption
 }
 
 func parseGGUFFileFromRemote(ctx context.Context, cli *http.Client, url string, o _GGUFReadOptions) (*GGUFFile, error) {
-	const maxRemoteShards = 256
-	urls, err := completeShardGGUFFilename(url, maxRemoteShards)
+	urls, err := completeShardGGUFFilename(url, o.remoteShardLimit())
 	if err != nil {
 		return nil, err
 	}

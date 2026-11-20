@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"path/filepath"
 	"time"
 
 	"github.com/gpustack/gguf-parser-go/util/httpx"
@@ -40,10 +39,7 @@ func ParseGGUFFileFromOllamaModel(ctx context.Context, model *OllamaModel, opts 
 
 	// Cache.
 	{
-		if o.CachePath != "" {
-			o.CachePath = filepath.Join(o.CachePath, "v2", "distro", "ollama")
-		}
-		c := GGUFFileCache(o.CachePath)
+		c := o.parsedFileCache("ollama")
 
 		// Get from cache.
 		if gf, err = c.Get(model.String(), o.CacheExpiration); err == nil {

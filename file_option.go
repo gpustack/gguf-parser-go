@@ -12,8 +12,10 @@ import (
 
 type (
 	_GGUFReadOptions struct {
-		Debug             bool
-		SkipLargeMetadata bool
+		Debug              bool
+		SkipLargeMetadata  bool
+		MetadataReadBudget uint64
+		RemoteShardLimit   int
 
 		// Local.
 		MMap bool
@@ -48,6 +50,36 @@ func SkipLargeMetadata() GGUFReadOption {
 	return func(o *_GGUFReadOptions) {
 		o.SkipLargeMetadata = true
 	}
+}
+
+// UseMetadataReadBudget sets the accounting budget in bytes for a complete GGUF read.
+// The default is 256 MiB. Zero selects the default.
+func UseMetadataReadBudget(bytes uint64) GGUFReadOption {
+	return func(o *_GGUFReadOptions) {
+		o.MetadataReadBudget = bytes
+	}
+}
+
+func (o _GGUFReadOptions) metadataBudget() uint64 {
+	if o.MetadataReadBudget == 0 {
+		return defaultMetadataBudget
+	}
+	return o.MetadataReadBudget
+}
+
+// UseRemoteShardLimit sets the maximum number of files to open for a remote GGUF model.
+// The default is 256. Values below one select the default. GGUF filenames allow up to 99,999 shards.
+func UseRemoteShardLimit(count int) GGUFReadOption {
+	return func(o *_GGUFReadOptions) {
+		o.RemoteShardLimit = count
+	}
+}
+
+func (o _GGUFReadOptions) remoteShardLimit() int {
+	if o.RemoteShardLimit < 1 {
+		return 256
+	}
+	return min(o.RemoteShardLimit, 99999)
 }
 
 // UseMMap uses mmap to read the local file.

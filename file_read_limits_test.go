@@ -18,11 +18,18 @@ import (
 func TestLayerCountRange(t *testing.T) {
 	for _, key := range []string{"llama.block_count", "clip.vision.block_count", "clip.audio.block_count"} {
 		t.Run(key, func(t *testing.T) {
+			var model []GGUFMetadataKV
+			if key != "llama.block_count" {
+				model = []GGUFMetadataKV{
+					{Key: "general.architecture", ValueType: GGUFMetadataValueTypeString, Value: "clip"},
+					{Key: "clip.projector_type", ValueType: GGUFMetadataValueTypeString, Value: "idefics3"},
+				}
+			}
 			kv := GGUFMetadataKV{Key: key, ValueType: GGUFMetadataValueTypeUint32, Value: uint32(maxSaneBlockCount)}
-			_, err := ParseGGUFFile(writeProjectorGGUF(t, []GGUFMetadataKV{kv}))
+			_, err := ParseGGUFFile(writeProjectorGGUF(t, append(model, kv)))
 			require.NoError(t, err)
 			kv.Value = uint32(maxSaneBlockCount + 1)
-			_, err = ParseGGUFFile(writeProjectorGGUF(t, []GGUFMetadataKV{kv}))
+			_, err = ParseGGUFFile(writeProjectorGGUF(t, append(model, kv)))
 			require.ErrorContains(t, err, key)
 		})
 	}
@@ -84,4 +91,40 @@ func TestRemoteShardsShareDeadline(t *testing.T) {
 	for _, d := range deadlines {
 		require.Equal(t, deadlines[0], d)
 	}
+}
+
+func TestIndependentBlockCountMetadata(t *testing.T) {
+	kv := GGUFMetadataKV{Key: "storage.block_count", ValueType: GGUFMetadataValueTypeUint32, Value: uint32(12000)}
+	f, err := ParseGGUFFile(writeProjectorGGUF(t, []GGUFMetadataKV{kv}))
+	require.NoError(t, err)
+	got, ok := f.Header.MetadataKV.Get(kv.Key)
+	require.True(t, ok)
+	require.Equal(t, kv.Value, got.Value)
+}
+
+func TestMetadataReadBudgetOption(t *testing.T) {
+	kv := GGUFMetadataKV{Key: "name", ValueType: GGUFMetadataValueTypeString, Value: "example"}
+	file := writeProjectorGGUF(t, []GGUFMetadataKV{kv})
+	_, err := ParseGGUFFile(file, UseMetadataReadBudget(100))
+	require.ErrorContains(t, err, "budget")
+	f, err := ParseGGUFFile(file, UseMetadataReadBudget(128))
+	require.NoError(t, err)
+	require.Equal(t, []GGUFMetadataKV{kv}, []GGUFMetadataKV(f.Header.MetadataKV))
+}
+
+func TestReadOptionsSelectCache(t *testing.T) {
+	base := _GGUFReadOptions{CachePath: t.TempDir()}
+	for _, opt := range []GGUFReadOption{UseMetadataReadBudget(512 << 20), UseRemoteShardLimit(512), SkipLargeMetadata()} {
+		o := base
+		opt(&o)
+		require.NotEqual(t, base.parsedFileCache("remote"), o.parsedFileCache("remote"))
+	}
+}
+
+func TestRemoteShardLimitOption(t *testing.T) {
+	var o _GGUFReadOptions
+	UseRemoteShardLimit(512)(&o)
+	names, err := completeShardGGUFFilename("model-00001-of-00257.gguf", o.remoteShardLimit())
+	require.NoError(t, err)
+	require.Len(t, names, 257)
 }

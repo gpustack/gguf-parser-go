@@ -20,6 +20,19 @@ var (
 
 type GGUFFileCache string
 
+func (o _GGUFReadOptions) parsedFileCache(source string) GGUFFileCache {
+	if o.CachePath == "" {
+		return ""
+	}
+	// Cache hits must satisfy the same read limits and metadata mode as fresh reads.
+	limits := fmt.Sprintf("%d-%d", o.metadataBudget(), o.remoteShardLimit())
+	path := filepath.Join(o.CachePath, "v2", source, limits)
+	if o.SkipLargeMetadata {
+		path = filepath.Join(path, "brief")
+	}
+	return GGUFFileCache(path)
+}
+
 func (c GGUFFileCache) getKeyPath(key string) string {
 	k := stringx.SumByFNV64a(key)
 	p := filepath.Join(string(c), k[:1], k)
