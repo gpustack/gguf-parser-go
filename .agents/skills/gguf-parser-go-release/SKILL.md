@@ -9,7 +9,7 @@ Two maintainer duties:
 
 1. **Cut a release** — push `main` and a version tag; `.github/workflows/cmd.yml` builds the
    binaries, creates the GitHub Release carrying them, and publishes the Docker image.
-2. **Align version docs** — the root `README.md` "Notes" bullets and the
+2. **Align version docs** — the root `README.md` usage guidance and the
    `cmd/gguf-parser/README.md` help block must match the shipped version line before the tag lands.
 
 ## Cut a release
@@ -57,9 +57,8 @@ git tag -l 'v*' --sort=-v:refname | head -5
 - Read the range: `git log --no-merges --oneline <last>..origin/main`.
 - Propose the bump from the Conventional Commits in range: any `feat` → minor; fixes, docs, and
   chores → patch.
-- The root `README.md` "Notes" must already carry the `Since <VER>` bullet for the chosen version,
-  newest first, and `cmd/gguf-parser/README.md` must carry the matching claims. If they are
-  missing, land them as a docs commit in this train — docs-only pushes run no CI.
+- Keep the CLI reference and help block current. Edit the root Notes only when a reader needs
+  different guidance to choose an option or interpret an estimate. Record version history in the Release.
 - Confirm the (version, commit) pair before pushing.
 
 ### 3. Draft notes
@@ -109,10 +108,8 @@ curation command instead of waiting.
 
 ## Align version docs
 
-`README.md` "Notes" is newest-first with one `Since <VER>` bullet per shipped change of contract;
-`cmd/gguf-parser/README.md` owns the usage block (synced from `--help`), the Parameter
-Compatibility tables, and the per-feature sections. When a release ships a behavior change, both
-must already claim it under the released version — check this in phase 2, not after the tag.
+The root Notes explain current usage. The CLI README owns the help block, compatibility limits,
+and detailed examples. Release notes own the list of changes for each version.
 
 ## Scope
 
